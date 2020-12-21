@@ -833,7 +833,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 if (logStargateEvents) {
                     log.info(String.format("STARGATE %s %s %s %s", action, name, pos, address));
                 }
-                SGMergeEvent.fireEvent(name, this.homeAddress, isMerged, this.pos, getWorld());
+                SGMergeEvent.fireEvent(this.homeAddress, isMerged, this.pos, getWorld());
                 if (state) {
                     GeneralAddressRegistry.addAddress(world, this.homeAddress);
                 } else {
