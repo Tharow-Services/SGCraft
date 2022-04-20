@@ -85,6 +85,15 @@ public final class GeneratorAddressRegistry {
         return removed;
     }
 
+    public static boolean hasAddress(final World world, final String homeAddress) {
+        checkNotNull(world);
+
+        final Set<String> worldAddresses = addresses.getOrDefault(world.getWorldInfo().getWorldName().toLowerCase(), new HashSet<>());
+        boolean exists = worldAddresses.contains(homeAddress.toUpperCase());
+
+        return exists;
+    }
+
 
     public static void writeAddresses() {
         final Path path = Paths.get(".", "config", "SGCraft", "generator.yml");
