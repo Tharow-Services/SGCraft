@@ -217,8 +217,6 @@ public class BaseTileEntity extends TileEntity
         if (chunkTicket != null) {
             if (chunkTicket.world != null) {
                 ForgeChunkManager.releaseTicket(chunkTicket);
-            } else {
-                System.out.println("chunk ticket release: WORLD IS NUL!!!");
             }
             chunkTicket = null;
         }
