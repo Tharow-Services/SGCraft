@@ -67,6 +67,11 @@ public class ConfiguratorItem extends Item {
           if (localGateTE instanceof SGBaseTE) {
               SGBaseTE localGate = (SGBaseTE) localGateTE;
 
+              if (localGate.homeAddress == null) {
+                  // Fallback since the Gate doesn't have an established address until its merged.
+                  return new ActionResult<>(EnumActionResult.FAIL, player.getHeldItem(handIn));
+              }
+
               boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
               if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && localGate.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
