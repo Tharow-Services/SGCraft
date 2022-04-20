@@ -4,7 +4,7 @@ buildscript {
         mavenLocal()
         jcenter()
         maven {
-            url = "http://files.minecraftforge.net/maven"
+            url = "https://maven.minecraftforge.net"
         }
         maven {
             url = "https://oss.sonatype.org/content/repositories/snapshots/"
@@ -32,14 +32,17 @@ jar {
 archivesBaseName = jarName
 
 repositories {
-    maven { url = "http://files.minecraftforge.net/maven" } // spongeforge
+    maven { url = "https://maven.minecraftforge.net" } // spongeforge
     maven { url = "http://maven.cil.li/" }
     maven {
         name = 'oss-sonatype-public'
         url = 'https://oss.sonatype.org/content/groups/public/'
     }
     maven { url = "http://maven.ic2.player.to" }
-    maven { url = "http://repo.spongepowered.org/maven" }
+    maven {
+        name = 'sponge'
+        url = 'https://repo.spongepowered.org/maven'
+    }
     maven { url = "http://cc.crzd.me/maven/" }
     maven { url = "https://archiva-repository.apache.org/archiva/repository/snapshots" }
     maven {
@@ -52,13 +55,13 @@ repositories {
 }
 
 dependencies {
-    compile ("org.spongepowered:spongeforge:1.12.2-2838-7.1.10-RC3994:dev") {
+    compile ("org.spongepowered:spongeforge:1.12.2-2838-7.4.5:dev") {
         exclude module: 'testplugins'
         exclude module: 'testmods'
     }
 
-compile 'org.spongepowered:configurate-yaml:3.6'
-    compile 'org.spongepowered:configurate-core:3.6'
+compile 'org.spongepowered:configurate-yaml:3.7'
+    compile 'org.spongepowered:configurate-core:3.7'
     compile 'com.google.code.gson:gson:2.8.0'
     compile 'commons-io:commons-io:2.7-SNAPSHOT'
     compile "li.cil.oc:OpenComputers:MC1.12.1-1.7.1.52"
