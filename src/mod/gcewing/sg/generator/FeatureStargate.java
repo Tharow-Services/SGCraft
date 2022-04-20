@@ -384,6 +384,7 @@ public class FeatureStargate extends StructureComponent {
 
             if (te.homeAddress != null) {
                 GeneratorAddressRegistry.addAddress(te.getWorld(), te.homeAddress);
+                te.isGenerated = true; // Tag gate as being generated here.
                 te.canPlayerBreakGate = SGBaseTE.cfg.getBoolean("stargate", "canPlayerBreakGate", true);
             }
 
