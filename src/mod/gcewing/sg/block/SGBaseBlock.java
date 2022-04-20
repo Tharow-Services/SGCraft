@@ -22,6 +22,7 @@ import net.minecraft.block.material.*;
 import net.minecraft.block.state.BlockFaceShape;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.*;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.*;
 import net.minecraft.init.*;
 import net.minecraft.item.*;
@@ -37,6 +38,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     static int explosionRadius = 10;
     static boolean fieryExplosion = true;
     static boolean smokyExplosion = true;
+    static boolean debug = false;
 
     static int pattern[][] = {
         {2, 1, 2, 1, 2},
@@ -111,10 +113,26 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         SGBaseTE te = getTileEntity(world, pos);
         return te != null && te.isMerged;
     }
+
+    @Override
+    public void onBlockPlacedBy(World world, BlockPos pos, IBlockState state, EntityLivingBase player, ItemStack stack) {
+        super.onBlockPlacedBy(world, pos, state, player, stack);
+        SGBaseTE te = getTileEntity(world, pos);
+        if (te != null) {
+            if (te instanceof SGBaseTE) {
+                if (debug) {
+                    System.out.println("Stargate base block placed " + player.getName() + " on world: " + world.getWorldInfo().getWorldName() + " at: " + pos);
+                }
+                te.isGenerated = false;
+            }
+        }
+    }
     
     @Override
     public void onBlockAdded(World world, BlockPos pos, IBlockState state) {
-        System.out.println("STARGATE Base block added on world: " + world.getWorldInfo().getWorldName() + " at: " + pos);
+        if (debug) {
+            System.out.println("STARGATE Base block added on world: " + world.getWorldInfo().getWorldName() + " at: " + pos);
+        }
 
         checkForVerticalMerge(world, pos);
         checkForHorizontalMerge(world, pos);
