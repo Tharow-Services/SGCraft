@@ -6,7 +6,10 @@
 
 package gcewing.sg;
 
+import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.tileentity.SGInterfaceTE;
+import gcewing.sg.tileentity.SGRingTE;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
@@ -62,6 +65,10 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
     }
     
     public void setForcedChunkRange(BaseTileEntity te, int minX, int minZ, int maxX, int maxZ) {
+        if (debug) {
+            System.out.println("TE: " + te.toString());
+        }
+
         if (te instanceof SGBaseTE) {
             te.releaseChunkTicket();
             Ticket ticket = getChunkTicket(te);
@@ -93,28 +100,45 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
         int minZ = nbt.getInteger("rangeMinZ");
         int maxX = nbt.getInteger("rangeMaxX");
         int maxZ = nbt.getInteger("rangeMaxZ");
-        if (debug)
-            System.out.printf("BaseChunkLoadingTE: Forcing range (%s,%s)-(%s,%s) in dimension %s\n", minX, minZ, maxX, maxZ, te.getWorld().provider.getDimension());
+        //if (debug)
+            //System.out.printf("BaseChunkLoadingTE: Forcing range (%s,%s)-(%s,%s) in dimension %s\n", minX, minZ, maxX, maxZ, te.getWorld().provider.getDimension());
         BlockPos pos = te.getPos();
         int chunkX = pos.getX() >> 4;
         int chunkZ = pos.getZ() >> 4;
         for (int i = minX; i <= maxX; i++)
             for (int j = minZ; j <= maxZ; j++) {
                 int x = chunkX + i, z = chunkZ + j;
-                if (debug)
-                System.out.println("Created chunk ticket at: " + x + "/" + z + " for: " + te + " with ticket: " + ticket);
+                if (debug) {
+                    System.out.println("Created chunk ticket at: " + x + "/" + z + " for: " + te + " with ticket: " + ticket);
+                }
                 if (ticket.world == null) {
-                    System.out.println("World is null in chunk ticket!!!");
+                    if (debug) {
+                        System.out.println("World is null in chunk ticket!!!");
+                    }
                     return;
+                }
+                if (debug) {
+                    System.out.println("Ticket World: " + ticket.world);
+                    System.out.println("Ticket Size: " + ticket.getChunkList().size());
                 }
                 ForgeChunkManager.forceChunk(ticket, new ChunkPos(x, z));
             }
     }
 
     protected Ticket getChunkTicket(BaseTileEntity te) {
-        if (te.chunkTicket == null)
+        if (te.chunkTicket == null) {
+            if (debug) {
+                System.out.println("Creating new chunk ticket for: " + te.toString());
+            }
             te.chunkTicket = newTicket(te.getWorld());
-        return te.chunkTicket;
+
+            return te.chunkTicket;
+        } else {
+            if (debug) {
+                System.out.println("Chunk ticket was not null; returning existing ticket for: " + te.toString());
+            }
+            return te.chunkTicket;
+        }
     }
     
     public boolean reinstateChunkTicket(BaseTileEntity te, Ticket ticket) {
