@@ -178,6 +178,7 @@ public class PddScreen extends BasicScreen {
         this.autoCloseChk = new UICheckBox(this, TextFormatting.WHITE + "Auto Close");
         this.autoCloseChk.setAnchor(Anchor.BOTTOM | Anchor.LEFT);
         this.autoCloseChk.setPosition(BasicScreen.getPaddedX(this.editAddressButton, 2), -2);
+        this.autoCloseChk.setEnabled(false);
         this.autoCloseChk.setChecked(false);
 
         buttonDial = new UIButtonBuilder(this)
