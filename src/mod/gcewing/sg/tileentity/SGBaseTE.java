@@ -16,6 +16,7 @@ import gcewing.sg.BaseBlockUtils;
 import gcewing.sg.BaseConfiguration;
 import gcewing.sg.BaseTileInventory;
 import gcewing.sg.BaseUtils;
+import gcewing.sg.event.SGMergeEvent;
 import gcewing.sg.features.ic2.zpm.modulehub.ZpmHubTE;
 import gcewing.sg.features.zpm.console.ZpmConsoleTE;
 import gcewing.sg.generator.GeneratorAddressRegistry;
@@ -869,6 +870,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 if (logStargateEvents) {
                     log.info(String.format("STARGATE %s %s %s %s", action, name, pos, address));
                 }
+                SGMergeEvent.fireEvent(this.homeAddress, isMerged, this.pos, getWorld());
                 if (state) {
                     GeneralAddressRegistry.addAddress(world, this.homeAddress);
                 } else {
