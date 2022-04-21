@@ -263,6 +263,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean allowRedstoneInput = true;
     public boolean canPlayerBreakGate = false;
     public boolean displayGateAddress = true;
+    public boolean isGenerated = false;
 
     // Access Control Lists
     private List<PlayerAccessData> playerAccessData;
@@ -376,17 +377,21 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     @Override
     public void onAddedToWorld() {
-        //if (SGBaseBlock.debugMerge) {
+        if (SGBaseBlock.debugMerge) {
         System.out.print("SGBaseTE.onAddedToWorld\n");
-        //}
+        }
         updateChunkLoadingStatus();
     }
 
     void updateChunkLoadingStatus() {
         if (state != SGState.Idle) {
             int n = chunkLoadingRange;
-            if (n < 0)
+            if (n < 0) {
                 n = 0;
+            }
+            if (debugState) {
+                System.out.println("updateChunkLoadingStatus w/ Gatestate: " + state);
+            }
             SGCraft.chunkManager.setForcedChunkRange(this, -n, -n, n, n);
         } else {
             SGCraft.chunkManager.clearForcedChunkRange(this);
@@ -656,6 +661,16 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         } else {
             this.displayGateAddress = cfg.getBoolean("stargate", "displayGateAddress", this.displayGateAddress);
         }
+
+        if (nbt.hasKey("isGenerated")) {
+            this.isGenerated = nbt.getBoolean("isGenerated");
+        } else {
+            if (!world.isRemote) { // This lookup happens on the server first, then the client once it receives the packet.
+                if (GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) {
+                    this.isGenerated = true;
+                }
+            }
+        }
     }
 
     protected String getStringOrNull(NBTTagCompound nbt, String name) {
@@ -746,6 +761,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         nbt.setBoolean("allowRedstoneInput", this.allowRedstoneInput);
         nbt.setBoolean("canPlayerBreakGate", this.canPlayerBreakGate);
         nbt.setBoolean("displayGateAddress", this.displayGateAddress);
+        nbt.setBoolean("isGenerated", isGenerated);
 
         return nbt;
     }
