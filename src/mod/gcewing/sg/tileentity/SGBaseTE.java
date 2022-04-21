@@ -191,6 +191,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     static DamageSource transientDamageSource = new DamageSource("sgcraft:transient");
     public static BaseConfiguration cfg;
     static double transientDamageRate = 5000;
+    static boolean resetIsGenerated = true;
 
     // Instanced options
     public boolean isMerged;
@@ -261,7 +262,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean useDHDFuelSource = true;
     public boolean allowRedstoneOutput = true;
     public boolean allowRedstoneInput = true;
-    public boolean canPlayerBreakGate = false;
+    public boolean canPlayerBreakPlayerGate = false;
+    public boolean canPlayerBreakGeneratedGate = false;
     public boolean displayGateAddress = true;
     public boolean isGenerated = false;
 
@@ -299,7 +301,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.useDHDFuelSource = cfg.getBoolean("dhd", "useDHDFuelSource", this.useDHDFuelSource);
         this.allowRedstoneOutput = cfg.getBoolean("stargate", "allowRedstoneOutput", this.allowRedstoneOutput);
         this.allowRedstoneInput = cfg.getBoolean("iris", "allowRedstoneInput", this.allowRedstoneInput);
-        this.canPlayerBreakGate = cfg.getBoolean("stargate", "canPlayerBreakGate", this.canPlayerBreakGate);
+        this.canPlayerBreakPlayerGate = cfg.getBoolean("stargate", "canPlayerBreakGate", this.canPlayerBreakPlayerGate);
+        this.canPlayerBreakGeneratedGate = cfg.getBoolean("stargate", "canPlayerBreakGate", this.canPlayerBreakGeneratedGate);
         this.displayGateAddress = cfg.getBoolean("stargate", "displayGateAddress", this.displayGateAddress);
     }
 
@@ -336,7 +339,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         cfg.getBoolean("dhd", "useDHDFuelSource", true);
         cfg.getBoolean("stargate", "allowRedstoneOutput", true);
         cfg.getBoolean("iris", "allowRedstoneInput", true);
-        cfg.getBoolean("stargate", "canPlayerBreakGate", false);
+        cfg.getBoolean("stargate", "canPlayerBreakPlayerGate", true);
+        cfg.getBoolean("stargate", "canPlayerBreakGeneratedGate", false);
         cfg.getBoolean("stargate", "displayGateAddress", true);
 
         // Global static config values
@@ -346,6 +350,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         soundVolume = (float)cfg.getDouble("stargate", "soundVolume", soundVolume);
         variableChevronPositions = cfg.getBoolean("stargate", "variableChevronPositions", variableChevronPositions);
         transientDamageRate = cfg.getDouble("stargate", "transientDamageRate", transientDamageRate);
+        resetIsGenerated = cfg.getBoolean("stargate", "resetIsGenerated", resetIsGenerated);
     }
 
     public static SGBaseTE get(IBlockAccess world, BlockPos pos) {
@@ -650,10 +655,16 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             this.allowRedstoneInput = cfg.getBoolean("iris", "allowRedstoneInput", this.allowRedstoneInput);
         }
 
-        if (nbt.hasKey("canPlayerBreakGate") && !SGCraft.forceSGBaseTEUpdate) {
-            this.canPlayerBreakGate = nbt.getBoolean("canPlayerBreakGate");
+        if (nbt.hasKey("canPlayerBreakPlayerGate") && !SGCraft.forceSGBaseTEUpdate) {
+            this.canPlayerBreakPlayerGate = nbt.getBoolean("canPlayerBreakPlayerGate");
         } else {
-            this.canPlayerBreakGate = cfg.getBoolean("stargate", "canPlayerBreakGate", this.canPlayerBreakGate);
+            this.canPlayerBreakPlayerGate = cfg.getBoolean("stargate", "canPlayerBreakPlayerGate", this.canPlayerBreakPlayerGate);
+        }
+
+        if (nbt.hasKey("canPlayerBreakGeneratedGate") && !SGCraft.forceSGBaseTEUpdate) {
+            this.canPlayerBreakGeneratedGate = nbt.getBoolean("canPlayerBreakGeneratedGate");
+        } else {
+            this.canPlayerBreakGeneratedGate = cfg.getBoolean("stargate", "canPlayerBreakGeneratedGate", this.canPlayerBreakGeneratedGate);
         }
 
         if (nbt.hasKey("displayGateAddress") && !SGCraft.forceSGBaseTEUpdate) {
@@ -666,6 +677,15 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             this.isGenerated = nbt.getBoolean("isGenerated");
         } else {
             if (!world.isRemote) { // This lookup happens on the server first, then the client once it receives the packet.
+                if (GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) {
+                    this.isGenerated = true;
+                }
+            }
+        }
+
+        // Special Hotfix for forcing reset of isGenerated on a stargate IF the address is in the generators address registry
+        if (!world.isRemote) {
+            if (SGBaseTE.resetIsGenerated) {
                 if (GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) {
                     this.isGenerated = true;
                 }
@@ -759,7 +779,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         nbt.setBoolean("defaultAllowAdminAccess", this.defaultAllowAdminAccess);
         nbt.setBoolean("allowRedstoneOutput", this.allowRedstoneOutput);
         nbt.setBoolean("allowRedstoneInput", this.allowRedstoneInput);
-        nbt.setBoolean("canPlayerBreakGate", this.canPlayerBreakGate);
+        nbt.setBoolean("canPlayerBreakPlayerGate", this.canPlayerBreakPlayerGate);
+        nbt.setBoolean("canPlayerBreakGeneratedGate", this.canPlayerBreakGeneratedGate);
         nbt.setBoolean("displayGateAddress", this.displayGateAddress);
         nbt.setBoolean("isGenerated", isGenerated);
 

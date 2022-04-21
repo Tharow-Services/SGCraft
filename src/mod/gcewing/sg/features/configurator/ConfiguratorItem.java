@@ -100,8 +100,10 @@ public class ConfiguratorItem extends Item {
                       SGCraft.hasPermission(player, "sgcraft.configurator.allowRedstoneInput"),
                       SGCraft.hasPermission(player, "sgcraft.gui.gateAccessMenu") && localGate.allowAdminAccess(player.getName()),
                       SGCraft.hasPermission(player, "sgcraft.gui.playerAccessMenu") && localGate.allowAdminAccess(player.getName()),
-                      SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGate"),
-                      SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress"));
+                      SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakPlayerGate"),
+                      SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGeneratedGate"),
+                      SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress"),
+                      SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated"));
 
               } else {
                   if (!SGCraft.hasPermission(player, "sgcraft.gui.configurator"))

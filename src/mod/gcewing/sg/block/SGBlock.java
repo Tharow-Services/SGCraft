@@ -24,30 +24,28 @@ public abstract class SGBlock<TE extends TileEntity> extends BaseBlock<TE> imple
 
     @Override    
     public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest) {
-        if (!player.capabilities.isCreativeMode) {
-            if (!canPlayerBreakGeneratedGates(world, pos)) {
-                return false;  // Prevents gates from being broken when we don't want them to be.
+        SGBaseTE te = getBaseTE(world, pos);
+        if (te != null) {
+            if (!player.capabilities.isCreativeMode) {
+                if (te.isConnected()) {
+                    if (world.isRemote)
+                        SGBaseTE.sendErrorMsg(player, "disconnectFirst");
+                    return false;
+                }
+                if (te.isGenerated && !te.canPlayerBreakGeneratedGate) {
+                    return false;
+                }
+                if (!te.isGenerated && !te.canPlayerBreakPlayerGate) {
+                    return false;
+                }
+            }
+
+            if (player.capabilities.isCreativeMode && te.isConnected()) {
+                if (world.isRemote)
+                    SGBaseTE.sendErrorMsg(player, "disconnectFirst");
+                return false;
             }
         }
-
-        if (player.capabilities.isCreativeMode && isConnected(world, pos)) {
-            if (world.isRemote)
-                SGBaseTE.sendErrorMsg(player, "disconnectFirst");
-            return false;
-        }
         return super.removedByPlayer(state, world, pos, player, willHarvest);
-    }
-    
-    boolean isConnected(World world, BlockPos pos) {
-        SGBaseTE bte = getBaseTE(world, pos);
-        return bte != null && bte.isConnected();
-    }
-
-    boolean canPlayerBreakGeneratedGates(World world, BlockPos pos) {
-        SGBaseTE bte = getBaseTE(world, pos);
-        if (bte != null) {
-            return bte.canPlayerBreakGate;
-        }
-        return true;
     }
 }

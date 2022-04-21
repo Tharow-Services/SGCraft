@@ -97,7 +97,10 @@ public class DHDBlock extends BaseBlock<DHDTE> {
                 if (cte.isLinkedToStargate) {
                     SGBaseTE gte = cte.getLinkedStargateTE();
                     if (gte != null) {
-                        if (!gte.canPlayerBreakGate) {
+                        if (gte.isGenerated && !gte.canPlayerBreakGeneratedGate) {
+                            return false;
+                        }
+                        if (!gte.isGenerated && !gte.canPlayerBreakPlayerGate) {
                             return false;
                         }
                     }
