@@ -743,7 +743,7 @@ public class ConfiguratorScreen extends BasicScreen {
             this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
 
             this.isGeneratedCheckbox.setChecked(localGate.isGenerated);
-            //this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
+            this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
 
             if (localGate.gateOrientation == 2) {
                 this.horizontalFaceUpCheckbox.setChecked(true);

@@ -130,7 +130,7 @@ public final class GeneratorAddressRegistry {
         Set<String> worldAddresses = new HashSet<>(worldAddressesAll);
 
         boolean removed = worldAddresses.removeIf(s -> s.equalsIgnoreCase(homeAddress));
-
+        //System.out.println("Random Address Removed: " + removed);
         if (worldAddresses.isEmpty()) {
             return null;
         }
