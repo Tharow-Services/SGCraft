@@ -59,11 +59,7 @@ import gcewing.sg.network.SGChannel;
 import gcewing.sg.generator.NaquadahOreWorldGen;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
-import gcewing.sg.util.GeneralAddressRegistry;
-import gcewing.sg.util.Info;
-import gcewing.sg.util.PermissionsUtil;
-import gcewing.sg.util.SGChunkData;
-import gcewing.sg.util.Sound;
+import gcewing.sg.util.*;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
@@ -94,6 +90,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -230,6 +227,14 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         configure();
         channel = new SGChannel(Info.modID);
         chunkManager = new BaseTEChunkManager(this);
+
+    }
+
+    @Mod.EventHandler
+    public void serverStart(FMLServerStartingEvent event)
+    {
+        event.registerServerCommand(new SGCommands());
+        event.registerServerCommand(new CrashCommand());
     }
 
     @Mod.EventHandler

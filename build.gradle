@@ -16,7 +16,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.4'
-        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-+'
         classpath 'commons-io:commons-io:2.4'
     }
 }
@@ -43,7 +43,7 @@ repositories {
         name = 'sponge'
         url = 'https://repo.spongepowered.org/maven'
     }
-    maven { url = "http://cc.crzd.me/maven/" }
+    //maven { url = "http://cc.crzd.me/maven/" }
     maven { url = "https://archiva-repository.apache.org/archiva/repository/snapshots" }
     maven {
         name = 'CoFH Maven'
@@ -67,7 +67,7 @@ compile 'org.spongepowered:configurate-yaml:3.7'
     compile "li.cil.oc:OpenComputers:MC1.12.1-1.7.1.52"
     compile "net.industrial-craft:industrialcraft-2:2.8.220-ex112:api"
     deobfCompile "dan200.computercraft:ComputerCraft:1.80pr1-build4"
-    deobfCompile "cofh:RedstoneFlux:1.12-2.1.0.6:universal"
+    deobfCompile "cofh:RedstoneFlux:1.12-2.1.1.1"
 
     //deobfCompile "codechicken:CodeChickenLib:1.12.2-3.2.3.358:universal"
     //deobfCompile "cofh:CoFHCore:1.12.2-4.6.3.27:universal"

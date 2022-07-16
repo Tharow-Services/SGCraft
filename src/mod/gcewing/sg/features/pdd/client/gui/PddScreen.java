@@ -80,7 +80,7 @@ public class PddScreen extends BasicScreen {
 
     public PddScreen(EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin) {
         this.player = player;
-        this.isAdmin = false;
+        this.isAdmin = true;
         this.world = worldIn;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
         this.gatePos = gatePos;
