@@ -73,6 +73,10 @@ public class FeatureStargate extends StructureComponent {
 
     // General/Misc info
     int pass = 0;
+
+    public void setPass(int i) {
+        this.pass=i;
+    }
     BlockPos centerPos = null;
     int firstY = -1;
     EnumFacing spawnDirection = null;
@@ -88,6 +92,10 @@ public class FeatureStargate extends StructureComponent {
         super(0);
         this.base = base;
         this.boundingBox = box;
+    }
+
+    public void setSpawnDirection(EnumFacing spawnDirection) {
+        this.spawnDirection=spawnDirection;
     }
 
     @Override
@@ -311,6 +319,10 @@ public class FeatureStargate extends StructureComponent {
             gatePos = new BlockPos (boundingBox.minX + gateX, boundingBox.minY + gateY, boundingBox.minZ + gateZ);
     }
 
+    public BlockPos getGatePos () {
+        return gatePos;
+    }
+
     public void GenerateStargate (World world, StructureBoundingBox clip, boolean gateVertical) {
         boolean debug = false;
 
@@ -345,7 +357,6 @@ public class FeatureStargate extends StructureComponent {
 
                     if (orientNS) {
                         setBlockState(world, id, gateX + i, gateY + j, gateZ, clip);
-
                     } else {
                         setBlockState(world, id, gateX, gateY + j, gateZ + i, clip);
 

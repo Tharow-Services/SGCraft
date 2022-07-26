@@ -66,7 +66,7 @@ public class SGAddressMap extends WorldSavedData {
         markDirty();
     }
 
-    public static void RemoveAddress(SGAddress addr) {}
+    public static void RemoveAddress(SGAddress addr) {get().removeAddress(addr);}
 
     protected void removeAddress(SGAddress addr) {
         addressMap.remove(addressMap.get(addr.toString()));

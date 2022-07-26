@@ -22,7 +22,7 @@ import net.minecraftforge.event.terraingen.*;
 public class FeatureGeneration {
 
     // Generic
-    public static boolean debugStructures = false;
+    public static boolean debugStructures = true;
     public static int genericTaintedZpm = 10;
 
     // Village
@@ -80,7 +80,7 @@ public class FeatureGeneration {
     
     public static void configure(BaseConfiguration config) {
         // Generic
-        debugStructures = config.getBoolean("debug", "debugStructures", debugStructures);
+        //debugStructures = config.getBoolean("debug", "debugStructures", debugStructures);
         genericTaintedZpm = config.getInteger("generaton", "generic_tainted_zpm", genericTaintedZpm);
 
         // Villages

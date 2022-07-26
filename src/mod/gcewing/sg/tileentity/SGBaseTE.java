@@ -1287,6 +1287,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public void resetStargate() { // Specifically for usage with PDD.
         disconnect();
         markChanged();
+
     }
 
     public static void sendErrorMsg(EntityPlayer player, String msg, Object... args) {
@@ -1467,6 +1468,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // *********************************************************************************************
     // Dialing Subsystem
     // *********************************************************************************************
+
+    public String HomeAddress() {
+        try {
+            return getHomeAddress();
+        } catch (SGAddressing.AddressingError e) {
+            return e.getMessage();
+        }
+    }
 
     String findHomeAddress() {
         try {

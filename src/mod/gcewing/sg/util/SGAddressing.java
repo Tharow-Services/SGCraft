@@ -44,20 +44,20 @@ public class SGAddressing {
         AddressingError(String s) {super(s);}
     }
 
-    public static String symbolChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>";
+    public static String symbolChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     public static int numSymbols = symbolChars.length();
     public static int numCoordSymbols = 7;
     public static int numDimensionSymbols = 2;
     
     public static int maxAddressLength = numCoordSymbols + numDimensionSymbols;
-    public static int maxCoord = 164615;
+    public static int maxCoord = 139967;
     public static int minCoord = -maxCoord;
     public static int coordRange = maxCoord - minCoord + 1;
 //     public final static int minDimension = -648;
 //     public final static int maxDimension = 647;
 //     public final static int dimensionRange = maxDimension - minDimension + 1;
-    public static int maxDimensionIndex = 1443;
-    public static int minDirectDimension = -722;
+    public static int maxDimensionIndex = 1295;
+    public static int minDirectDimension = -648;
     public static int dimensionRange = maxDimensionIndex + 1;
     final static String padding = "---------";
     static long mc = coordRange + 2; // == 2 * maxCoord + 3;
@@ -234,18 +234,15 @@ public class SGAddressing {
     }
 
     public static void Location(String address, ICommandSender sender, boolean b) throws SGAddressing.AddressingError {
-        if (debugAddressing)
-            System.out.printf("SGAddressing.findAddressedStargate: %s\n", address);
+        sender.sendMessage(new TextComponentString("SGAddressing.findAddressedStargate: "+address));
         validateAddress(address);
         String csyms = address.substring(0, numCoordSymbols);
         long c = longFromSymbols(csyms);
         int[] xz = uninterleaveCoords(c);
         int chunkX = minCoord + hash(xz[0], qc, mc);
         int chunkZ = minCoord + hash(xz[1], qc, mc);
-        if (debugAddressing)
-            System.out.printf("SGAddressing.findAddressedStargate: c = %s chunk = (%d,%d)\n",
-                    c, chunkX, chunkZ);
-        SGBaseTE te = null;
+
+        sender.sendMessage(new TextComponentString("SGAddressing.findAddressedStargate: c = "+c+" chunk = ("+chunkX+","+chunkZ+")\n"));
         if (address.length() == maxAddressLength) {
             // Absolute address
             String dsyms = address.substring(numCoordSymbols);
@@ -257,18 +254,11 @@ public class SGAddressing {
             SGAddress addr=SGAddressMap.getAddress(dm,chunkX,chunkZ);
             dm=addr.getD();chunkX=addr.getCX();chunkZ=addr.getCZ();
             // End of Mapper //
-            if (debugAddressing)
-                System.out.printf("SGAddressing.findAddressedStargate: d = %s dimension = %s\n",
-                        d, dm);
+            sender.sendMessage(new TextComponentString("SGAddressing.findAddressedStargate: d = "+d+" dimension = "+dm+"\n"));
             sender.sendMessage(new TextComponentString("Address Belongs to[Dim: "+dm+", Chunk X: "+chunkX+", Chunk Z: "+chunkZ+"]"));
             if (b) {sender.sendMessage(new TextComponentString("Address Belongs to[Dim: "+dm+", X: "+((chunkX*16)+8)+", Z: "+((chunkZ*16)+8)+"]"));}
-
-                // Try old interpretation of dimension symbols
-                int dimOld = minDirectDimension + hash(d, qdOld, mdOld);
-                if (debugAddressing)
-                    System.out.printf("SGAddressing.findAddressedStargate: Trying dimension = %s\n",
-                            dimOld);
-                sender.sendMessage(new TextComponentString("Old Address Belongs to[Dim: "+dimOld+", Chunk X: "+chunkX+", Chunk Z: "+chunkZ+"]"));
+            int dimOld = minDirectDimension + hash(d, qdOld, mdOld);
+            sender.sendMessage(new TextComponentString("Old Address Belongs to[Dim: "+dimOld+", Chunk X: "+chunkX+", Chunk Z: "+chunkZ+"]"));
             if (b) {sender.sendMessage(new TextComponentString("Old Address Belongs to[Dim: "+dimOld+", X: "+((chunkX*16)+8)+", Z: "+((chunkZ*16)+8)+"]"));}
 
         }
@@ -318,16 +308,15 @@ public class SGAddressing {
         while (x > 0 || z > 0) {
             System.out.printf("SGAddressing.interleaveCoords: half-digits %d %d\n", x % 6, z % 6);
             System.out.printf("SGAddressing.interleaveCoords: step c %d \n", c);
-            c += p6 * (x % 6);
-            x /= 6;
-            p6 *= 6;
+            System.out.printf("SGAddressing.interleaveCoords: step p6 %d \n", p6);
+            c += p6 * (x % 6); x /= 6; p6 *= 6;
             c += p6 * (z % 6); z /= 6; p6 *= 6;
 
         }
-        if (debugAddressing)
+        if (debugAddressing) {
             System.out.printf("SGAddressing.interleaveCoords: half-digits %d %d\n", x % 6, z % 6);
-            System.out.printf("SGAddressing.interleaveCoords: step c %d \n", c);
             System.out.printf("SGAddressing.interleaveCoords: c %d\n", c);
+        }
         return c;
     }
     
@@ -346,12 +335,9 @@ public class SGAddressing {
     
     protected static int hash(int i, long f, long m) {
         int h = (int)(((i + 1) * f) % m) - 1;
-        if (debugAddressing)
-            System.out.printf("SGAddressing.hash(%s, %s, %s) = %s\n", i, f, m, h);
+        System.out.printf("SGAddressing.hash(%s, %s, %s) = %s\n", i, f, m, h);
 
-        return i;
-        //Skip Hash function until P and Q can be found
-        //return h;
+        return h;
     }
 
     @Nullable

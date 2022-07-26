@@ -18,6 +18,7 @@ import gcewing.sg.container.PowerContainer;
 import gcewing.sg.container.SGBaseContainer;
 import gcewing.sg.entity.EntityStargateIris;
 import gcewing.sg.entity.SGEntity;
+import gcewing.sg.features.commands.SGCommands;
 import gcewing.sg.features.configurator.ConfiguratorItem;
 import gcewing.sg.features.configurator.network.ConfiguratorNetworkHandler;
 import gcewing.sg.features.gdo.GdoItem;
@@ -234,7 +235,6 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public void serverStart(FMLServerStartingEvent event)
     {
         event.registerServerCommand(new SGCommands());
-        event.registerServerCommand(new CrashCommand());
     }
 
     @Mod.EventHandler
