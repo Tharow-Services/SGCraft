@@ -26,7 +26,11 @@ public class Trans3 {
             for (int turn = 0; turn < 4; turn++)
                 sideTurnRotations[side][turn] = new Trans3(Vector3.zero, Matrix3.sideTurnRotations[side][turn]);
     }
-    
+
+    public Trans3(Vec3d vec3d) {
+       this(new Vector3(vec3d));
+    }
+
     public static Trans3 blockCenter(BlockPos pos) {
         return new Trans3(Vector3.blockCenter(pos));
     }

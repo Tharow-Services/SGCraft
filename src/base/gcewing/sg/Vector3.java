@@ -59,6 +59,10 @@ public class Vector3 {
     public Vec3i toVec3i() {
         return new Vec3i(x, y, z);
     }
+
+    public Vec3d toVec3d() {
+        return new Vec3d(x, y, z);
+    }
     
     public String toString() {
         return String.format("(%.3f,%.3f,%.3f)", x, y, z);

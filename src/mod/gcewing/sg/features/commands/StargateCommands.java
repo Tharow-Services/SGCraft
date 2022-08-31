@@ -15,13 +15,18 @@ import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.SGAddressing;
 import gcewing.sg.util.SGState;
+import net.malisis.core.util.raytrace.Raytrace;
+import net.malisis.core.util.raytrace.RaytraceBlock;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.command.*;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
@@ -29,6 +34,7 @@ import net.minecraft.world.gen.structure.StructureBoundingBox;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -37,6 +43,11 @@ public class StargateCommands extends CommandBase {
     @Override
     public String getName() {
         return "stargate";
+    }
+
+    @Override
+    public List<String> getAliases() {
+        return Arrays.asList("Gate", "SGGate");
     }
 
     @Override
@@ -60,111 +71,100 @@ public class StargateCommands extends CommandBase {
 
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
-        if (args.length<=2) {
+        if (args.length<=1) {
             return subcommands;
         }
         return super.getTabCompletions(server, sender, args, targetPos);
     }
 
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        switch (args[1].toLowerCase()) {
+        switch (args[0].toLowerCase()) {
             case "gen": generateStargate(server, sender, args); break;
             case "debug": adminOptions(sender); break;
+            case "addr":
             case "address": getAddress(sender); break;
+            case "dis":
             case "disconnect": disconnect(sender); break;
             case "reset": reset(sender); break;
             case "status": getStatus(sender); break;
-            case "dial": dial(sender, args[2]); break;
+            case "dial": dial(sender, args[1]); break;
             case "place": placeStargate(sender); break;
             case "type": switchType(sender); break;
             default: sender.sendMessage(new TextComponentString(getUsage(sender)));
         }
+
+    }
+
+
+    public SGBaseTE getStargate(ICommandSender sender) {
+        TileEntity gate = null;
+        BlockPos pos;
+        pos=Minecraft.getMinecraft().objectMouseOver.getBlockPos();
+        if (sender.getEntityWorld().getTileEntity(pos) instanceof SGBaseTE) {
+            gate= sender.getEntityWorld().getTileEntity(pos);
+        }
+        if (gate==null){gate= GateUtil.locateLocalGate(sender.getEntityWorld(), sender.getPosition(), 16, true);}
+        if (gate!=null) {return (SGBaseTE) gate;}
+        sender.sendMessage(new TextComponentTranslation("sgcraft.command.gate:NoGateFound"));return null;
     }
 
     public void getAddress(ICommandSender sender) {
-        SGBaseTE gate = (SGBaseTE) GateUtil.locateLocalGate(sender.getEntityWorld(), sender.getPosition(), 16, true);
-        if (gate==null) {
-            sender.sendMessage(new TextComponentString("No Gate Could Be Located Near By Your Location"));
-            return;
-        }
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
         sender.sendMessage(new TextComponentString("Stargate Home Address: "+gate.HomeAddress()));
     }
 
     public void disconnect(ICommandSender sender) {
-        SGBaseTE gate = (SGBaseTE) GateUtil.locateLocalGate(sender.getEntityWorld(), sender.getPosition(), 16, true);
-        if (gate==null) {
-            sender.sendMessage(new TextComponentString("No Gate Could Be Located Near By Your Location"));
-            return;
-        }
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
         gate.disconnect();
         sender.sendMessage(new TextComponentString("Stargate Disconnected"));
     }
 
-    private SGBaseTE getLocalGate(ICommandSender sender) {
-        SGBaseTE localGate = (SGBaseTE) GateUtil.locateLocalGate(sender.getEntityWorld(), sender.getPosition(), 16, true);
-        if (localGate==null) {
-            sender.sendMessage(new TextComponentString("A Stargate Near You Couldn't Be Found"));
-            return null;
-        }
-        return localGate;
-    }
+
 
     public void getStatus(ICommandSender sender) {
-        SGBaseTE gate = getLocalGate(sender); if (gate==null) {return;}
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
         sender.sendMessage(new TextComponentString("Stargate State: "+gate.sgStateDescription()));
-
-
     }
 
     public void reset(ICommandSender sender) {
-        SGBaseTE gate = getLocalGate(sender);
-        if (gate!=null) {
-            if (gate.state== SGState.Idle) {
-                gate.clearIdleConnection();
-            } else {
-                gate.clearConnection();
-            }
-            gate.resetStargate();
-            try {
-                gate.homeAddress=gate.getHomeAddress();
-            } catch (SGAddressing.AddressingError e) {
-                gate.addressError=String.valueOf(e);
-                sender.sendMessage(new TextComponentString("Warning Stargate Has Invalid Address: "+e.getMessage()));
-            }
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
+        if (gate.state== SGState.Idle) {
+            gate.clearIdleConnection();
+        } else {
+            gate.clearConnection();
+        }
+        gate.resetStargate();
+        try {
+            gate.homeAddress=gate.getHomeAddress();
+        } catch (SGAddressing.AddressingError e) {
+            gate.addressError=String.valueOf(e);
+            sender.sendMessage(new TextComponentString("Warning Stargate Has Invalid Address: "+e.getMessage()));
         }
         sender.sendMessage(new TextComponentString("Stargate Was Reset"));
     }
 
     public void dial(ICommandSender sender, String address) {
-        SGBaseTE localGate = getLocalGate(sender);
-        if (localGate != null) {
-            sender.sendMessage(new TextComponentTranslation("sgcraft.gui.pdd.label.dialing"));
-            String destination = address.toUpperCase().replaceAll("-", "");
-            try {
-                SGAddressing.validateAddress(destination);
-            } catch (SGAddressing.AddressingError e) {
-                sender.sendMessage(new TextComponentString("Address Invalid"));
-            }
-            try {
-                localGate.connect(destination, getCommandSenderAsPlayer(sender), false, false);
-            } catch (PlayerNotFoundException e) {
-                sender.sendMessage(new TextComponentString("Sender Player Not Found"));
-            }
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
+        sender.sendMessage(new TextComponentTranslation("sgcraft.gui.pdd.label.dialing"));
+        String destination = SGAddressing.normalizeAddress(address);
+        try {
+            SGAddressing.validateAddress(destination);
+        } catch (SGAddressing.AddressingError e) {
+            sender.sendMessage(new TextComponentString("Address Invalid"));
         }
+        gate.connect(destination, null, false, false);
+
     }
     public void adminOptions(ICommandSender sender) {
-        SGBaseTE gate = getLocalGate(sender);
-        if (gate!=null) {
-            gate.requiresNoPower = true;
-            gate.chevronsLockOnDial = true;
-            gate.hasChevronUpgrade = true;
-            gate.oneWayTravel = false;
-            sender.sendMessage(new TextComponentString("Debugging Defaults Were Applied To Stargate"));
-        }
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
+        gate.requiresNoPower = true;
+        gate.chevronsLockOnDial = true;
+        gate.hasChevronUpgrade = true;
+        gate.oneWayTravel = false;
+        sender.sendMessage(new TextComponentString("Debugging Defaults Were Applied To Stargate"));
     }
     public void switchType(ICommandSender sender) {
-        SGBaseTE gate = getLocalGate(sender);
-        if (gate==null) {return;}
+        SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
         if (gate.gateType==1) {
             gate.gateType=2;
         } else {
@@ -192,11 +192,8 @@ public class StargateCommands extends CommandBase {
         //SGBaseTE gate= (SGBaseTE) sgBase.getBlock().createTileEntity(world, sgBase);
         //world.setTileEntity(feature.getGatePos(), gate);
         SGBaseTE gate = (SGBaseTE) world.getTileEntity(feature.getGatePos());
+        assert gate != null;
         world.markChunkDirty(feature.getGatePos(), gate);
-
-
-
-        CommandFill fill = new CommandFill();
 
     }
 

@@ -60,6 +60,37 @@ message.sgcraft:configuratorLink=Link to Stargate created!
 message.sgcraft:playerAccessToDenied=Insufficient player access permission at destination
 message.sgcraft:AddressingError=Addressing Error %s
 
+sgcraft.command:Usage=Invalid Sub Command Check Usage
+
+sgcraft.command.link:Args=SG Link  <Dim ChunkX ChunkZ | Address> <Dim ChunkX ChunkZ | Address>
+sgcraft.command.link:Error=Linking Failed %s
+sgcraft.command.link:Complete=Successfully Linked Addresses
+
+sgcraft.command.unlink:Args=SG UnLink  <(Dim) ChunkX ChunkZ | Address>
+sgcraft.command.unlink:Complete=Successfully UnLinked Addresses
+
+sgcraft.command.check:Args=SG <CheckLink | Check>  <(Dim) ChunkX ChunkZ | Address>
+sgcraft.command.check:Addresses=Address %s Links To %s
+sgcraft.command.check:Locations=Location Dim: %s Chunk X: %s Chunk Z: %s Links To Dim: %s Chunk X: %s Chunk Z: %s
+
+sgcraft.command.address:Args=SG <Address | Addr>  <(Dim) ChunkX ChunkZ>
+sgcraft.command.address:Complete=Address For Location: %s
+
+sgcraft.command.location:Args=SG <Location | Loc>  Address (Dim)
+sgcraft.command.location:Complete=Location For Address: Dim: %s Chunk X: %s Chunk Z: %s
+
+sgcraft.command:CurrentLocation=You Are Standing At Address: %s
+
+sgcraft.command.locate:Args=SG Locate  Address (Dim)
+sgcraft.command.locate:Error=Unable To Find Stargate At Given Address
+sgcraft.command.locate:Complete=Stargate Was Found At Dim: %s X: %s Y: %s Z: %s
+
+sgcraft.command.teleport:Args=SG <Teleport | TP>  Address (Dim)
+sgcraft.command.teleport:Error=Unable To Teleport Player To Stargate For Unknown Reason Check Logs
+
+
+sgcraft.command.gate:NoGateFound=Unable to find gate near you or where you were looking
+
 tile.sgcraft:zpm_interface_cart.name=ZPM Interface Cart
 tile.sgcraft:zpm_console.name=ZPM Console
 tile.sgcraft:zpm_hub.name=ZPM Hub

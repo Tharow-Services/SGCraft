@@ -49,6 +49,10 @@ repositories {
         name = 'CoFH Maven'
         url = 'http://maven.covers1624.net'
     }
+    maven {
+        name = 'ValkyrienSkies'
+        url = 'https://maven.daporkchop.net'
+    }
     flatDir {
         dirs "lib"
     }
@@ -66,6 +70,8 @@ compile 'org.spongepowered:configurate-yaml:3.7'
     compile 'commons-io:commons-io:2.7-SNAPSHOT'
     compile "li.cil.oc:OpenComputers:MC1.12.1-1.7.1.52"
     compile "net.industrial-craft:industrialcraft-2:2.8.220-ex112:api"
+    compile "org.valkyrienskies:api:1.0.0.10"
+    compile "org.valkyrienskies:valkyrien-skies:1.0.0+"
     deobfCompile "dan200.computercraft:ComputerCraft:1.80pr1-build4"
     deobfCompile "cofh:RedstoneFlux:1.12-2.1.1.1"
 

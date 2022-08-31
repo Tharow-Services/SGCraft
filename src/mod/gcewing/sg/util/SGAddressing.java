@@ -163,9 +163,10 @@ public class SGAddressing {
         int chunkz = loc.pos.getZ() >> 4;
         int dim = loc.dimension;
         // START OF MAPPER //
-        SGAddress addr=SGAddressMap.getAddress(dim,chunkx,chunkz);
-        dim=addr.getD();chunkx=addr.getCX();chunkz=addr.getCZ();
+        ChunkPos addr=SGAddressMap.getAddress(dim,chunkx,chunkz);
+        dim=addr.d;chunkx=addr.x;chunkz=addr.z;
         // END OF MAPPER //
+
         if (!inCoordRange(chunkx) || !inCoordRange(chunkz))
             throw new AddressingError("targetOutOfRange");
 //         if (!inDimensionRange(loc.dimension))
@@ -190,7 +191,8 @@ public class SGAddressing {
         validateAddress(address);
         String csyms = address.substring(0, numCoordSymbols);
         long c = longFromSymbols(csyms);
-        int[] xz = uninterleaveCoords(c);
+        net.minecraft.util.math.ChunkPos hashedPos = uninterleaveCoords(c);
+        int[] xz = new int[]{hashedPos.x, hashedPos.z};
         int chunkX = minCoord + hash(xz[0], qc, mc);
         int chunkZ = minCoord + hash(xz[1], qc, mc);
         if (debugAddressing)
@@ -205,8 +207,8 @@ public class SGAddressing {
             int di = unpermuteDimension(c, dp);
             Integer dm = SGDimensionMap.dimensionForIndex(di);
             // Start of Mapper //
-            SGAddress addr=SGAddressMap.getAddress(dm,chunkX,chunkZ);
-            dm=addr.getD();chunkX=addr.getCX();chunkZ=addr.getCZ();
+            ChunkPos addr=SGAddressMap.getAddress(dm,chunkX,chunkZ);
+            dm=addr.d;chunkX=addr.x;chunkZ=addr.z;
             // End of Mapper //
             if (debugAddressing)
                 System.out.printf("SGAddressing.findAddressedStargate: d = %s dimension = %s\n",
@@ -225,20 +227,41 @@ public class SGAddressing {
             // Relative address
             int dimension = fromWorld.provider.getDimension();
             // Start of Mapper //
-            SGAddress addr=SGAddressMap.getAddress(dimension,chunkX,chunkZ);
-            dimension=addr.getD();chunkX=addr.getCX();chunkZ=addr.getCZ();
+            ChunkPos addr=SGAddressMap.getAddress(dimension,chunkX,chunkZ);
+            dimension=addr.d;chunkX=addr.x;chunkZ=addr.z;
             // End of Mapper //
             te = getBaseTE(chunkX, chunkZ, dimension, pending);
         }
         return te;
     }
 
-    public static void Location(String address, ICommandSender sender, boolean b) throws SGAddressing.AddressingError {
+    public static ChunkPos locationForAddress(String address, int dimension) throws SGAddressing.AddressingError {
+        String addr = normalizeAddress(address);
+        validateAddress(address);
+        long c = longFromSymbols(addr.substring(0, numCoordSymbols));
+        ChunkPos hashedPos = uninterleaveCoords(c);
+        ChunkPos pos = new ChunkPos(minCoord+hash(hashedPos.x,qc,mc),minCoord+hash(hashedPos.z,qc,mc));
+        ChunkPos chunkPos;
+
+        if (addr.length()==maxAddressLength) {
+            chunkPos= pos.withDim(unpermuteDimension(c, hash(intFromSymbols(addr.substring(numCoordSymbols)), qd, md)));
+        } else {
+            chunkPos= pos.withDim(dimension);
+        }
+        // SGAddressMap
+        chunkPos= SGAddressMap.getAddress(chunkPos);
+        return chunkPos;
+
+    }
+
+    public static void Location(String address, int dimension, ICommandSender sender, boolean b) throws SGAddressing.AddressingError {
         sender.sendMessage(new TextComponentString("SGAddressing.findAddressedStargate: "+address));
+
         validateAddress(address);
         String csyms = address.substring(0, numCoordSymbols);
         long c = longFromSymbols(csyms);
-        int[] xz = uninterleaveCoords(c);
+        ChunkPos hashedPos = uninterleaveCoords(c);
+        int[] xz = new int[]{hashedPos.x, hashedPos.z};
         int chunkX = minCoord + hash(xz[0], qc, mc);
         int chunkZ = minCoord + hash(xz[1], qc, mc);
 
@@ -251,8 +274,8 @@ public class SGAddressing {
             int di = unpermuteDimension(c, dp);
             Integer dm = SGDimensionMap.dimensionForIndex(di);
             // Start of Mapper //
-            SGAddress addr=SGAddressMap.getAddress(dm,chunkX,chunkZ);
-            dm=addr.getD();chunkX=addr.getCX();chunkZ=addr.getCZ();
+            ChunkPos addr=SGAddressMap.getAddress(dm,chunkX,chunkZ);
+            dm=addr.d;chunkX=addr.x;chunkZ=addr.z;
             // End of Mapper //
             sender.sendMessage(new TextComponentString("SGAddressing.findAddressedStargate: d = "+d+" dimension = "+dm+"\n"));
             sender.sendMessage(new TextComponentString("Address Belongs to[Dim: "+dm+", Chunk X: "+chunkX+", Chunk Z: "+chunkZ+"]"));
@@ -264,12 +287,12 @@ public class SGAddressing {
         }
         else {
             // Relative address
-            int dimension = sender.getEntityWorld().provider.getDimension();
             // Start of Mapper //
-            SGAddress addr=SGAddressMap.getAddress(dimension,chunkX,chunkZ);
-            dimension=addr.getD();chunkX=addr.getCX();chunkZ=addr.getCZ();
+            ChunkPos addr=SGAddressMap.getAddress(dimension,chunkX,chunkZ);
+            dimension=addr.d;chunkX=addr.x;chunkZ=addr.z;
             // End of Mapper //
             sender.sendMessage(new TextComponentString("Local Address Belongs to[Dim: "+dimension+", Chunk X: "+chunkX+", Chunk Z: "+chunkZ+"]"));
+            System.out.printf("[TrackPoint:8123] | Address: %s | Chunk Position: X: %d  Z: %d", formatAddress(address, "", "-"), chunkX, chunkZ);
             if (b) {sender.sendMessage(new TextComponentString("Local Address Belongs to[Dim: "+dimension+", X: "+((chunkX*16)+8)+", Z: "+((chunkZ*16)+8)+"]"));}
         }
     }
@@ -320,18 +343,17 @@ public class SGAddressing {
         return c;
     }
     
-    protected static int[] uninterleaveCoords(long c) {
+    protected static ChunkPos uninterleaveCoords(long c) {
         int p6 = 1;
-        int[] xy = {0, 0};
+        int x=0;
+        int y=0;
         while (c > 0) {
-            xy[0] += p6 * (c % 6); c /= 6;
-            xy[1] += p6 * (c % 6); c /= 6;
+            x += p6 * (c % 6); c /= 6;
+            y += p6 * (c % 6); c /= 6;
             p6 *= 6;
         }
-        return xy;
+        return new ChunkPos(x,y);
     }
-
-
     
     protected static int hash(int i, long f, long m) {
         int h = (int)(((i + 1) * f) % m) - 1;

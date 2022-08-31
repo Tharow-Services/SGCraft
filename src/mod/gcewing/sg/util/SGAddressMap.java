@@ -23,28 +23,35 @@ public class SGAddressMap extends WorldSavedData {
         super(name);
     }
 
+    protected String StoreAddress(ChunkPos chunk) {
+        return chunk.d+" "+chunk.x+" "+chunk.z;
+    }
+
+    protected ChunkPos UnStoreAddress(String stored) {
+        String[] s = stored.split(" ");
+        return new ChunkPos(
+                Integer.parseInt(s[0]),
+                Integer.parseInt(s[1]),
+                Integer.parseInt(s[2])
+        );
+    }
+
     public static SGAddressMap get() {
         World world = BaseUtils.getWorldForDimension(0);
+        assert world != null;
         return BaseUtils.getWorldData(world, SGAddressMap.class, "sgcraft-address_map");
     }
 
-    public static boolean CheckAddress(int d, int cx, int cz) {
-        return get().checkAddress(d,cx,cz);
+    public static ChunkPos getAddress(int d, int cx, int cz) {
+        return get().getSGAddress(new ChunkPos(d, cx, cz));
     }
 
-    protected boolean checkAddress(int d, int cx, int cz) {
-        return addressMap.containsKey(new SGAddress(d,cx,cz).toString());
-    }
-
-    public static SGAddress getAddress(int d, int cx, int cz) {
-        return get().getSGAddress(new SGAddress(d, cx, cz));
-    }
-
-    protected SGAddress getSGAddress(SGAddress addr) {
-        if (addressMap.containsKey(addr.toString())) {
+    public static ChunkPos getAddress(ChunkPos address) {return get().getSGAddress(address);}
+    protected ChunkPos getSGAddress(ChunkPos addr) {
+        if (addressMap.containsKey(StoreAddress(addr))) {
             if (debugAddressMap)
                 System.out.printf("SGAddressMap: Address: %s Was Switched\n", addr);
-            return new SGAddress(addressMap.get(addr.toString()));
+            return UnStoreAddress(addressMap.get(StoreAddress(addr)));
         }
 
         if (debugAddressMap)
@@ -53,24 +60,24 @@ public class SGAddressMap extends WorldSavedData {
     }
 
     public static void AddAddressInt(int d, int cx, int cz, int d1, int cx1, int cz1) {
-        get().addAddress(new SGAddress(d, cx, cz), new SGAddress(d1, cx1, cz1));
+        get().addAddress(new ChunkPos(d, cx, cz), new ChunkPos(d1, cx1, cz1));
     }
 
-    public static void AddAddress(SGAddress one, SGAddress two) {
+    public static void AddAddress(ChunkPos one, ChunkPos two) {
         get().addAddress(one, two);
     }
 
-    protected void addAddress(SGAddress one, SGAddress two) {
-        addressMap.put(one.toString(), two.toString());
-        addressMap.put(two.toString(), one.toString());
+    protected void addAddress(ChunkPos one, ChunkPos two) {
+        addressMap.put(StoreAddress(one), StoreAddress(two));
+        addressMap.put(StoreAddress(two), StoreAddress(one));
         markDirty();
     }
 
-    public static void RemoveAddress(SGAddress addr) {get().removeAddress(addr);}
+    public static void RemoveAddress(ChunkPos addr) {get().removeAddress(addr);}
 
-    protected void removeAddress(SGAddress addr) {
-        addressMap.remove(addressMap.get(addr.toString()));
-        addressMap.remove(addr.toString());
+    protected void removeAddress(ChunkPos addr) {
+        addressMap.remove(addressMap.get(StoreAddress(addr)));
+        addressMap.remove(StoreAddress(addr));
         markDirty();
     }
 
