@@ -52,25 +52,27 @@ public class GateAddressAccessScreen extends BasicScreen {
     private UICheckBox defaultAllowIncomingCheckbox, defaultDenyIncomingCheckbox, defaultAllowOutgoingCheckbox, defaultDenyOutgoingCheckbox;
     private UICheckBox allowIncomingCheckbox, denyIncomingCheckbox, allowOutgoingCheckbox, denyOutgoingCheckbox;
     private BlockPos location;
+    private BlockPos gatePos;
     private World world;
     private EntityPlayer player;
     private SGBaseTE localGate;
     private List<GateAccessData> clonedList;
     private BasicList<GateAccessData> gateAccessList;
 
-    public GateAddressAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, boolean isAdmin) {
+    public GateAddressAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin) {
         super(parent, true);
         this.player = player;
         this.isAdmin = false;
         this.world = worldIn;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
+        this.gatePos = gatePos;
     }
 
     @Override
     public void construct() {
         this.guiscreenBackground = false;
         Keyboard.enableRepeatEvents(true);
-        final TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        final TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }

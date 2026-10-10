@@ -196,7 +196,7 @@ public class PddScreen extends BasicScreen {
             .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.disconnect"))
             .visible(false)
             .onClick(() -> {
-                TileEntity localGate = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+                TileEntity localGate = this.world.getTileEntity(this.gatePos);
                 if (!(localGate instanceof SGBaseTE)) {
                     return;
                 } else if (localGate != null) {
@@ -473,7 +473,7 @@ public class PddScreen extends BasicScreen {
 
     private void dialRandom() {
         // Todo: figure out how to properly use this.
-        final TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        final TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }
@@ -483,7 +483,7 @@ public class PddScreen extends BasicScreen {
     }
 
     private void dialSelectedAddress() {
-        TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }
@@ -503,7 +503,7 @@ public class PddScreen extends BasicScreen {
     }
 
     private void dialSelectedAddressLockEachChevronIndividually() {
-        final TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        final TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }
@@ -542,7 +542,7 @@ public class PddScreen extends BasicScreen {
                 }
 
                 this.addressList.setVisible(false);
-                TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+                TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
 
                 if (localGateTE instanceof SGBaseTE) {
                     SGBaseTE localGate = (SGBaseTE) localGateTE;

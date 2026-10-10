@@ -287,7 +287,7 @@ public class ConfiguratorScreen extends BasicScreen {
                 .enabled(gateAccessPerm)
                 .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.gateAddressAccessList"))
                 .onClick(() -> {
-                    new GateAddressAccessScreen(this, player, world, true).display();
+                    new GateAddressAccessScreen(this, player, world, this.gatePos, true).display();
                 })
                 .listener(this)
                 .build("button.gateaddressaccesslist");
@@ -299,7 +299,7 @@ public class ConfiguratorScreen extends BasicScreen {
                 .enabled(playerAccessPerm)
                 .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.playerAccessList"))
                 .onClick(() -> {
-                    new PlayerAccessScreen(this, player, world, true).display();
+                    new PlayerAccessScreen(this, player, world, this.gatePos, true).display();
                 })
                 .listener(this)
                 .build("button.playeraccesslist");
@@ -642,7 +642,7 @@ public class ConfiguratorScreen extends BasicScreen {
 
     @Subscribe
     public void onFocusStateChange(StateChangeEvent.FocusStateChange<UITextField> event) {
-        TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             SGBaseTE localGate = (SGBaseTE) localGateTE;
 
@@ -671,7 +671,7 @@ public class ConfiguratorScreen extends BasicScreen {
     }
 
     private void refresh() {
-        TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             SGBaseTE localGate = (SGBaseTE) localGateTE;
 
