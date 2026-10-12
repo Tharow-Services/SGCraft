@@ -47,6 +47,12 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
 
     protected static String[] textures = {"stargateblock", "stargatering", "stargatebase_front"};
     protected static ModelSpec model = new ModelSpec("block/sg_base_block.smeg", textures);
+
+    // The type of gate this base builds, or null for the type the configuration gives; and, for a
+    // base of its own type, its textures
+    protected final GateType gateType;
+    protected final String[] typedTextures;
+    protected final ModelSpec typedModel;
     
     public static void configure(BaseConfiguration config) {
         explosionRadius = config.getInteger("stargate", "explosionRadius", explosionRadius);
@@ -55,9 +61,17 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     }
     
     public SGBaseBlock() {
+        this(null, null);
+    }
+
+    // A base that builds gates of the given type, its front showing the given texture
+    public SGBaseBlock(GateType gateType, String frontTexture) {
         super(Material.ROCK, SGBaseTE.class);
         setHardness(1.5F);
         setCreativeTab(CreativeTabs.MISC);
+        this.gateType = gateType;
+        typedTextures = frontTexture == null ? null : new String[] {textures[0], textures[1], frontTexture};
+        typedModel = typedTextures == null ? null : new ModelSpec("block/sg_base_block.smeg", typedTextures);
     }
     
     @Override
@@ -72,12 +86,12 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     
     @Override
     public String[] getTextureNames() {
-        return textures;
+        return typedTextures != null ? typedTextures : textures;
     }
     
     @Override
     public ModelSpec getModelSpec(IBlockState state) {
-        return model;
+        return typedModel != null ? typedModel : model;
     }
     
     // The shape of a gate built on this base when nothing more is known, such as before it merges
@@ -152,6 +166,12 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             System.out.println("STARGATE Base block added on world: " + world.getWorldInfo().getWorldName() + " at: " + pos);
         }
 
+        if (gateType != null) {
+            SGBaseTE te = getTileEntity(world, pos);
+            if (te != null && !te.isMerged) {
+                te.setGateType(gateType);
+            }
+        }
         checkForMerge(world, pos);
         SGBaseTE te = getTileEntity(world, pos);
         if (te != null) {
@@ -230,7 +250,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         boolean supergate = this instanceof SupergateBaseBlock;
         if (kind != null && (kind == superBase) != supergate) {
             SGBaseTE old = getTileEntity(world, pos);
-            GateType type = old != null ? old.getGateType() : null;
+            GateType type = gateType != null ? gateType : old != null ? old.getGateType() : null;
             IBlockState state = world.getBlockState(pos);
             // The new base merges as it is added (see onBlockAdded)
             world.setBlockState(pos, kind.getDefaultState().withProperty(FACING, state.getValue(FACING)));
