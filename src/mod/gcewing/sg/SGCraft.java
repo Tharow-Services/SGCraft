@@ -72,6 +72,7 @@ import gcewing.sg.util.PermissionsUtil;
 import gcewing.sg.util.SGChunkData;
 import gcewing.sg.util.Sound;
 import net.minecraft.block.Block;
+import net.minecraft.util.NonNullList;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -121,6 +122,8 @@ import static net.minecraftforge.fml.common.registry.VillagerRegistry.VillagerPr
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 @Mod(modid = Info.modID, name = Info.modName, version = Info.versionNumber,
     acceptableRemoteVersions = Info.versionBounds, dependencies = "after:opencomputers;after:ic2;after:computercraft;after:malisiscore")
@@ -140,6 +143,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static SGRingBlock sgRingBlock;
     public static SupergateBaseBlock supergateBaseBlock;
     public static SupergateRingBlock supergateRingBlock;
+    // The order the gates' blocks are shown in the creative tab: each type's base, then the block
+    // that builds that gate finished (see GateSpawnerBlock), side by side, whatever their item ids
+    // (which a world keeps from when they were added)
+    public static final List<Block> creativeGateOrder = new ArrayList<>();
     public static DHDBlock sgControllerBlock;
     public static Block naquadahBlock, naquadahOre;
     public static SGPowerBlock sgPowerUnit;
@@ -217,6 +224,29 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         this.creativeTab = new CreativeTabs("sgcraft:sgcraft") {
             @Override public ItemStack createIcon() {
                 return new ItemStack(Item.getItemFromBlock(sgBaseBlock));
+            }
+
+            // The gates' blocks together, in creativeGateOrder, where the first of them would be
+            @Override public void displayAllRelevantItems(NonNullList<ItemStack> items) {
+                super.displayAllRelevantItems(items);
+                List<ItemStack> gates = new ArrayList<>();
+                for (Block block : creativeGateOrder) {
+                    for (ItemStack stack : items) {
+                        if (Block.getBlockFromItem(stack.getItem()) == block) {
+                            gates.add(stack);
+                        }
+                    }
+                }
+                int at = -1;
+                for (int i = 0; i < items.size(); i++) {
+                    if (gates.contains(items.get(i))) {
+                        at = at < 0 ? i : at;
+                        items.remove(i--);
+                    }
+                }
+                if (at >= 0) {
+                    items.addAll(at, gates);
+                }
             }
         };
         FMLCommonHandler.instance().bus().register(this);
@@ -312,18 +342,29 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerBlocks() {
         sgRingBlock = newBlock("stargateRing", SGRingBlock.class, SGRingItem.class);
+        // Each type's base, then (if they are on) the creative-only block that builds that gate
+        // finished, for testing: stargates, then supergates
+        boolean spawners = config.getBoolean("options", "gateSpawnerBlocks", true);
         sgBaseBlock = newBlock("stargateBase", SGBaseBlock.class);
+        creativeGateOrder.add(sgBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_stargate"));
+        }
         pegasusBaseBlock = addBlock(new SGBaseBlock(GateType.PEGASUS, "stargatebase_front_pegasus"), "stargateBasePegasus");
+        creativeGateOrder.add(pegasusBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate"));
+        }
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate"));
+        }
         supergateRingBlock = newBlock("supergateRing", SupergateRingBlock.class, SGRingItem.class);
         supergateBaseBlock = newBlock("supergateBase", SupergateBaseBlock.class);
-        if (config.getBoolean("options", "gateSpawnerBlocks", true)) {
-            // Creative-only blocks that build a finished gate, for testing
-            addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_stargate");
-            addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate");
-            addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate");
-            addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate");
-            addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate");
-            addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate");
+        creativeGateOrder.add(supergateBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate"));
         }
         sgControllerBlock = newBlock("stargateController", DHDBlock.class);
         naquadahBlock = newBlock("naquadahBlock", NaquadahBlock.class);
