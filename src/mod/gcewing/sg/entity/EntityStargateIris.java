@@ -9,6 +9,7 @@ package gcewing.sg.entity;
 import gcewing.sg.BaseBlockUtils;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.Trans3;
+import gcewing.sg.Vector3;
 import gcewing.sg.util.GateShape;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -37,24 +38,11 @@ public class EntityStargateIris extends Entity implements IEntityAdditionalSpawn
         GateShape shape = te.getShape();
         double radius = shape.ringInnerRadius;
         double thickness = SGBaseTE.irisThickness;
-        AxisAlignedBB localBox;
-        if (te.gateOrientation == 1) { // Vertical
-            double cx = 0;
-            double cy = shape.centreY;
-            double cz = SGBaseTE.irisZPosition;
-            double hx = radius;
-            double hy = radius;
-            double hz = thickness;
-            localBox = new AxisAlignedBB(cx - hx, cy - hy, cz - hz, cx + hx, cy + hy, cz + hz);
-        } else {
-            double cx = 0;
-            double cy = SGBaseTE.irisZPosition;
-            double cz = -shape.centreY;
-            double hx = radius;
-            double hy = thickness;
-            double hz = radius;
-            localBox = new AxisAlignedBB(cx - hx, cy - hy, cz - hz, cx + hx, cy + hy, cz + hz);
-        }
+        // Across the opening, where the iris closes in front of the event horizon, in the gate's
+        // frame (see SGBaseTE.toGateFrame), so standing up or lying flat
+        Vector3 c0 = te.fromGateFrame(new Vector3(-radius, shape.centreY - radius, SGBaseTE.irisZPosition - thickness));
+        Vector3 c1 = te.fromGateFrame(new Vector3(radius, shape.centreY + radius, SGBaseTE.irisZPosition + thickness));
+        AxisAlignedBB localBox = new AxisAlignedBB(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z);
 
         Trans3 t = te.localToGlobalTransformation();
         AxisAlignedBB globalBox = t.t(localBox);
@@ -62,6 +50,11 @@ public class EntityStargateIris extends Entity implements IEntityAdditionalSpawn
         init(te.getPos(), globalBox);
     }
     
+    // The base of the gate it is the iris of
+    public BlockPos getGatePos() {
+        return blockPos;
+    }
+
     void init(BlockPos pos, AxisAlignedBB box) {
         //System.out.printf("EntityStargateIris.init: %s at %s box %s\n", this, pos, box);
         this.blockPos = pos;

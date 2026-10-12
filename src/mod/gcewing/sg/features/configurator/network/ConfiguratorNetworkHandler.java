@@ -142,7 +142,10 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.returnToPreviousIrisState") || isPermissionsAdmin) te.returnToPreviousIrisState = returnToPreviousIrisState;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.transientDamage") || isPermissionsAdmin) te.transientDamage = transientDamage;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.transparency") || isPermissionsAdmin) te.transparency = transparency;
-            if (SGCraft.hasPermission(player, "sgcraft.configurator.orientation") || isPermissionsAdmin) te.gateOrientation = orientation;
+            // A gate lying flat can be turned face up or face down; one standing up stays so, as
+            // its ring stands where it was built
+            boolean turnable = te.isFlat() && (orientation == 2 || orientation == 3);
+            if (turnable && (SGCraft.hasPermission(player, "sgcraft.configurator.orientation") || isPermissionsAdmin)) te.gateOrientation = orientation;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.useDHDFuelSource") || isPermissionsAdmin) te.useDHDFuelSource = useDHDFuelSource;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.allowRedstoneOutput") || isPermissionsAdmin) te.allowRedstoneOutput = allowRedstoneOutput;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.allowRedstoneInput") || isPermissionsAdmin) te.allowRedstoneInput = allowRedstoneInput;

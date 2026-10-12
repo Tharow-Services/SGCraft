@@ -26,6 +26,15 @@ public class GateBuilder {
     public static SGBaseTE build(World world, BlockPos pos, EnumFacing facing, SGBaseBlock baseBlock,
         GateShape shape, GateType type)
     {
+        return build(world, pos, facing, baseBlock, shape, type, 1);
+    }
+
+    // The same, standing up (orientation 1, see SGBaseTE.gateOrientation) or lying flat, facing up
+    // (2) or down (3), its ring running out from its base away from the player
+    public static SGBaseTE build(World world, BlockPos pos, EnumFacing facing, SGBaseBlock baseBlock,
+        GateShape shape, GateType type, int orientation)
+    {
+        boolean flat = orientation == 2 || orientation == 3;
         SGRingBlock ringBlock = baseBlock.getRingBlock();
         world.setBlockState(pos, baseBlock.getDefaultState().withProperty(FACING, facing));
         Trans3 t = baseBlock.localToGlobalTransformation(world, pos);
@@ -39,7 +48,7 @@ public class GateBuilder {
                     if (x == 0 && y == 0) {
                         continue;
                     }
-                    BlockPos p = t.p(x, y, 0).blockPos();
+                    BlockPos p = (flat ? t.p(x, 0, -y) : t.p(x, y, 0)).blockPos();
                     int cell = shape.cellAt(x, y);
                     if (cell == GateShape.RING || cell == GateShape.CHEVRON) {
                         int variant = cell == GateShape.CHEVRON ? 1 : 0;
@@ -52,7 +61,16 @@ public class GateBuilder {
         } finally {
             SGRingBlock.suppressBaseSearch = false;
         }
-        baseBlock.checkForVerticalMerge(world, pos);
+        if (flat) {
+            // Facing down is turned before merging, which keeps it (see checkForHorizontalMerge)
+            SGBaseTE unmerged = SGBaseTE.at(world, pos);
+            if (unmerged != null) {
+                unmerged.gateOrientation = orientation;
+            }
+            baseBlock.checkForHorizontalMerge(world, pos);
+        } else {
+            baseBlock.checkForVerticalMerge(world, pos);
+        }
 
         SGBaseTE te = SGBaseTE.at(world, pos);
         if (te == null || !te.isMerged) {

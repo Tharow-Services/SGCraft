@@ -473,10 +473,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     @Override
     public AxisAlignedBB getRenderBoundingBox() {
         // Big enough for either orientation: a horizontal gate extends height - 1 blocks out
-        // from its base in any horizontal direction
+        // from its base in any horizontal direction, and its kawoosh bursts up or down out of it
         GateShape shape = getShape();
         int x = pos.getX(), y = pos.getY(), z = pos.getZ(), r = Math.max(shape.halfWidth, shape.height - 1);
-        return new AxisAlignedBB(x - r, y - 1, z - r, x + r + 1, y + shape.height, z + r + 1);
+        int k = isFlat() ? (int) Math.ceil(Math.max(shape.kawooshDamageMax.z, shape.kawooshBlockMax.z)) + 1 : 1;
+        return new AxisAlignedBB(x - r, y - k, z - r, x + r + 1, y + Math.max(shape.height, k), z + r + 1);
     }
 
     @Override
@@ -2203,62 +2204,62 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
+    // The kawoosh: hurting what is in front of the gate, and clearing the blocks in its way. Its
+    // regions (see GateShape) are in the gate's own frame, so it bursts out of the gate's front
+    // however it stands: up out of a gate facing up, down out of one facing down.
     private void performTransientDamage() {
-        // Todo: not setup to be done on horizontal gates.
-        if (this.gateOrientation == 1) {
-            GateShape shape = getShape();
-            Trans3 t = localToGlobalTransformation();
-            Vector3 p0 = t.p(shape.kawooshDamageMin);
-            Vector3 p1 = t.p(shape.kawooshDamageMax);
-            Vector3 q0 = p0.min(p1);
-            Vector3 q1 = p0.max(p1);
-            AxisAlignedBB box = new AxisAlignedBB(q0.x, q0.y, q0.z, q1.x, q1.y, q1.z);
+        GateShape shape = getShape();
+        Trans3 t = localToGlobalTransformation();
+        Vector3 p0 = t.p(fromGateFrame(shape.kawooshDamageMin));
+        Vector3 p1 = t.p(fromGateFrame(shape.kawooshDamageMax));
+        Vector3 q0 = p0.min(p1);
+        Vector3 q1 = p0.max(p1);
+        AxisAlignedBB box = new AxisAlignedBB(q0.x, q0.y, q0.z, q1.x, q1.y, q1.z);
+        if (debugTransientDamage) {
+            System.out.print("SGBaseTE.performTransientDamage: players in world:\n");
+            for (Entity ent : world.loadedEntityList)
+                if (ent instanceof EntityPlayer) {
+                    System.out.printf("--- %s\n", ent);
+                }
+            System.out.printf("SGBaseTE.performTransientDamage: box = %s\n", box);
+        }
+
+        List<EntityLivingBase> ents = world.getEntitiesWithinAABB(EntityLivingBase.class, box);
+        for (EntityLivingBase ent : ents) {
+            Vector3 ep = new Vector3(ent.posX, ent.posY, ent.posZ);
+            Vector3 gp = t.p(fromGateFrame(new Vector3(0, shape.centreY, 0.5)));
+            double dist = ep.distance(gp);
             if (debugTransientDamage) {
-                System.out.print("SGBaseTE.performTransientDamage: players in world:\n");
-                for (Entity ent : world.loadedEntityList)
-                    if (ent instanceof EntityPlayer) {
-                        System.out.printf("--- %s\n", ent);
-                    }
-                System.out.printf("SGBaseTE.performTransientDamage: box = %s\n", box);
+                System.out.printf("SGBaseTE.performTransientDamage: found %s\n", ent);
             }
+            if (dist > 1.0) {
+                dist = 1.0;
+            }
+            int damage = (int) Math.ceil(dist * transientDamageRate);
+            if (debugTransientDamage) {
+                System.out.printf("SGBaseTE.performTransientDamage: distance = %s, damage = %s\n", dist, damage);
+            }
+            ent.attackEntityFrom(transientDamageSource, damage);
+        }
 
-            List<EntityLivingBase> ents = world.getEntitiesWithinAABB(EntityLivingBase.class, box);
-            for (EntityLivingBase ent : ents) {
-                Vector3 ep = new Vector3(ent.posX, ent.posY, ent.posZ);
-                Vector3 gp = t.p(0, shape.centreY, 0.5);
-                double dist = ep.distance(gp);
-                if (debugTransientDamage) {
-                    System.out.printf("SGBaseTE.performTransientDamage: found %s\n", ent);
-                }
-                if (dist > 1.0) {
-                    dist = 1.0;
-                }
-                int damage = (int) Math.ceil(dist * transientDamageRate);
-                if (debugTransientDamage) {
-                    System.out.printf("SGBaseTE.performTransientDamage: distance = %s, damage = %s\n", dist, damage);
-                }
-                ent.attackEntityFrom(transientDamageSource, damage);
-            }
-
-            // Block Damage Area: the round bore in front of the opening, within the kawoosh block
-            // region (left to right, up from base, forward from base). It is queued nearest the
-            // gate first and cleared a slice at a time by clearKawooshBlocks, so that a big
-            // supergate's kawoosh doesn't stall the server for one long tick.
-            if (this.performBlockDamage && !this.irisIsClosed()) {
-                t = localToGlobalTransformation();
-                kawooshBlocks.clear();
-                int x0 = (int) Math.floor(shape.kawooshBlockMin.x + 0.5), x1 = (int) Math.floor(shape.kawooshBlockMax.x + 0.5);
-                int y0 = (int) Math.floor(shape.kawooshBlockMin.y + 0.5), y1 = (int) Math.floor(shape.kawooshBlockMax.y + 0.5);
-                int z0 = (int) Math.floor(shape.kawooshBlockMin.z + 0.5), z1 = (int) Math.floor(shape.kawooshBlockMax.z + 0.5);
-                for (int z = z0; z <= z1; z++)
-                    for (int y = y0; y <= y1; y++)
-                        for (int x = x0; x <= x1; x++)
-                            if (shape.inKawooshBore(x, y)) {
-                                kawooshBlocks.add(t.p(x, y, z).blockPos());
-                            }
-                this.performBlockDamage = false;
-                clearKawooshBlocks();
-            }
+        // Block Damage Area: the round bore in front of the opening, within the kawoosh block
+        // region (left to right, up from base, forward from base). It is queued nearest the
+        // gate first and cleared a slice at a time by clearKawooshBlocks, so that a big
+        // supergate's kawoosh doesn't stall the server for one long tick.
+        if (this.performBlockDamage && !this.irisIsClosed()) {
+            t = localToGlobalTransformation();
+            kawooshBlocks.clear();
+            int x0 = (int) Math.floor(shape.kawooshBlockMin.x + 0.5), x1 = (int) Math.floor(shape.kawooshBlockMax.x + 0.5);
+            int y0 = (int) Math.floor(shape.kawooshBlockMin.y + 0.5), y1 = (int) Math.floor(shape.kawooshBlockMax.y + 0.5);
+            int z0 = (int) Math.floor(shape.kawooshBlockMin.z + 0.5), z1 = (int) Math.floor(shape.kawooshBlockMax.z + 0.5);
+            for (int z = z0; z <= z1; z++)
+                for (int y = y0; y <= y1; y++)
+                    for (int x = x0; x <= x1; x++)
+                        if (shape.inKawooshBore(x, y)) {
+                            kawooshBlocks.add(t.p(fromGateFrame(new Vector3(x, y, z))).blockPos());
+                        }
+            this.performBlockDamage = false;
+            clearKawooshBlocks();
         }
     }
 
@@ -2301,6 +2302,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     public ItemStack getCamouflageStack(BlockPos cpos) {
+        // Only the row of a gate standing up either side of its base is camouflaged
+        if (isFlat()) {
+            return null;
+        }
         //System.out.printf("SGBaseTE.getCamouflageStack: for %s from base at %s\n", cpos, pos);
         Trans3 t = localToGlobalTransformation();
         Vector3 p = t.ip(Vector3.blockCenter(cpos));
@@ -2382,27 +2387,57 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     List<TrackedEntity> trackedEntities = new ArrayList<>();
 
     // The region in front of and behind the opening in which entities are tracked for teleporting
+    // ---- The gate's own frame ------------------------------------------------------------------
+    //
+    // A gate stands up (gateOrientation 1) or lies flat, its ring running out from its base along
+    // the base's -z, facing up (2) or down (3). Whichever, in its own frame its base is at the
+    // origin, x runs across its face, y up its ring from its base, and z out of its front, as for
+    // a gate standing up; so that going through a gate, crossing its event horizon and coming out
+    // of one are the same for all of them. These turn the base block's frame (its
+    // localToGlobalTransformation) into the gate's and back.
+
+    public boolean isFlat() {
+        return gateOrientation == 2 || gateOrientation == 3;
+    }
+
+    // A point or direction in the base's frame, in the gate's
+    public Vector3 toGateFrame(Vector3 l) {
+        switch (gateOrientation) {
+            case 2: return new Vector3(l.x, -l.z, l.y);
+            case 3: return new Vector3(-l.x, -l.z, -l.y);
+            default: return new Vector3(l.x, l.y, l.z);
+        }
+    }
+
+    // A point or direction in the gate's frame, in the base's
+    public Vector3 fromGateFrame(Vector3 g) {
+        switch (gateOrientation) {
+            case 2: return new Vector3(g.x, g.z, -g.y);
+            case 3: return new Vector3(-g.x, -g.z, -g.y);
+            default: return new Vector3(g.x, g.y, g.z);
+        }
+    }
+
+    // The middle of the gate's ring, in the base's frame
+    public Vector3 ringCentre() {
+        return fromGateFrame(new Vector3(0, getShape().centreY, 0));
+    }
+
+    // Where entities are watched for going through the gate: its opening, either side of its
+    // event horizon
     AxisAlignedBB portalTrackingBox() {
-        // Todo:  setup vectors for horizontal gates
-        Vector3 p0 = null;
-        Vector3 p1 = null;
         GateShape shape = getShape();
         double h = shape.apertureHalfWidth;
         double d = GateShape.PORTAL_TRACKING_DEPTH;
-        double bottom = shape.apertureBottom;
-        double top = shape.apertureTop;
-
-        if (this.gateOrientation == 1) {
-            p0 = new Vector3(-h, bottom, -d);
-            p1 = new Vector3(h, top, d);
-        }
-
-        if (this.gateOrientation == 2 || this.gateOrientation == 3) {
-            p0 = new Vector3(h, -d, -bottom);
-            p1 = new Vector3(-h, d, -top);
-        }
-
+        Vector3 p0 = fromGateFrame(new Vector3(-h, shape.apertureBottom, -d));
+        Vector3 p1 = fromGateFrame(new Vector3(h, shape.apertureTop, d));
         return localToGlobalTransformation().box(p0, p1);
+    }
+
+    // How far up an entity, from its feet, the point of it that goes through a gate first is: its
+    // feet, but its head going up into a gate facing down
+    double leadingHeight(Entity entity) {
+        return gateOrientation == 3 ? entity.height : 0;
     }
 
     // How far an entity can move in a tick and still be teleported: further than anything but the
@@ -2447,20 +2482,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             double vx = entity.posX - prevPos.x;
             double vy = entity.posY - prevPos.y;
             double vz = entity.posZ - prevPos.z;
-            Vector3 p1 = t.ip(entity.posX, entity.posY, entity.posZ);
-            Vector3 p0 = t.ip(2 * prevPos.x - entity.posX, 2 * prevPos.y - entity.posY, 2 * prevPos.z - entity.posZ);
-            //if (!(entity instanceof EntityPlayer))
-            //  System.out.printf("SGBaseTE.entityInPortal: z0 = %.3f z1 = %.3f\n", p0.z, p1.z);
+            // Where its leading point was and is, in the gate's frame: it has gone through if that
+            // has crossed the event horizon (z = 0) from in front, by no more than the gate is deep
+            double lead = leadingHeight(entity);
+            Vector3 p1 = toGateFrame(t.ip(entity.posX, entity.posY + lead, entity.posZ));
+            Vector3 p0 = toGateFrame(t.ip(2 * prevPos.x - entity.posX, 2 * prevPos.y - entity.posY + lead, 2 * prevPos.z - entity.posZ));
             GateShape shape = getShape();
-            double z0 = 0.0; // Orientation 1 and 2
-            double zx = -shape.centreY; // Orientation 3
             double depth = shape.maxCrossingDepth;
 
-            // Its middle, across the gate's face and up from its base
-            Vector3 mid = t.ip(entity.posX, entity.posY + entity.height / 2, entity.posZ);
-            boolean inOpening = shape.inOpening(mid.x, this.gateOrientation == 1 ? mid.y : -mid.z);
+            // Its middle, across the gate's face and up its ring
+            Vector3 mid = toGateFrame(t.ip(entity.posX, entity.posY + entity.height / 2, entity.posZ));
+            boolean inOpening = shape.inOpening(mid.x, mid.y);
 
-            if (inOpening && ((this.gateOrientation == 1 && p0.z >= z0 && p1.z < z0 && p1.z > z0 - depth) || (this.gateOrientation == 2 && p0.y >= z0 && p1.y < z0 && p1.y > z0 - depth) || (this.gateOrientation == 3 && p0.y <= zx && p1.y > zx && p1.y > zx + 0.0))) {
+            if (inOpening && p0.z >= 0 && p1.z < 0 && p1.z > -depth) {
                 //System.out.printf("SGBaseTE.entityInPortal: %s passed through event horizon of stargate at (%d,%d,%d) in %s\n",
                 //  repr(entity), xCoord, yCoord, zCoord, world);
                 entity.motionX = vx;
@@ -2583,76 +2617,67 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                     entity.rotationPitch, entity.rotationYaw);
         }
 
-        Vector3 p = t1.ip(entity.posX, entity.posY, entity.posZ); // local position // Seems to be center of CenterPos + 0.5Y
-        Vector3 v = t1.iv(entity.motionX, entity.motionY, entity.motionZ); // local velocity // Creates an inverse of the original input velocity.
-        Vector3 r = t1.iv(yawVector(entity)); // local facing
+        // Through the gate, in the gates' own frames (see toGateFrame): what goes in at the front
+        // of one comes out of the front of the other, turned half round about its y, so that
+        // going in at its left it comes out on its left, as seen by someone going through
+        SGBaseTE dest = getConnectedStargateTE();
+        // Where its leading point (see leadingHeight) is, going in, and is to be, coming out
+        Vector3 p = toGateFrame(t1.ip(entity.posX, entity.posY + leadingHeight(entity), entity.posZ));
+        Vector3 v = toGateFrame(t1.iv(entity.motionX, entity.motionY, entity.motionZ));
+        double x = -p.x, y = p.y, z = -p.z;
 
-        Vector3 q = t2.p(-p.x, p.y, -p.z); // new global position, while inverting x and z for some reason and adding the local Position values to this so u come out in the reletive same position IN the gate.
-
-        // Into a supergate, or between gates of different sizes, put the entity inside the
-        // destination's opening as it looks. A player on foot comes out standing on its floor;
-        // anything flying comes out at the same place in the opening, scaled to its size.
+        // Into a supergate, between gates of different sizes, or between a gate standing up and
+        // one lying flat, put the entity inside the destination's opening as it looks. Coming out
+        // of a gate standing up, a player on foot, or anything at all out of a gate lying flat,
+        // comes out standing on its floor; anything else at the same place in the opening, scaled
+        // to its size.
         GateShape srcShape = getShape();
-        GateShape destShape = this.getConnectedStargateTE().getShape();
-        if (destShape != srcShape || destShape.isSupergate()) {
-            boolean onFoot = entity instanceof EntityPlayer && !((EntityPlayer) entity).capabilities.isFlying;
+        GateShape destShape = dest.getShape();
+        boolean turned = isFlat() != dest.isFlat();
+        if (destShape != srcShape || destShape.isSupergate() || turned) {
+            boolean onFoot = !dest.isFlat() && (isFlat() || entity instanceof EntityPlayer && !((EntityPlayer) entity).capabilities.isFlying);
+            // How far it reaches up the destination's ring, and its middle that way
+            double size = dest.isFlat() ? entity.width : entity.height, half = size / 2;
+            double mid = isFlat() ? p.y : p.y + entity.height / 2;
             double scale = destShape.openingRadius() / srcShape.openingRadius();
-            double half = entity.height / 2;
             double floor = destShape.openingFloor();
-            double y = onFoot ? floor : destShape.centreY + (p.y + half - srcShape.centreY) * scale - half;
-            y = clamp(y, floor, Math.max(floor, destShape.openingTop() - entity.height));
+            y = onFoot ? floor : destShape.centreY + (mid - srcShape.centreY) * scale - half;
+            y = clamp(y, floor, Math.max(floor, destShape.openingTop() - size));
             double hw = Math.max(0, destShape.openingHalfWidthAt(y + half) - entity.width / 2);
-            q = t2.p(clamp(-p.x * (onFoot ? 1 : scale), -hw, hw), y, -p.z);
-        }
-
-        Vector3 original = t2.p(0,0,0);
-        Vector3 u = t2.v(-v.x, v.y, -v.z); // new global velocity
-        Vector3 s = t2.v(r.mul(-1)); // new global facing
-
-        //System.out.println("Original: " + original.x + " | " + original.y + " | " + original.z + " Face: " + this.getConnectedStargateTE().facingDirectionOfBase);
-
-        // Todo:  why isn't the result of this changed based on the facing direction of the gate/baseblock.
-        if (this.getConnectedStargateTE().gateOrientation == 2) {
-            q = t2.p(0, 0, -destShape.centreY); // The middle of the horizontal gate, with no incoming gate correction.
-            if (this.gateOrientation == 1) {
-                u = t2.v(0, -v.z, 0); // new velocity  - 3/28/2019 - working.
-            } else if (this.gateOrientation == 2) {
-                u = t2.v(0, -v.y, 0); // new velocity  - 3/28/2019 - working.
-            } else if (this.gateOrientation == 3) {
-                u = t2.v(0, -v.z, 0); // new velocity  - 3/28/2019 - working.
+            x = clamp(x * (onFoot ? 1 : scale), -hw, hw);
+            if (dest.isFlat()) {
+                // Its feet are its edge; its middle is where it goes in the opening
+                y += half;
             }
         }
-
-        if (this.getConnectedStargateTE().gateOrientation == 3) {
-            q = t2.p(0, 0, -destShape.centreY); // The middle of the horizontal gate, with no incoming gate correction.
-            u = t2.v(0, v.y, 0); // new velocity  - 3/28/2019 - working.
-            // 3/28/2019 - working.
-            // Todo:  why isn't the result of this changed based on the facing direction of the gate/baseblock.
+        // Out of a gate lying flat, clear of its event horizon, so as not to fall back through it:
+        // its feet above it facing up, its head below it facing down
+        if (dest.isFlat()) {
+            z = Math.max(z, 0.1);
         }
+        Vector3 q = t2.p(dest.fromGateFrame(new Vector3(x, y, z)).sub(0, dest.leadingHeight(entity), 0));
+        Vector3 u = t2.v(dest.fromGateFrame(new Vector3(-v.x, v.y, -v.z)));
 
-        // If entering gate from Horizontal and going to a vertical, reset all incoming x/y/z and assume new.  Keep velocity
-        if (this.gateOrientation >= 2 && this.getConnectedStargateTE().gateOrientation == 1) {
-            q = t2.p(0, 0.5, 0); // new position - 3/28/2019 - working.
-            if (this.gateOrientation == 2) {
-                u = t2.v(0, 0, -v.y); // new velocity  - 3/28/2019 - working.
-            } else if (this.gateOrientation == 3) {
-                u = t2.v(0, 0, v.y); // new velocity  - not tested
-            }
-            // Todo: I don't know why this seems to work 100% regardless of gates facing direction.
+        // Facing the same way out of it, as it was into it: a living thing looking the same way
+        // round the gate, up or down (looking up out of a gate facing up), anything else turned
+        // only about the vertical, as it was before
+        double a, pitch;
+        if (entity instanceof EntityLivingBase) {
+            Vector3 r = toGateFrame(t1.iv(entity.getLookVec()));
+            Vector3 s = t2.v(dest.fromGateFrame(new Vector3(-r.x, r.y, -r.z)));
+            double flat = Math.sqrt(s.x * s.x + s.z * s.z);
+            a = flat > 1e-3 ? yawAngle(s, entity) : entity.rotationYaw;
+            pitch = -Math.toDegrees(Math.atan2(s.y, flat));
+        } else {
+            Vector3 r = toGateFrame(t1.iv(yawVector(entity)));
+            Vector3 s = t2.v(dest.fromGateFrame(new Vector3(-r.x, r.y, -r.z)));
+            a = Math.abs(s.x) + Math.abs(s.z) > 1e-3 ? yawAngle(s, entity) : entity.rotationYaw;
+            pitch = entity.rotationPitch;
         }
-
-        //System.out.println("New Velocity: " + u.x + " | " + u.y + " | " + u.z);
 
         if (debugTeleport) {
-            System.out.printf("SGBaseTE.teleportEntity: Facing old %s new %s\n", r, s);
-            System.out.printf("SGBaseTE.teleportEntity: from gate %s orientation %d to gate %s orientation %d, local %s velocity %s, arriving at %s velocity %s\n",
-                    pos, gateOrientation, getConnectedStargateTE().pos, getConnectedStargateTE().gateOrientation, p, v, q, u);
-        }
-
-        double a = yawAngle(s, entity); // new global yaw angle
-
-        if (debugTeleport) {
-            System.out.printf("SGBaseTE.teleportEntity: new yaw %.2f\n", a);
+            System.out.printf("SGBaseTE.teleportEntity: from gate %s orientation %d to gate %s orientation %d, gate frame %s velocity %s, arriving at %s velocity %s yaw %.2f pitch %.2f\n",
+                    pos, gateOrientation, dest.pos, dest.gateOrientation, p, v, q, u, a, pitch);
         }
 
         if (!canTravelFromThisEnd() && !isInitiator) {
@@ -2677,9 +2702,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             // Play sound from point of origin gate.
             playTeleportSound(entity.getEntityWorld(), new Vector3(entity.getPositionVector()), entity);
             if (entity.dimension == dimension) {
-                newEntity = teleportWithinDimension(entity, q, u, a, destBlocked);
+                newEntity = teleportWithinDimension(entity, q, u, a, pitch, destBlocked);
             } else {
-                newEntity = teleportToOtherDimension(entity, q, u, a, dimension, destBlocked);
+                newEntity = teleportToOtherDimension(entity, q, u, a, pitch, dimension, destBlocked);
             }
         } else {
             terminateEntityByIrisImpact(entity);
@@ -2733,19 +2758,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return SGAddressing.getWorld(dimension);
     }
 
-    Entity teleportWithinDimension(Entity entity, Vector3 p, Vector3 v, double a, boolean destBlocked) {
+    Entity teleportWithinDimension(Entity entity, Vector3 p, Vector3 v, double a, double pitch, boolean destBlocked) {
         if (entity instanceof EntityPlayerMP) {
-            return teleportPlayerWithinDimension((EntityPlayerMP) entity, p, v, a);
+            return teleportPlayerWithinDimension((EntityPlayerMP) entity, p, v, a, pitch);
         } else {
-            return teleportEntityToWorld(entity, p, v, a, (WorldServer) entity.world, destBlocked);
+            return teleportEntityToWorld(entity, p, v, a, pitch, (WorldServer) entity.world, destBlocked);
         }
     }
 
-    Entity teleportPlayerWithinDimension(EntityPlayerMP entity, Vector3 p, Vector3 v, double a) {
+    Entity teleportPlayerWithinDimension(EntityPlayerMP entity, Vector3 p, Vector3 v, double a, double pitch) {
         entity.rotationYaw = (float)a;
         //entity.setPositionAndUpdate(p.x, p.y, p.z);
         // Todo:
-        setEntityLocationAndPitch(entity, p, a);
+        setEntityLocationAndPitch(entity, p, a, pitch);
         setVelocity(entity, v);
         entity.world.updateEntityWithOptionalForce(entity, false);
         entity.velocityChanged = true; // Have to mark entity velocity changed.
@@ -2753,38 +2778,40 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return entity;
     }
 
-    Entity teleportToOtherDimension(Entity entity, Vector3 p, Vector3 v, double a, int dimension, boolean destBlocked) {
+    Entity teleportToOtherDimension(Entity entity, Vector3 p, Vector3 v, double a, double pitch, int dimension, boolean destBlocked) {
         if (entity instanceof EntityPlayerMP) {
             EntityPlayerMP player = (EntityPlayerMP)entity;
-            Vector3 q = p.add(yawVector(a));
-            transferPlayerToDimension(player, dimension, q, v, a);
+            // A step further out of a gate standing up; one lying flat already puts it clear
+            SGBaseTE dest = getConnectedStargateTE();
+            Vector3 q = dest != null && dest.isFlat() ? p : p.add(yawVector(a));
+            transferPlayerToDimension(player, dimension, q, v, a, pitch);
             return player;
         } else {
             setVelocity(entity, v);
-            return teleportEntityToDimension(entity, p, v, a, dimension, destBlocked);
+            return teleportEntityToDimension(entity, p, v, a, pitch, dimension, destBlocked);
         }
     }
 
-    void transferPlayerToDimension(EntityPlayerMP player, int newDimension, Vector3 p, Vector3 v, double a) {
+    void transferPlayerToDimension(EntityPlayerMP player, int newDimension, Vector3 p, Vector3 v, double a, double pitch) {
         FakeTeleporter fakeTeleporter = new FakeTeleporter();
         player.changeDimension(newDimension, fakeTeleporter);
         // Now check to see if the player made it through the above server method, if it did, then update their location.
         if (player.dimension == newDimension) {
             //player.connection.setPlayerLocation(p.x, p.y, p.z, (float) a, player.rotationPitch);
             // Todo:
-            setEntityLocationAndPitch(player, p, a);
+            setEntityLocationAndPitch(player, p, a, pitch);
             setVelocity(player, v);
             player.velocityChanged = true;
         }
     }
 
-    Entity teleportEntityToDimension(Entity entity, Vector3 p, Vector3 v, double a, int dimension, boolean destBlocked) {
+    Entity teleportEntityToDimension(Entity entity, Vector3 p, Vector3 v, double a, double pitch, int dimension, boolean destBlocked) {
         MinecraftServer server = BaseUtils.getMinecraftServer();
         WorldServer world = server.getWorld(dimension);
-        return teleportEntityToWorld(entity, p, v, a, world, destBlocked);
+        return teleportEntityToWorld(entity, p, v, a, pitch, world, destBlocked);
     }
 
-    Entity teleportEntityToWorld(Entity entity, Vector3 p, Vector3 v, double a, WorldServer newWorld, boolean destBlocked) {
+    Entity teleportEntityToWorld(Entity entity, Vector3 p, Vector3 v, double a, double pitch, WorldServer newWorld, boolean destBlocked) {
         if (destBlocked) {
             if (!(entity instanceof EntityLivingBase))
                 return null;
@@ -2794,7 +2821,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             entity.rotationYaw = (float) a;
             //entity.setPositionAndUpdate(p.x, p.y, p.z);
             // Todo:
-            setEntityLocationAndPitch(entity, p, a);
+            setEntityLocationAndPitch(entity, p, a, pitch);
             setVelocity(entity, v);
             entity.world.updateEntityWithOptionalForce(entity, false);
             entity.velocityChanged = true; // Have to mark entity velocity changed.
@@ -2806,7 +2833,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (newEntity.dimension == newWorld.provider.getDimension()) {
                 //newEntity.setLocationAndAngles(p.x, p.y, p.z, (float) a, entity.rotationPitch);
                 // Todo:
-                setEntityLocationAndPitch(newEntity, p, a);
+                setEntityLocationAndPitch(newEntity, p, a, pitch);
                 setVelocity(newEntity, v); //Set velocity so that items exist at the same rate they did when they entered the event horizon.
                 newEntity.velocityChanged = true;
             }
@@ -2815,28 +2842,12 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
-    // Todo: not all transport methods are set to us ethis.
-    private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw) {
-        float pitch = entity.rotationPitch;
-        if (this.getConnectedStargateTE().gateOrientation == 2) {
-            pitch = pitch - 90;
-        }
-        if (this.getConnectedStargateTE().gateOrientation == 3) {
-            pitch = pitch + 90;
-        }
-
-        double x = p.x;
-        double y = p.y;
-        double z = p.z;
-
-        if (this.getConnectedStargateTE().gateOrientation == 3) {
-            y = y - 4;
-        }
-
+    // Puts the entity where it comes out of the gate, facing the way it does (see teleportEntity)
+    private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw, double pitch) {
         if (entity instanceof EntityPlayerMP) {
-            ((EntityPlayerMP) entity).connection.setPlayerLocation(x, y, z, (float) yaw, pitch);
+            ((EntityPlayerMP) entity).connection.setPlayerLocation(p.x, p.y, p.z, (float) yaw, (float) pitch);
         } else {
-            entity.setLocationAndAngles(x, y, z, (float)yaw, -pitch);
+            entity.setLocationAndAngles(p.x, p.y, p.z, (float) yaw, (float) pitch);
         }
     }
 
@@ -2882,16 +2893,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             newEntity.setAIMoveSpeed(s);
     }
 
+    // The iris's solid body, made afresh each time, as it lies across the gate as it now stands
+    // (merging, turning it with the configurator, or fitting the iris upgrade)
     public void updateIrisEntity() {
+        for (EntityStargateIris ent : findIrisEntities()) {
+            world.removeEntity(ent);
+        }
         if (isMerged && hasIrisUpgrade) {
-            if (!hasIrisEntity()) {
-                EntityStargateIris ent = new EntityStargateIris(this);
-                world.spawnEntity(ent);
-            }
-        } else {
-            for (EntityStargateIris ent : findIrisEntities()) {
-                world.removeEntity(ent);
-            }
+            world.spawnEntity(new EntityStargateIris(this));
         }
     }
 
@@ -2899,11 +2908,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return findIrisEntities().size() != 0;
     }
 
+    // The iris bodies of this gate, round the middle of its ring however it stands
     List<EntityStargateIris> findIrisEntities() {
-        int x = pos.getX(), y = pos.getY(), z = pos.getZ(), r = getShape().halfWidth + 1;
-        AxisAlignedBB box = new AxisAlignedBB(x - r, y - r, z - r, x + r, y + r, z + r);
+        Vector3 c = localToGlobalTransformation().p(ringCentre());
+        double r = getShape().halfWidth + 1;
+        AxisAlignedBB box = new AxisAlignedBB(c.x - r, c.y - r, c.z - r, c.x + r, c.y + r, c.z + r);
         //System.out.printf("SGBaseTE.findIrisEntities: in %s\n", box);
-        return world.getEntitiesWithinAABB(EntityStargateIris.class, box);
+        return world.getEntitiesWithinAABB(EntityStargateIris.class, box, ent -> pos.equals(ent.getGatePos()));
     }
 
     // *********************************************************************************************
@@ -2919,7 +2930,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // supergate.
     @Override
     public Vec3d getSoundOrigin() {
-        Vector3 c = localToGlobalTransformation().p(0, getShape().centreY, 0);
+        Vector3 c = localToGlobalTransformation().p(ringCentre());
         return new Vec3d(c.x, c.y, c.z);
     }
 

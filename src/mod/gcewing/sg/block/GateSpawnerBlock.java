@@ -20,11 +20,12 @@ import net.minecraft.world.World;
 import java.util.ArrayList;
 import java.util.List;
 
-// Placing this block builds a finished vertical gate of its base block's default size in its
-// place: the base goes where the block was placed, facing the same way a base placed by the
-// player would, and the ring rises from it. Meant for testing, so it is only in the creative
-// inventory and has no recipe. /sgspawn does the same with a choice of size. Middle-clicking a
-// finished gate gives the spawner for it (see forGate).
+// Placing this block builds a finished gate of its base block's default size in its place: the
+// base goes where the block was placed, facing the same way a base placed by the player would,
+// and the ring rises from it, or, placed looking well down or up, lies flat (see
+// onBlockPlacedBy). Meant for testing, so it is only in the creative inventory and has no
+// recipe. /sgspawn does the same with a choice of size. Middle-clicking a finished gate gives the
+// spawner for it (see forGate).
 public class GateSpawnerBlock extends Block {
 
     // Every spawner, so that a finished gate can find its own
@@ -55,10 +56,15 @@ public class GateSpawnerBlock extends Block {
         return null;
     }
 
+    // Placed looking well down, at the floor, it builds the gate lying flat facing up, its ring
+    // running away from the player; looking well up, at a ceiling, lying flat facing down
+    static final float FLAT_PITCH = 60;
+
     @Override
     public void onBlockPlacedBy(World world, BlockPos pos, IBlockState state, EntityLivingBase placer, ItemStack stack) {
         if (!world.isRemote) {
-            GateBuilder.build(world, pos, placer.getHorizontalFacing(), baseBlock, baseBlock.getShape(), gateType);
+            int orientation = placer.rotationPitch > FLAT_PITCH ? 2 : placer.rotationPitch < -FLAT_PITCH ? 3 : 1;
+            GateBuilder.build(world, pos, placer.getHorizontalFacing(), baseBlock, baseBlock.getShape(), gateType, orientation);
         }
     }
 

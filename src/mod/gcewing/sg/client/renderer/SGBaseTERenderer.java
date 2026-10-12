@@ -85,51 +85,8 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             glEnable(GL_RESCALE_NORMAL);
             glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 
-            // Distance from the base block to the centre of the ring
-            double c = gate.getShape().centreY;
-
-            if (gate.gateOrientation == 1) {
-                glTranslated(x + 0.5, y + 0.5 + c, z + 0.5); // Vertical, facing SOUTH
-            }
-
-            if (gate.gateOrientation == 2) {
-                if (gate.facingDirectionOfBase == 0) { // North
-                    glTranslated(x + 0.5, y + 0.25, z + 0.5 - c);
-                    glRotatef(180, 0, 180, 180); // Horizontal, Face Up
-                }
-                if (gate.facingDirectionOfBase == 1) { // West
-                    glTranslated(x + 0.5 - c, y + 0.25, z + 0.5);
-                    glRotatef(180, 180, 180, 0); // Horizontal, Face Up
-                }
-                if (gate.facingDirectionOfBase == 2) { // South
-                    glTranslated(x + 0.5, y + 0.25, z + 0.5 + c);
-                    glRotatef(180, 0, -180, 180); // Horizontal, Face Up
-                }
-                if (gate.facingDirectionOfBase == 3) { // East
-                    glTranslated(x + 0.5 + c, y + 0.25, z + 0.5);
-                    glRotatef(180, 180, -180, 0); // Horizontal, Face Up
-                }
-            }
-
-            if (gate.gateOrientation == 3) {
-                if (gate.facingDirectionOfBase == 0) { // North
-                    glTranslated(x + 0.5, y + 0.25, z + 0.5 - c);
-                    glRotatef(180, 0, -180, 180); // Horizontal, Face Down
-                }
-                if (gate.facingDirectionOfBase == 1) { // West
-                    glTranslated(x + 0.5 - c, y + 0.25, z + 0.5);
-                    glRotatef(180, 180, -180, 0); // Horizontal, Face Down
-
-                }
-                if (gate.facingDirectionOfBase == 2) { // South
-                    glTranslated(x + 0.5, y + 0.25, z + 0.5 + c);
-                    glRotatef(180, 0, 180, 180); // Horizontal, Face Down
-                }
-                if (gate.facingDirectionOfBase == 3) { // East
-                    glTranslated(x + 0.5 + c, y + 0.25, z + 0.5);
-                    glRotatef(180, 180, 180, 0); // Horizontal, Face Down
-                }
-            }
+            // The middle of the base block; renderStargate turns from there to the gate's frame
+            glTranslated(x + 0.5, y + 0.5, z + 0.5);
 
             renderStargate(gate, partialTicks);
             glDisable(GL_RESCALE_NORMAL);
@@ -150,6 +107,16 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     void renderStargate(SGBaseTE gate, float partialTicks) {
         BaseGLUtils.glMultMatrix(gate.localToGlobalTransformation(Vector3.zero));
         GateShape shape = gate.getShape();
+        // From the base block's frame into the gate's (see SGBaseTE.toGateFrame): a gate lying
+        // flat has its ring running out from its base, its front up or down; then up its ring to
+        // the middle, where the gate is drawn from
+        if (gate.gateOrientation == 2) {
+            glRotatef(-90, 1, 0, 0);
+        } else if (gate.gateOrientation == 3) {
+            glRotatef(180, 0, 0, 1);
+            glRotatef(-90, 1, 0, 0);
+        }
+        glTranslated(0, shape.centreY, 0);
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(gate) + "/stargate.png"));
 
         glNormal3f(0, 1, 0);
@@ -926,10 +893,10 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return GateShape.STANDARD.ringOuterRadius / MilkyWayGateModel.OUTER_RADIUS * shape.depthScale();
     }
 
-    // Where the top chevron of a gate drawn from a model is in the gate's frame: horizontal gates
-    // lying face up have it the other way round
+    // Where the top chevron of a gate drawn from a model is in the gate's frame (see
+    // renderStargate): at the top, however the gate stands
     static double modelTop(SGBaseTE te) {
-        return te.gateOrientation == 2 ? -90 : 90;
+        return 90;
     }
 
     // The gate's rings: the fixed ring, and the symbol ring turned to its angle, with its point of
@@ -1574,7 +1541,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
 
     // The angle (degrees) at which renderChevronAtPosition draws the chevron at position i
     double chevronAngle(SGBaseTE te, int i, float a) {
-        return (te.gateOrientation == 2 ? -90 : 90) - (i - 4) * a;
+        return 90 - (i - 4) * a;
     }
 
     // Which row of chevronEngagementSequences gives the order the chevrons lock in
@@ -1603,17 +1570,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     void renderChevronAtPosition(SGBaseTE gate, GateShape shape, int i, float a, boolean engaged, double slide) {
         glPushMatrix();
 
-        if (gate.gateOrientation == 1) {
-            glRotatef(90 - (i - 4) * a, 0, 0, 1);
-        }
-
-        if (gate.gateOrientation == 2) {
-            glRotatef(-90 - (i - 4) * a, 0, 0, 1);
-        }
-
-        if (gate.gateOrientation == 3) {
-            glRotatef(90 - (i - 4) * a, 0, 0, 1);
-        }
+        glRotatef((float) chevronAngle(gate, i, a), 0, 0, 1);
 
         GateType type = gate.getGateType();
         if (type == GateType.UNIVERSE) {

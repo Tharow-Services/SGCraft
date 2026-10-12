@@ -414,7 +414,6 @@ public class ConfiguratorScreen extends BasicScreen {
         this.transientDamageCheckbox = new UICheckBox(this);
         this.transientDamageCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.transientDamage"));
         this.transientDamageCheckbox.setPosition(checkboxIndentPadding, this.returnIrisToPreviousStateCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
-        this.transientDamageCheckbox.setEnabled(localGate.gateOrientation==1);
         this.transientDamageCheckbox.setName("checkbox.transientDamage");
         this.transientDamageCheckbox.register(this);
 
@@ -471,7 +470,7 @@ public class ConfiguratorScreen extends BasicScreen {
         this.isGeneratedCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.isGenerated"));
         this.isGeneratedCheckbox.setPosition(checkboxIndentPadding, this.displayGateAddressCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
         this.isGeneratedCheckbox.setEnabled(true);
-        this.isGeneratedCheckbox.setChecked(localGate.gateOrientation == 3);
+        this.isGeneratedCheckbox.setChecked(localGate.isGenerated);
         this.isGeneratedCheckbox.setName("checkbox.isgenerated");
         this.isGeneratedCheckbox.register(this);
 
@@ -544,10 +543,6 @@ public class ConfiguratorScreen extends BasicScreen {
                     this.playerCanDestroyPlayerGateCheckbox.setChecked(SGBaseTE.cfg.getBoolean("gate", "canPlayerBreakPlayerGate", true));
                     this.playerCanDestroyGeneratedGateCheckbox.setChecked(SGBaseTE.cfg.getBoolean("gate", "canPlayerBreakGeneratedGate", true));
                     this.displayGateAddressCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "displayGateAddress", true));
-
-                    if (localGate.gateOrientation == 1) {
-                        this.transientDamageCheckbox.setChecked(false);
-                    }
                 })
                 .listener(this)
                 .build("button.defaults");
@@ -614,10 +609,11 @@ public class ConfiguratorScreen extends BasicScreen {
         if (event.getComponent().getName() != null) {
             switch (event.getComponent().getName()) {
                 case "checkbox.horizontalup":
-                    this.horizontalFaceDownCheckbox.setChecked(this.horizontalFaceUpCheckbox.isChecked());
+                    // Face up or face down, one or the other
+                    this.horizontalFaceDownCheckbox.setChecked(!this.horizontalFaceUpCheckbox.isChecked());
                     break;
                 case "checkbox.horizontaldown":
-                    this.horizontalFaceUpCheckbox.setChecked(this.horizontalFaceDownCheckbox.isChecked());
+                    this.horizontalFaceUpCheckbox.setChecked(!this.horizontalFaceDownCheckbox.isChecked());
                     break;
                 case "checkbox.gateType":
                     if (this.gateTypeCheckbox.isChecked()) {
@@ -736,11 +732,7 @@ public class ConfiguratorScreen extends BasicScreen {
             this.returnIrisToPreviousStateCheckbox.setChecked(localGate.returnToPreviousIrisState);
             this.returnIrisToPreviousStateCheckbox.setEnabled(this.returnToPreviousIrisStatePerm);
 
-            if (localGate.gateOrientation == 1) {
-                this.transientDamageCheckbox.setChecked(localGate.transientDamage);
-            } else {
-                this.transientDamageCheckbox.setChecked(false);
-            }
+            this.transientDamageCheckbox.setChecked(localGate.transientDamage);
             this.transientDamageCheckbox.setEnabled(this.transientDamagePerm);
 
             this.transparencyCheckbox.setChecked(localGate.transparency);

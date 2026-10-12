@@ -290,8 +290,9 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
 
             SGBaseTE te = getTileEntity(world, pos);
             te.setShape(shape);
-            te.setMerged(true);
+            // Its orientation first: merging fits its iris across it as it stands
             te.gateOrientation = 1;
+            te.setMerged(true);
             BaseBlockUtils.markBlockForUpdate(world, pos);
             for (int i = -shape.halfWidth; i <= shape.halfWidth; i++)
                 for (int j = 0; j < shape.height; j++)
@@ -323,8 +324,10 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
 
             SGBaseTE te = getTileEntity(world, pos);
             te.setShape(shape);
+            // Its orientation first: merging fits its iris across it as it stands. Lying flat, it
+            // faces up, unless it was turned face down (by the configurator) before
+            te.gateOrientation = te.gateOrientation == 3 ? 3 : 2;
             te.setMerged(true);
-            te.gateOrientation = 2;
             BaseBlockUtils.markBlockForUpdate(world, pos);
 
             for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
@@ -404,10 +407,14 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     public void unmerge(World world, BlockPos pos) {
         SGBaseTE te = getTileEntity(world, pos);
         boolean goBang = false;
+        Vector3 bang = null;
         if (te != null /*&& te.isMerged*/) {
             if (te.isMerged && te.state == SGState.Connected) {
                 te.state = SGState.Idle;
                 goBang = true;
+                // In the middle of its ring, however it stands (from the way its base faced, which
+                // may already be gone, as unmergeRing does)
+                bang = new Trans3(Vector3.blockCenter(pos)).turn(te.facingDirectionOfBase).p(te.ringCentre());
             }
             te.disconnect();
             te.unlinkFromController();
@@ -416,7 +423,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             unmergeRing(world, pos);
         }
         if (goBang && explosionRadius > 0)
-            explode(world, new Vector3(pos).add(0.5, 0.5 + getShape(world, pos).centreY, 0.5), explosionRadius);
+            explode(world, bang, explosionRadius);
     }
     
     void explode(World world, Vector3 p, double s) {
