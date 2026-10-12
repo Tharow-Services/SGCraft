@@ -18,39 +18,38 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 public class GateUtil {
+    // The gate whose base, or whose DHD, is nearest the given place, within the given distance each
+    // way, or null. Bases of every type count.
     public static TileEntity locateLocalGate(World world, BlockPos pos, int radius, boolean debug) {
+        TileEntity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
         for (final BlockPos.MutableBlockPos nearPos : BlockPos.getAllInBoxMutable(
             pos.add(-radius, -radius, -radius),
             pos.add(radius, radius, radius)
         )) {
-            if (world.getBlockState(nearPos).getBlock() == SGCraft.sgBaseBlock || world.getBlockState(nearPos).getBlock() == SGCraft.sgControllerBlock) {
+            if (world.getBlockState(nearPos).getBlock() instanceof SGBaseBlock || world.getBlockState(nearPos).getBlock() == SGCraft.sgControllerBlock) {
                 TileEntity gateTE = world.getTileEntity(nearPos);
 
-                if (!(gateTE instanceof SGBaseTE)) {
-                    TileEntity dhdBaseTE = GateUtil.locateDHD(world, pos, radius, debug);
-                    if (dhdBaseTE instanceof DHDTE) {
-                        DHDTE dhd = (DHDTE) dhdBaseTE;
-                        if (dhd.isLinkedToStargate) {
-                            gateTE = dhd.getLinkedStargateTE();
-                        }
-                    }
+                // A DHD stands for the gate it is linked to
+                if (gateTE instanceof DHDTE) {
+                    DHDTE dhd = (DHDTE) gateTE;
+                    gateTE = dhd.isLinkedToStargate ? dhd.getLinkedStargateTE() : null;
                 }
 
                 if (gateTE instanceof SGBaseTE) {
-                    if (gateTE != null) {
-                        if (debug) {
-                            System.err.println("Found SGBaseTE at: " + gateTE.getPos());
-                        }
-                        return gateTE;
+                    double d = nearPos.distanceSq(pos);
+                    if (d < nearestDistance) {
+                        nearest = gateTE;
+                        nearestDistance = d;
                     }
                 }
             }
         }
 
         if (debug) {
-            System.err.println("Failed to find SGBaseTE.");
+            System.err.println(nearest != null ? "Found SGBaseTE at: " + nearest.getPos() : "Failed to find SGBaseTE.");
         }
-        return null;
+        return nearest;
     }
 
     public static TileEntity locateDHD(World world, BlockPos pos, int radius, boolean debug) {
