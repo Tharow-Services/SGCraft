@@ -139,7 +139,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     public static SGBaseBlock sgBaseBlock;
     // Bases that build a gate of their own type, for building one by hand in creative mode
-    public static SGBaseBlock pegasusBaseBlock;
+    public static SGBaseBlock pegasusBaseBlock, universeBaseBlock;
     public static SGRingBlock sgRingBlock;
     public static SupergateBaseBlock supergateBaseBlock;
     public static SupergateRingBlock supergateRingBlock;
@@ -355,6 +355,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         if (spawners) {
             creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate"));
         }
+        universeBaseBlock = addBlock(new SGBaseBlock(GateType.UNIVERSE, "stargatebase_front_universe"), "stargateBaseUniverse");
+        creativeGateOrder.add(universeBaseBlock);
         if (spawners) {
             creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate"));
         }

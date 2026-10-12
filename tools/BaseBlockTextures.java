@@ -20,6 +20,8 @@ public class BaseBlockTextures {
         // As on the show: a Pegasus gate's chevrons glow blue, and its ring is a cooler, bluer
         // silver
         write(recolour(milkyWay, 210, 1.0f, 1.1f, 215, 0.18f, 1.05f), "pegasus");
+        // A Universe gate's chevrons are white lights in its dark, almost black metal
+        write(recolour(milkyWay, 45, 0.12f, 1.35f, 30, 0.04f, 0.62f), "universe");
     }
 
     // The picture with its orange chevron lights turned to the given hue, saturation (times) and

@@ -3,6 +3,7 @@ tile.sgcraft:stargateRing.1.name=Stargate Chevron Block
 tile.sgcraft:stargateRing.name=Stargate Ring Segment
 tile.sgcraft:stargateBase.name=Stargate Base
 tile.sgcraft:stargateBasePegasus.name=Pegasus Stargate Base
+tile.sgcraft:stargateBaseUniverse.name=Universe Stargate Base
 tile.sgcraft:supergateRing.0.name=Supergate Ring Block
 tile.sgcraft:supergateRing.1.name=Supergate Chevron Block
 tile.sgcraft:supergateRing.name=Supergate Ring Segment
