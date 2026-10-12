@@ -1076,10 +1076,10 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return GateShape.STANDARD.ringOuterRadius / UniverseGateModel.OUTER_RADIUS * shape.depthScale();
     }
 
-    // Where a Universe gate's top chevron is in the gate's frame: horizontal gates lying face up
-    // have it the other way round
+    // Where a Universe gate's top chevron is in the gate's frame (see renderStargate): at the
+    // top, however the gate stands
     static double universeTop(SGBaseTE te) {
-        return te.gateOrientation == 2 ? -90 : 90;
+        return 90;
     }
 
     // The gate's ring and chevrons, without its lights and symbols. Like the other gates, it has
