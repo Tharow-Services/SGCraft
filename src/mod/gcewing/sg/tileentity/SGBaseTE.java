@@ -187,7 +187,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     final static int interDiallingTime = 10; // ticks
     // A Milky Way gate pauses longer between symbols, long enough to see its top chevron lock each
-    // one (see SGBaseTERenderer.chevronLockTicks)
+    // one (see GateRenderer.chevronLockTicks)
     final static int milkyWayInterDiallingTime = 24; // ticks
     public int syncAwaitTime = 30; // ticks  // 10 - withinWorld, 30 - dimensional
     final static int transientDuration = 20; // ticks
@@ -1748,6 +1748,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         dialledAddress = address;
         connectedLocation = new SGLocation(dte);
         isInitiator = initiator;
+        // Wait as long as the dialling gate before opening, so that both ends open together
+        if (!initiator) {
+            syncAwaitTime = dte.syncAwaitTime;
+        }
         markDirty();
         if (isInitiator && !immediate) {
             startDiallingNextSymbol();
@@ -2658,22 +2662,12 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         Vector3 q = t2.p(dest.fromGateFrame(new Vector3(x, y, z)).sub(0, dest.leadingHeight(entity), 0));
         Vector3 u = t2.v(dest.fromGateFrame(new Vector3(-v.x, v.y, -v.z)));
 
-        // Facing the same way out of it, as it was into it: a living thing looking the same way
-        // round the gate, up or down (looking up out of a gate facing up), anything else turned
-        // only about the vertical, as it was before
-        double a, pitch;
-        if (entity instanceof EntityLivingBase) {
-            Vector3 r = toGateFrame(t1.iv(entity.getLookVec()));
-            Vector3 s = t2.v(dest.fromGateFrame(new Vector3(-r.x, r.y, -r.z)));
-            double flat = Math.sqrt(s.x * s.x + s.z * s.z);
-            a = flat > 1e-3 ? yawAngle(s, entity) : entity.rotationYaw;
-            pitch = -Math.toDegrees(Math.atan2(s.y, flat));
-        } else {
-            Vector3 r = toGateFrame(t1.iv(yawVector(entity)));
-            Vector3 s = t2.v(dest.fromGateFrame(new Vector3(-r.x, r.y, -r.z)));
-            a = Math.abs(s.x) + Math.abs(s.z) > 1e-3 ? yawAngle(s, entity) : entity.rotationYaw;
-            pitch = entity.rotationPitch;
-        }
+        // Looking the same way out of it as it was into it: turned about the vertical as the bases
+        // are turned to each other, its pitch kept, whether either gate stands or lies flat
+        Vector3 r = t1.iv(yawVector(entity));
+        Vector3 s = t2.v(new Vector3(-r.x, 0, -r.z));
+        double a = yawAngle(s, entity);
+        double pitch = entity.rotationPitch;
 
         if (debugTeleport) {
             System.out.printf("SGBaseTE.teleportEntity: from gate %s orientation %d to gate %s orientation %d, gate frame %s velocity %s, arriving at %s velocity %s yaw %.2f pitch %.2f\n",
