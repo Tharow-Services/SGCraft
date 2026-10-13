@@ -31,7 +31,9 @@ import gcewing.sg.util.SGLocation;
 import gcewing.sg.util.SGState;
 import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
+import gcewing.sg.block.DHDBlock;
 import gcewing.sg.block.SGBaseBlock;
+import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.entity.EntityStargateIris;
 import gcewing.sg.features.ic2.IC2PowerTE;
 import gcewing.sg.features.zpm.ZpmAddon;
@@ -71,6 +73,7 @@ import net.minecraft.util.ITickable;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
@@ -204,6 +207,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public static BaseConfiguration cfg;
     static double transientDamageRate = 5000;
     static boolean resetIsGenerated = true;
+    static double supergateEnergyMultiplier = 8.0;
+    // Forge's default limit on the chunks one ticket can keep loaded
+    static final int MAX_CHUNKS_PER_TICKET = 25;
+    // Most blocks a kawoosh clears in one tick; a big supergate's takes a few ticks to clear
+    static final int KAWOOSH_BLOCKS_PER_TICK = 2048;
 
     // Instanced options
     public boolean isMerged;
@@ -286,6 +294,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     private List<GateAccessData> gateAccessData;
 
     double ehGrid[][][];
+    private GateShape shape;
+    // Blocks from a supergate's centre to its base, or 0 for a stargate or a supergate whose
+    // ring has not merged yet
+    private int gateRadius;
     private static Set<UUID> messagesQueue = Sets.newHashSet();
 
     public SGBaseTE() {
@@ -326,12 +338,59 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.energyUsePerTick = this.energyPerFuelItem / (this.minutesOpenPerFuelItem * 60 * 20);
     }
 
+    // The kind of gate comes from the base block, and a supergate's size from gateRadius, which is
+    // set when its ring merges. It is looked up the first time it is needed, once the block is in
+    // the world.
     public GateShape getShape() {
-        return GateShape.STANDARD;
+        if (shape == null) {
+            if (world == null) {
+                return GateShape.STANDARD;
+            }
+            Block block = world.getBlockState(pos).getBlock();
+            if (!(block instanceof SGBaseBlock)) {
+                return GateShape.STANDARD;
+            }
+            GateShape blockShape = ((SGBaseBlock) block).getShape();
+            if (blockShape.isSupergate() && gateRadius >= GateShape.MIN_SUPERGATE_RADIUS
+                    && gateRadius <= GateShape.MAX_SUPERGATE_RADIUS) {
+                shape = GateShape.supergate(gateRadius);
+            } else {
+                shape = blockShape;
+            }
+        }
+        return shape;
+    }
+
+    public void setShape(GateShape newShape) {
+        if (newShape != shape) {
+            shape = newShape;
+            gateRadius = newShape.isSupergate() ? newShape.halfWidth : 0;
+            ehGrid = null; // Its size depends on the shape
+            markChanged();
+        }
+    }
+
+    public boolean isSupergate() {
+        return getShape().isSupergate();
+    }
+
+    // How much more energy than a stargate this gate takes to open and keep open
+    public double sizeEnergyMultiplier() {
+        return isSupergate() ? supergateEnergyMultiplier : 1.0;
     }
 
     public GateType getGateType() {
         return GateType.fromId(gateType);
+    }
+
+    // Makes this a gate of the given type, as a base of that type builds: a Pegasus gate's ring
+    // turns faster, as the Pegasus upgrade sets it
+    public void setGateType(GateType type) {
+        gateType = type.id;
+        if (type == GateType.PEGASUS) {
+            ringRotationSpeed = 6.0D;
+        }
+        markChanged();
     }
 
     public static void configure(BaseConfiguration cfg) {
@@ -379,6 +438,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         variableChevronPositions = cfg.getBoolean("stargate", "variableChevronPositions", variableChevronPositions);
         transientDamageRate = cfg.getDouble("stargate", "transientDamageRate", transientDamageRate);
         resetIsGenerated = cfg.getBoolean("stargate", "resetIsGenerated", resetIsGenerated);
+        supergateEnergyMultiplier = cfg.getDouble("supergate", "energyMultiplier", supergateEnergyMultiplier);
     }
 
     public static SGBaseTE get(IBlockAccess world, BlockPos pos) {
@@ -399,9 +459,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     @Override
     public AxisAlignedBB getRenderBoundingBox() {
+        // Big enough for either orientation: a horizontal gate extends height - 1 blocks out
+        // from its base in any horizontal direction
         GateShape shape = getShape();
-        int x = pos.getX(), y = pos.getY(), z = pos.getZ(), r = shape.halfWidth;
-        return new AxisAlignedBB(x - r, y, z - r, x + r + 1, y + shape.height, z + r + 1);
+        int x = pos.getX(), y = pos.getY(), z = pos.getZ(), r = Math.max(shape.halfWidth, shape.height - 1);
+        return new AxisAlignedBB(x - r, y - 1, z - r, x + r + 1, y + shape.height, z + r + 1);
     }
 
     @Override
@@ -417,6 +479,21 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         updateChunkLoadingStatus();
     }
 
+    // The space taken up by the gate's ring and the region just in front of and behind it
+    AxisAlignedBB gateBounds() {
+        GateShape shape = getShape();
+        double w = shape.halfWidth + 0.5, d = GateShape.PORTAL_TRACKING_DEPTH;
+        Vector3 p0, p1;
+        if (gateOrientation == 1) {
+            p0 = new Vector3(-w, -0.5, -d);
+            p1 = new Vector3(w, shape.height - 0.5, d);
+        } else {
+            p0 = new Vector3(-w, -d, 0.5);
+            p1 = new Vector3(w, d, -(shape.height - 0.5));
+        }
+        return localToGlobalTransformation().box(p0, p1);
+    }
+
     void updateChunkLoadingStatus() {
         if (state != SGState.Idle) {
             int n = chunkLoadingRange;
@@ -426,7 +503,23 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (debugState) {
                 System.out.println("updateChunkLoadingStatus w/ Gatestate: " + state);
             }
-            SGCraft.chunkManager.setForcedChunkRange(this, -n, -n, n, n);
+            // Also cover every chunk the gate itself stands in, so that all of a big gate stays
+            // loaded. This adds just the chunks it occupies rather than a square around the base,
+            // keeping even the biggest supergate within Forge's 25 chunks per ticket.
+            AxisAlignedBB box = gateBounds();
+            int cx = pos.getX() >> 4, cz = pos.getZ() >> 4;
+            int minX = Math.min(-n, ((int) Math.floor(box.minX) >> 4) - cx);
+            int minZ = Math.min(-n, ((int) Math.floor(box.minZ) >> 4) - cz);
+            int maxX = Math.max(n, ((int) Math.floor(box.maxX) >> 4) - cx);
+            int maxZ = Math.max(n, ((int) Math.floor(box.maxZ) >> 4) - cz);
+            if ((maxX - minX + 1) * (maxZ - minZ + 1) > MAX_CHUNKS_PER_TICKET) {
+                // Too many with the square added; the gate's own chunks matter most
+                minX = ((int) Math.floor(box.minX) >> 4) - cx;
+                minZ = ((int) Math.floor(box.minZ) >> 4) - cz;
+                maxX = ((int) Math.floor(box.maxX) >> 4) - cx;
+                maxZ = ((int) Math.floor(box.maxZ) >> 4) - cz;
+            }
+            SGCraft.chunkManager.setForcedChunkRange(this, minX, minZ, maxX, maxZ);
         } else {
             SGCraft.chunkManager.clearForcedChunkRange(this);
         }
@@ -461,6 +554,12 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public void readFromNBT(NBTTagCompound nbt) {
         super.readFromNBT(nbt);
         this.isMerged = nbt.getBoolean("isMerged");
+        int radius = nbt.getInteger("gateRadius");
+        if (radius != gateRadius) {
+            gateRadius = radius;
+            shape = null; // Looked up again with the new size
+            ehGrid = null;
+        }
         this.state = SGState.values()[nbt.getInteger("state")];
         SGState oldState = state;
         this.ringAngle = nbt.getDouble("ringAngle");
@@ -731,6 +830,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public NBTTagCompound writeToNBT(NBTTagCompound nbt) {
         super.writeToNBT(nbt);
         nbt.setBoolean("isMerged", isMerged);
+        nbt.setInteger("gateRadius", gateRadius);
         nbt.setInteger("state", state.ordinal());
         nbt.setDouble("ringAngle", ringAngle);
         nbt.setDouble("startRingAngle", startRingAngle);
@@ -925,6 +1025,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         } else {
             serverUpdate();
             checkForEntitiesInPortal();
+            clearKawooshBlocks();
         }
         irisUpdate();
     }
@@ -1295,6 +1396,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (ZpmAddon.routeRequiresZpm(te1.getWorld().getWorldInfo().getWorldName().toLowerCase(), te2.getWorld().getWorldInfo().getWorldName().toLowerCase())) {
                 f += ZpmAddon.routeZpmMultiplier(originName, destinationName);
             }
+        }
+        // A wormhole to or from a supergate costs more, whichever end dials
+        if (te1 instanceof SGBaseTE && te2 instanceof SGBaseTE) {
+            f *= Math.max(((SGBaseTE) te1).sizeEnergyMultiplier(), ((SGBaseTE) te2).sizeEnergyMultiplier());
         }
         return f;
     }
@@ -2116,24 +2221,55 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 ent.attackEntityFrom(transientDamageSource, damage);
             }
 
-            // Block Damage Area
-            t = localToGlobalTransformation();
-            p0 = t.p(shape.kawooshBlockMin); // left to right, up from base, forward from base.
-            p1 = t.p(shape.kawooshBlockMax);
-
+            // Block Damage Area: the round bore in front of the opening, within the kawoosh block
+            // region (left to right, up from base, forward from base). It is queued nearest the
+            // gate first and cleared a slice at a time by clearKawooshBlocks, so that a big
+            // supergate's kawoosh doesn't stall the server for one long tick.
             if (this.performBlockDamage && !this.irisIsClosed()) {
-                BlockPos startPos = new BlockPos(p0.x, p0.y, p0.z);
-                BlockPos endPos = new BlockPos(p1.x, p1.y, p1.z);
-
-                for (final BlockPos nearPos : BlockPos.getAllInBox(startPos, endPos)) {
-                    if (SGCraft.wormholeCanDestroyUnbreakableBlocks || world.getBlockState(nearPos).getBlockHardness(world, nearPos) >= 0) {
-                        world.setBlockState(nearPos, Blocks.AIR.getDefaultState());
-                    }
-                }
-
+                t = localToGlobalTransformation();
+                kawooshBlocks.clear();
+                int x0 = (int) Math.floor(shape.kawooshBlockMin.x + 0.5), x1 = (int) Math.floor(shape.kawooshBlockMax.x + 0.5);
+                int y0 = (int) Math.floor(shape.kawooshBlockMin.y + 0.5), y1 = (int) Math.floor(shape.kawooshBlockMax.y + 0.5);
+                int z0 = (int) Math.floor(shape.kawooshBlockMin.z + 0.5), z1 = (int) Math.floor(shape.kawooshBlockMax.z + 0.5);
+                for (int z = z0; z <= z1; z++)
+                    for (int y = y0; y <= y1; y++)
+                        for (int x = x0; x <= x1; x++)
+                            if (shape.inKawooshBore(x, y)) {
+                                kawooshBlocks.add(t.p(x, y, z).blockPos());
+                            }
                 this.performBlockDamage = false;
+                clearKawooshBlocks();
             }
         }
+    }
+
+    // Blocks still to be cleared by the current kawoosh, nearest the gate first
+    private final java.util.ArrayDeque<BlockPos> kawooshBlocks = new java.util.ArrayDeque<>();
+
+    // Clears the next lot of blocks in the kawoosh's path; called each server tick until done
+    private void clearKawooshBlocks() {
+        if (kawooshBlocks.isEmpty()) {
+            return;
+        }
+        if (irisIsClosed()) {
+            kawooshBlocks.clear();
+            return;
+        }
+        for (int i = 0; i < KAWOOSH_BLOCKS_PER_TICK && !kawooshBlocks.isEmpty(); i++) {
+            BlockPos p = kawooshBlocks.poll();
+            IBlockState s = world.getBlockState(p);
+            // Never a gate or DHD, of this gate or any other
+            if (s.getBlock() == Blocks.AIR || isGateBlock(s.getBlock())) {
+                continue;
+            }
+            if (SGCraft.wormholeCanDestroyUnbreakableBlocks || s.getBlockHardness(world, p) >= 0) {
+                world.setBlockState(p, Blocks.AIR.getDefaultState());
+            }
+        }
+    }
+
+    static boolean isGateBlock(Block block) {
+        return block instanceof SGBaseBlock || block instanceof SGRingBlock || block instanceof DHDBlock;
     }
 
     // *********************************************************************************************
@@ -2232,18 +2368,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         Vector3 p0 = null;
         Vector3 p1 = null;
         GateShape shape = getShape();
-        double h = shape.apertureHalfSize;
+        double h = shape.apertureHalfWidth;
         double d = GateShape.PORTAL_TRACKING_DEPTH;
-        double c = shape.centreY;
+        double bottom = shape.apertureBottom;
+        double top = shape.apertureTop;
 
         if (this.gateOrientation == 1) {
-            p0 = new Vector3(-h, c - h, -d);
-            p1 = new Vector3(h, c + h, d);
+            p0 = new Vector3(-h, bottom, -d);
+            p1 = new Vector3(h, top, d);
         }
 
         if (this.gateOrientation == 2 || this.gateOrientation == 3) {
-            p0 = new Vector3(h, -d, -c + h);
-            p1 = new Vector3(-h, d, -c - h);
+            p0 = new Vector3(h, -d, -bottom);
+            p1 = new Vector3(-h, d, -top);
         }
 
         return localToGlobalTransformation().box(p0, p1);
@@ -2300,7 +2437,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             double zx = -shape.centreY; // Orientation 3
             double depth = shape.maxCrossingDepth;
 
-            if ((this.gateOrientation == 1 && p0.z >= z0 && p1.z < z0 && p1.z > z0 - depth) || (this.gateOrientation == 2 && p0.y >= z0 && p1.y < z0 && p1.y > z0 - depth) || (this.gateOrientation == 3 && p0.y <= zx && p1.y > zx && p1.y > zx + 0.0)) {
+            // Its middle, across the gate's face and up from its base
+            Vector3 mid = t.ip(entity.posX, entity.posY + entity.height / 2, entity.posZ);
+            boolean inOpening = shape.inOpening(mid.x, this.gateOrientation == 1 ? mid.y : -mid.z);
+
+            if (inOpening && ((this.gateOrientation == 1 && p0.z >= z0 && p1.z < z0 && p1.z > z0 - depth) || (this.gateOrientation == 2 && p0.y >= z0 && p1.y < z0 && p1.y > z0 - depth) || (this.gateOrientation == 3 && p0.y <= zx && p1.y > zx && p1.y > zx + 0.0))) {
                 //System.out.printf("SGBaseTE.entityInPortal: %s passed through event horizon of stargate at (%d,%d,%d) in %s\n",
                 //  repr(entity), xCoord, yCoord, zCoord, world);
                 entity.motionX = vx;
@@ -2429,6 +2570,22 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
         Vector3 q = t2.p(-p.x, p.y, -p.z); // new global position, while inverting x and z for some reason and adding the local Position values to this so u come out in the reletive same position IN the gate.
 
+        // Into a supergate, or between gates of different sizes, put the entity inside the
+        // destination's opening as it looks. A player on foot comes out standing on its floor;
+        // anything flying comes out at the same place in the opening, scaled to its size.
+        GateShape srcShape = getShape();
+        GateShape destShape = this.getConnectedStargateTE().getShape();
+        if (destShape != srcShape || destShape.isSupergate()) {
+            boolean onFoot = entity instanceof EntityPlayer && !((EntityPlayer) entity).capabilities.isFlying;
+            double scale = destShape.openingRadius() / srcShape.openingRadius();
+            double half = entity.height / 2;
+            double floor = destShape.openingFloor();
+            double y = onFoot ? floor : destShape.centreY + (p.y + half - srcShape.centreY) * scale - half;
+            y = clamp(y, floor, Math.max(floor, destShape.openingTop() - entity.height));
+            double hw = Math.max(0, destShape.openingHalfWidthAt(y + half) - entity.width / 2);
+            q = t2.p(clamp(-p.x * (onFoot ? 1 : scale), -hw, hw), y, -p.z);
+        }
+
         Vector3 original = t2.p(0,0,0);
         Vector3 u = t2.v(-v.x, v.y, -v.z); // new global velocity
         Vector3 s = t2.v(r.mul(-1)); // new global facing
@@ -2437,7 +2594,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
         // Todo:  why isn't the result of this changed based on the facing direction of the gate/baseblock.
         if (this.getConnectedStargateTE().gateOrientation == 2) {
-            q = t2.p(0, 0, -2); // This for some reason will put the player in the middle of the horizontal gate with no incoming gate correction.
+            q = t2.p(0, 0, -destShape.centreY); // The middle of the horizontal gate, with no incoming gate correction.
             if (this.gateOrientation == 1) {
                 u = t2.v(0, -v.z, 0); // new velocity  - 3/28/2019 - working.
             } else if (this.gateOrientation == 2) {
@@ -2448,7 +2605,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
 
         if (this.getConnectedStargateTE().gateOrientation == 3) {
-            q = t2.p(0, 0, -2); // This for some reason will put the player in the middle of the horizontal gate with no incoming gate correction.
+            q = t2.p(0, 0, -destShape.centreY); // The middle of the horizontal gate, with no incoming gate correction.
             u = t2.v(0, v.y, 0); // new velocity  - 3/28/2019 - working.
             // 3/28/2019 - working.
             // Todo:  why isn't the result of this changed based on the facing direction of the gate/baseblock.
@@ -2664,6 +2821,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
+    static double clamp(double x, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, x));
+    }
+
     static void setVelocity(Entity entity, Vector3 v) {
         entity.motionX = v.x;
         entity.motionY = v.y;
@@ -2732,7 +2893,22 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     @Override
     public float getSoundVolume(SoundEvent sound) {
-        return soundVolume;
+        return soundVolume * soundRange();
+    }
+
+    // The gate is heard from its middle rather than its base block, which is a long way down on a
+    // supergate.
+    @Override
+    public Vec3d getSoundOrigin() {
+        Vector3 c = localToGlobalTransformation().p(0, getShape().centreY, 0);
+        return new Vec3d(c.x, c.y, c.z);
+    }
+
+    // Minecraft plays a sound to players up to 16 blocks away, times its volume when that is more
+    // than 1. A supergate is heard as far beyond its rim as a standard gate is.
+    float soundRange() {
+        double r = getShape().ringOuterRadius - GateShape.STANDARD.ringOuterRadius;
+        return (float) Math.max(1.0, (16.0 + r) / 16.0);
     }
 
     @Override
@@ -2782,7 +2958,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     public void playSGSoundEffect(SoundEvent se, float volume, float pitch) {
-        playSoundEffect(se, volume * soundVolume, pitch);
+        Vec3d c = getSoundOrigin();
+        playSoundEffect(world, c.x, c.y, c.z, se, volume * soundVolume * soundRange(), pitch);
     }
 
     void playChevronSound(boolean outgoing) {
@@ -3072,29 +3249,35 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         double v[][] = grid[1];
         int m = getShape().ehGridRadialSize;
         int n = getShape().ehGridPolarSize;
-        double dt = 1.0;
-        double asq = 0.03;
-        double d = 0.95;
-        for (int i = 1; i < m; i++)
+        double ka = getShape().ehAngularCoupling; // same ripple speed around for any slice count
+        // A fine grid takes several smaller steps per tick to stay stable, with the damping
+        // split between them so that a tick damps the same overall
+        int steps = getShape().ehSubsteps;
+        double dt = 1.0 / steps;
+        double asq = GateShape.EH_WAVE_SPEED_SQ;
+        double d = Math.pow(0.95, dt);
+        for (int step = 0; step < steps; step++) {
+            for (int i = 1; i < m; i++)
+                for (int j = 1; j <= n; j++) {
+                    double du_dr = 0.5 * (u[j][i+1] - u[j][i-1]);
+                    double d2u_drsq = u[j][i+1] - 2 * u[j][i] + u[j][i-1];
+                    double d2u_dthsq = u[j+1][i] - 2 * u[j][i] + u[j-1][i];
+                    v[j][i] = d * v[j][i] + (asq * dt) * (d2u_drsq + du_dr / i + ka * d2u_dthsq / (i * i));
+                }
+            for (int i = 1; i < m; i++)
+                for (int j = 1; j <= n; j++)
+                    u[j][i] += v[j][i] * dt;
+            double u0 = 0, v0 = 0;
             for (int j = 1; j <= n; j++) {
-                double du_dr = 0.5 * (u[j][i+1] - u[j][i-1]);
-                double d2u_drsq = u[j][i+1] - 2 * u[j][i] + u[j][i-1];
-                double d2u_dthsq = u[j+1][i] - 2 * u[j][i] + u[j-1][i];
-                v[j][i] = d * v[j][i] + (asq * dt) * (d2u_drsq + du_dr / i + d2u_dthsq / (i * i));
+                u0 += u[j][1];
+                v0 += v[j][1];
             }
-        for (int i = 1; i < m; i++)
-            for (int j = 1; j <= n; j++)
-                u[j][i] += v[j][i] * dt;
-        double u0 = 0, v0 = 0;
-        for (int j = 1; j <= n; j++) {
-            u0 += u[j][1];
-            v0 += v[j][1];
-        }
-        u0 /= n;
-        v0 /= n;
-        for (int j = 1; j <= n; j++) {
-            u[j][0] = u0;
-            v[j][0] = v0;
+            u0 /= n;
+            v0 /= n;
+            for (int j = 1; j <= n; j++) {
+                u[j][0] = u0;
+                v[j][0] = v0;
+            }
         }
         //dumpGrid("u", u);
         //dumpGrid("v", v);

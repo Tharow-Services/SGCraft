@@ -39,8 +39,7 @@ import static org.lwjgl.opengl.GL12.GL_RESCALE_NORMAL;
 
 public class SGBaseTERenderer extends BaseTileEntityRenderer {
 
-    // Ring and event horizon sizes come from the gate's GateShape
-    final static int numRingSegments = 32;
+    // Ring and event horizon sizes and detail come from the gate's GateShape
     final static double ringOverlap = 1/64.0;
     final static double ringZOffset = 0.0001;
     // How far a gate's chevrons stand proud of the ring's face
@@ -52,7 +51,6 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     
     final static double ringSymbolTextureLength = 512.0; //27 * 8;
     final static double ringSymbolTextureHeight = 16.0; //12;
-    final static double ringSymbolSegmentWidth = ringSymbolTextureLength / numRingSegments;
     // Where (texels along the symbol strip) the divider before the strip's first glyph is; it
     // falls just before the strip starts
     final static double ringGlyphStripStart = -0.41;
@@ -68,18 +66,6 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     
     static int chevronEngagementSequences[][] = SGBaseTE.chevronEngagementSequences;
 
-    static double s[] = new double[numRingSegments + 1];
-    static double c[] = new double[numRingSegments + 1];
-    
-
-    static {
-        for (int i = 0; i <= numRingSegments; i++) {
-            double a = 2 * Math.PI * i / numRingSegments;
-            s[i] = Math.sin(a);
-            c[i] = Math.cos(a);
-        }
-    }
-    
     double u0, v0;
 
     @Override
@@ -150,18 +136,28 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
     }
 
+    // Minecraft normally only draws a tile entity while the 16-block section holding it is in
+    // view. A supergate rises well out of its base's section, so it would vanish when looking up
+    // at it; a global renderer is drawn whenever its render bounding box is in view instead.
+    @Override
+    public boolean isGlobalRenderer(TileEntity te) {
+        return te instanceof SGBaseTE && ((SGBaseTE) te).isSupergate();
+    }
+
     void renderStargate(SGBaseTE gate, float partialTicks) {
         BaseGLUtils.glMultMatrix(gate.localToGlobalTransformation(Vector3.zero));
-        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + gate.getGateType().assetName + "/stargate.png"));
-
         GateShape shape = gate.getShape();
+        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(gate) + "/stargate.png"));
+
         glNormal3f(0, 1, 0);
         if (gate.getGateType() == GateType.MILKY_WAY && milkyWayModel() != null) {
             renderMilkyWayRings(gate, shape, partialTicks);
         } else if (gate.getGateType() == GateType.PEGASUS && pegasusModel() != null) {
             renderPegasusRings(gate, shape, partialTicks);
         } else {
-            renderRing(shape.ringMidRadius - ringOverlap, shape.ringOuterRadius, shape.ringDepth, RingType.Outer, ringZOffset);
+            // The rings are polygons, and the inner one turns, so the outer one overlaps it enough
+            // to cover the corners of the inner one's polygon at any angle
+            renderRing(shape, shape.ringMidRadius - ringOverlap * shape.detailScale, shape.ringOuterRadius, shape.ringDepth, RingType.Outer, ringZOffset * shape.detailScale);
             renderInnerRing(gate, shape, partialTicks);
         }
         renderChevrons(gate, shape, partialTicks);
@@ -172,16 +168,21 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
     }
     
+    // Gates of every size share their gate type's textures
+    static String textureFolder(SGBaseTE te) {
+        return te.getGateType().assetName;
+    }
+
     // A Milky Way gate's symbol ring turns to bring each symbol to the top. A Pegasus gate's ring of
     // glyph screens stays still and blank, and lights up as it dials (see renderPegasusGlyphs).
     void renderInnerRing(SGBaseTE te, GateShape shape, float partialTicks) {
         boolean pegasus = te.getGateType() == GateType.PEGASUS;
         double ringAngle = pegasus ? 0 : te.interpolatedRingAngle(partialTicks);
         // As on the show, a Milky Way gate's symbol ring turns inside a trim ring that doesn't
-        double trim = pegasus ? 0 : innerTrimWidth;
+        double trim = pegasus ? 0 : innerTrimWidth * shape.detailScale;
         glPushMatrix();
         glRotatef((float)(ringAngle + (pegasus ? SGBaseTE.ringSymbolAngle / 2 : ringGlyphRotation)), 0, 0, 1);
-        renderRing(shape.ringInnerRadius + trim, shape.ringMidRadius, shape.ringDepth, RingType.Inner, 0);
+        renderRing(shape, shape.ringInnerRadius + trim, shape.ringMidRadius, shape.ringDepth, RingType.Inner, 0);
         glPopMatrix();
         if (pegasus) {
             renderPegasusScreens(te, shape);
@@ -189,25 +190,29 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         if (trim > 0) {
             // It overlaps the symbol ring, as the outer ring does, to cover the corners of the
             // symbol ring's polygon at any angle
-            renderTrimRing(shape, shape.ringInnerRadius, shape.ringInnerRadius + trim + ringOverlap);
+            renderTrimRing(shape, shape.ringInnerRadius, shape.ringInnerRadius + trim + ringOverlap * shape.detailScale);
         }
         if (pegasus) {
             renderPegasusGlyphs(te, shape, partialTicks);
         }
     }
 
-    // How wide (blocks) a Milky Way gate's trim ring is, round the inside of
+    // How wide (blocks, on a standard gate) a Milky Way gate's trim ring is, round the inside of
     // its symbol ring
     final static double innerTrimWidth = 1 / 16.0;
 
     // Draws the trim ring round the inside of a Milky Way gate's symbol ring, between the given
     // radii, with the ridged edge pattern from the bottom of the ring face tile
     void renderTrimRing(GateShape shape, double r1, double r2) {
+        int n = shape.ringSegments;
+        double[] c = shape.ringCos, s = shape.ringSin;
         // Just in front of the symbol ring where they overlap
-        double z = shape.ringDepth / 2 + ringZOffset;
-        double ta = 0, tb = 16;
+        double z = shape.ringDepth / 2 + ringZOffset * shape.detailScale;
+        int k = n / GateShape.BASE_RING_SEGMENTS;
+        double tw = 16.0 / k;
         glBegin(GL_QUADS);
-        for (int i = 0; i < numRingSegments; i++) {
+        for (int i = 0; i < n; i++) {
+            double ta = (i % k) * tw, tb = ta + tw;
             // Its inside, facing into the opening
             selectTile(TextureIndex.RING);
             glNormal3d(-c[i], -s[i], 0);
@@ -255,10 +260,11 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // the outer ring where it overlaps.
     void renderPegasusScreens(SGBaseTE te, GateShape shape) {
         PegasusScreens screens = pegasusScreens(te);
-        double r1 = shape.ringInnerRadius, r2 = shape.ringMidRadius - ringOverlap;
+        double r1 = shape.ringInnerRadius, r2 = shape.ringMidRadius - ringOverlap * shape.detailScale;
         double rb = shape.ringMidRadius - (shape.ringMidRadius - r1) * pegasusGlyphBandV / ringSymbolTextureHeight;
-        double z = shape.ringDepth / 2 + 0.001, zt = z + pegasusDividerHeight;
-        int n = numRingSegments;
+        double k = shape.detailScale;
+        double z = shape.ringDepth / 2 + 0.001 * k, zt = z + pegasusDividerHeight * k;
+        int n = shape.ringSegments;
         glDisable(GL_TEXTURE_2D);
         glBegin(GL_QUADS);
         for (int s = 0; s < screens.count(); s++) {
@@ -423,7 +429,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         // Lit glyphs glow regardless of the light around the gate. The glyph sheet is the glyphs
         // alone on black, added on top of the screens: once in their own colour, then twice more
         // in blue for the glow.
-        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + te.getGateType().assetName + "/glyphs.png"));
+        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/glyphs.png"));
         glDisable(GL_LIGHTING);
         setLightingDisabled(true);
         glEnable(GL_BLEND);
@@ -450,7 +456,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glColor4f(1, 1, 1, 1);
         glEnable(GL_LIGHTING);
         setLightingDisabled(false);
-        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + te.getGateType().assetName + "/stargate.png"));
+        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/stargate.png"));
     }
 
     // Which glyph is on the screen at the given angle: the glyphs go clockwise round the ring from
@@ -523,7 +529,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         double u0 = (glyph % pegasusGlyphGrid) * cell, v0 = (glyph / pegasusGlyphGrid) * cell;
         double r1 = shape.ringInnerRadius, r2 = shape.ringMidRadius;
         double rb = r2 - (r2 - r1) * pegasusGlyphBandV / ringSymbolTextureHeight;
-        double z = shape.ringDepth / 2 + 0.002 * layer, zb = z;
+        double z = shape.ringDepth / 2 + 0.002 * layer * shape.detailScale, zb = z;
         PegasusGateModel model = pegasusModel();
         if (model != null) {
             // On the model's screens, a little short of their edges, on their sloping surface
@@ -885,7 +891,8 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // milkyWayChevron), repeating across it every this many metres
     static final String[] milkyWayMetals = {"ring", "detail", "symbols", "glyphs", "chevron", "light"};
     final static double milkyWayMetalRepeat = 1.2;
-    // How many steps round the gate its rings are turned in
+    // How many steps round the gate its rings are turned in, at least; more on a bigger gate, as
+    // many as four to each of its ring's segments
     final static int milkyWaySteps = 180;
     // A chevron's lights are glass, its colour shading across it as on the show, laid over the
     // whole chevron from milkyWayLightHalf metres either side of its middle, and from
@@ -914,7 +921,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     }
 
     static double milkyWayDepthScale(GateShape shape) {
-        return GateShape.STANDARD.ringOuterRadius / MilkyWayGateModel.OUTER_RADIUS * shape.ringDepth / GateShape.STANDARD.ringDepth;
+        return GateShape.STANDARD.ringOuterRadius / MilkyWayGateModel.OUTER_RADIUS * shape.depthScale();
     }
 
     // Where the top chevron of a gate drawn from a model is in the gate's frame: horizontal gates
@@ -988,7 +995,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // GLYPHS), then from CHEVRON, each piece of the chevron (MilkyWayGateModel.METAL to
     // LOWER_LIGHT), one for each way their corners move
     int milkyWayLists(MilkyWayGateModel model, GateShape shape) {
-        int steps = milkyWaySteps;
+        int steps = Math.max(milkyWaySteps, shape.ringSegments * 4);
         String key = shape.ringOuterRadius + ":" + shape.ringDepth + ":" + steps;
         Integer lists = milkyWayLists.get(key);
         if (lists != null) {
@@ -1066,47 +1073,55 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glEnd();
     }
 
-    void renderRing(double r1, double r2, double depth, RingType type, double dz) {
+    void renderRing(GateShape shape, double r1, double r2, double depth, RingType type, double dz) {
         double z = depth / 2 + dz;
         double u = 0, du = 0, dv = 0;
+        int n = shape.ringSegments;
+        double[] c = shape.ringCos, s = shape.ringSin;
+        // Ring and face tiles each span one segment of a 32-segment ring, so with more segments
+        // each segment shows its share of a tile rather than a squashed whole one
+        int k = n / GateShape.BASE_RING_SEGMENTS;
+        double tw = 16.0 / k;
+        double symbolWidth = ringSymbolTextureLength / n;
         glBegin(GL_QUADS);
-        for (int i = 0; i < numRingSegments; i++) {
+        for (int i = 0; i < n; i++) {
+            double ta = (i % k) * tw, tb = ta + tw;
             selectTile(TextureIndex.RING);
             switch (type) {
                 case Outer:
                     glNormal3d(c[i], s[i], 0);
-                    vertex(r2 * c[i], r2 * s[i], z, 0, 0);
-                    vertex(r2 * c[i], r2 * s[i], -z, 0, 16);
-                    vertex(r2 * c[i + 1], r2 * s[i + 1], -z, 16, 16);
-                    vertex(r2 * c[i + 1], r2 * s[i + 1], z, 16, 0);
+                    vertex(r2 * c[i], r2 * s[i], z, ta, 0);
+                    vertex(r2 * c[i], r2 * s[i], -z, ta, 16);
+                    vertex(r2 * c[i + 1], r2 * s[i + 1], -z, tb, 16);
+                    vertex(r2 * c[i + 1], r2 * s[i + 1], z, tb, 0);
                     break;
                 case Inner:
                     glNormal3d(-c[i], -s[i], 0);
-                    vertex(r1 * c[i], r1 * s[i], -z, 0, 0);
-                    vertex(r1 * c[i], r1 * s[i], z, 0, 16);
-                    vertex(r1 * c[i + 1], r1 * s[i + 1], z, 16, 16);
-                    vertex(r1 * c[i + 1], r1 * s[i + 1], -z, 16, 0);
+                    vertex(r1 * c[i], r1 * s[i], -z, ta, 0);
+                    vertex(r1 * c[i], r1 * s[i], z, ta, 16);
+                    vertex(r1 * c[i + 1], r1 * s[i + 1], z, tb, 16);
+                    vertex(r1 * c[i + 1], r1 * s[i + 1], -z, tb, 0);
                     break;
             }
             // Back
             glNormal3f(0, 0, -1);
-            vertex(r1*c[i],   r1*s[i],   -z,    0, 16);
-            vertex(r1*c[i+1], r1*s[i+1], -z,   16, 16);
-            vertex(r2*c[i+1], r2*s[i+1], -z,   16,  0);
-            vertex(r2*c[i],   r2*s[i],   -z,    0,  0);
+            vertex(r1*c[i],   r1*s[i],   -z,   ta, 16);
+            vertex(r1*c[i+1], r1*s[i+1], -z,   tb, 16);
+            vertex(r2*c[i+1], r2*s[i+1], -z,   tb,  0);
+            vertex(r2*c[i],   r2*s[i],   -z,   ta,  0);
             // Front
             glNormal3f(0, 0, 1);
             switch (type) {
                 case Outer:
                     selectTile(TextureIndex.RING_FACE);
-                    u = 0;
-                    du = 16;
+                    u = 16 - tb;
+                    du = tw;
                     dv = 16;
                     break;
                 case Inner:
                     selectTile(TextureIndex.RING_SYMBOL);
-                    u = ringSymbolTextureLength - (i + 1) * ringSymbolSegmentWidth;
-                    du = ringSymbolSegmentWidth;
+                    u = ringSymbolTextureLength - (i + 1) * symbolWidth;
+                    du = symbolWidth;
                     dv = ringSymbolTextureHeight;
                     break;
             }
@@ -1248,7 +1263,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             boolean pegasus = gate.getGateType() == GateType.PEGASUS;
             boolean master = i == 4 && !pegasus;
             gateChevron(new GateChevron(shape, master ? masterChevronScale : 1, pegasus), engaged,
-                    master ? masterChevronTravel * slide : 0);
+                    master ? masterChevronTravel * shape.detailScale * slide : 0);
         }
         glPopMatrix();
     }
@@ -1277,6 +1292,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         GateChevron(GateShape shape, double scale, boolean pegasus) {
             this.pegasus = pegasus;
             double ring = shape.ringOuterRadius - shape.ringInnerRadius;
+            double k = shape.detailScale;
             width = ring * 0.8 * scale;
             top = ringEdgeAt(shape, width / 2);
             double length = ring * 0.68;
@@ -1286,7 +1302,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             // on a Pegasus gate, its glyph screens, which stop short of the ring's inner edge
             double symbolsInner = pegasus
                     ? shape.ringMidRadius - (shape.ringMidRadius - shape.ringInnerRadius) * pegasusGlyphBandV / ringSymbolTextureHeight
-                    : shape.ringInnerRadius + innerTrimWidth;
+                    : shape.ringInnerRadius + innerTrimWidth * k;
             double reach = pegasus ? pegasusChevronReach : milkyWayChevronReach;
             bottom = shape.ringMidRadius - (shape.ringMidRadius - symbolsInner) * reach;
             // The wings run out along the ring's outer edge from the top of the slatted lights,
@@ -1295,12 +1311,14 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             wingTipX = ringEdgeAt(shape, wingTipY);
             wingTipThickness = length * 0.05;
             wingBottom = top - length * 0.2;
+            // Its depth goes with the ring's thickness rather than its size
+            double kz = shape.depthScale();
             backZ = shape.ringDepth / 2;
-            armZ = backZ + chevronDepth;
-            lightZ = backZ + chevronDepth * 1.3;
+            armZ = backZ + chevronDepth * kz;
+            lightZ = backZ + chevronDepth * kz * 1.3;
             // The light's top is flush with the ring's outer edge
             lightTopX = ringEdgeAt(shape, lightTop());
-            slatZ = backZ + chevronDepth * 0.45;
+            slatZ = backZ + chevronDepth * kz * 0.45;
         }
 
         // Half widths: of the light at its top and bottom; of the outer layer at its top, at the
@@ -1561,14 +1579,14 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
     }
 
-    // How far (blocks) the top chevron's outer layer slides down to lock a
+    // How far (blocks, on a standard gate) the top chevron's outer layer slides down to lock a
     // symbol: a little further than on the show, so it shows at Minecraft's scale
     final static double masterChevronTravel = 0.09;
 
     // How far out from the gate's centre the ring's outer edge is, the given distance either side
     // of the middle of one of its sides
     static double ringEdgeAt(GateShape shape, double y) {
-        double edge = shape.ringOuterRadius * Math.cos(Math.PI / numRingSegments);
+        double edge = shape.ringOuterRadius * Math.cos(Math.PI / shape.ringSegments);
         return Math.sqrt(edge * edge - y * y);
     }
 
@@ -1630,7 +1648,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
         glBegin(GL_TRIANGLE_FAN);
         glTexCoord2d(0, 0);
-        glVertex3d(0, 0, ehClip(grid[1][0], 0, rclip));
+        glVertex3d(0, 0, ehClip(grid[1][0] * shape.depthScale(), 0, rclip));
         for (int j = 0; j <= shape.ehGridPolarSize; j++)
             ehVertex(shape, grid, 1, j, rclip);
         glEnd();
@@ -1644,7 +1662,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         double r = i * shape.ehBandWidth;
         double x = r * shape.ehCos[j];
         double y = r * shape.ehSin[j];
-        double z = ehClip(grid[j+1][i], r, rclip);
+        double z = ehClip(grid[j+1][i] * shape.depthScale(), r, rclip); // ripples scale with the ring's thickness
         glTexCoord2d(x, y);
         glVertex3d(x, y, z);
     }
@@ -1656,7 +1674,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     }       
     
     void renderIris(SGBaseTE te, double t) {
-        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + te.getGateType().assetName + "/iris.png"));
+        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/iris.png"));
         double a = te.getIrisAperture(t);
         // The blades are sized for a standard gate; stretch them across a bigger opening but
         // keep them at the same depth, where the iris entity blocks things

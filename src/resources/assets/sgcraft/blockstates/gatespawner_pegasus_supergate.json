@@ -1,0 +1,7 @@
+{
+    "variants": {
+        "normal": {
+            "model": "sgcraft:gatespawner_pegasus_supergate"
+        }
+    }
+}

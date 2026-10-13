@@ -47,17 +47,17 @@ public class Sound extends PositionedSound implements ITickableSound {
 
     @Override
     public float getXPosF() {
-        return (float) getPos().getX();
+        return (float) this.source.getSoundOrigin().x;
     }
 
     @Override
     public float getYPosF() {
-        return (float) getPos().getY();
+        return (float) this.source.getSoundOrigin().y;
     }
 
     @Override
     public float getZPosF() {
-        return (float) getPos().getZ();
+        return (float) this.source.getSoundOrigin().z;
     }
 
     @Override

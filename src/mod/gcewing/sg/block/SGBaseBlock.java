@@ -14,6 +14,7 @@ import gcewing.sg.BaseOrientation;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.SGCraft;
 import gcewing.sg.util.GateShape;
+import gcewing.sg.util.GateType;
 import gcewing.sg.util.SGState;
 import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
@@ -32,6 +33,9 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 
 import gcewing.sg.BaseMod.*;
+
+import java.util.Collections;
+import java.util.List;
 
 public class SGBaseBlock extends SGBlock<SGBaseTE> {
 
@@ -76,8 +80,25 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         return model;
     }
     
+    // The shape of a gate built on this base when nothing more is known, such as before it merges
     public GateShape getShape() {
         return GateShape.STANDARD;
+    }
+
+    // The shapes a gate on this base can have, in the order to try them when merging
+    public List<GateShape> getPossibleShapes() {
+        return Collections.singletonList(getShape());
+    }
+
+    // The shape of the gate built on this base in the world
+    public GateShape getShape(IBlockAccess world, BlockPos pos) {
+        SGBaseTE te = getTileEntity(world, pos);
+        return te != null ? te.getShape() : getShape();
+    }
+
+    // The kind of ring block this base merges with
+    public SGRingBlock getRingBlock() {
+        return SGCraft.sgRingBlock;
     }
 
     @Override
@@ -131,8 +152,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             System.out.println("STARGATE Base block added on world: " + world.getWorldInfo().getWorldName() + " at: " + pos);
         }
 
-        checkForVerticalMerge(world, pos);
-        checkForHorizontalMerge(world, pos);
+        checkForMerge(world, pos);
         SGBaseTE te = getTileEntity(world, pos);
         if (te != null) {
             if (te instanceof SGBaseTE) {
@@ -195,30 +215,67 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             te.onNeighborBlockChange();
     }
 
+    // Merges the base with the ring round it, if it is complete: looking for a supergate's ring
+    // first, then a stargate's, each standing up or lying flat. A base in the other kind's ring
+    // (a stargate base put back in a supergate, say) becomes that kind's base, facing the same way
+    // and building the same type of gate, and merges as that.
+    public void checkForMerge(World world, BlockPos pos) {
+        if (isMerged(world, pos)) {
+            return;
+        }
+        SGBaseBlock superBase = SGCraft.supergateBaseBlock, normalBase = SGCraft.sgBaseBlock;
+        Trans3 t = localToGlobalTransformation(world, pos);
+        SGBaseBlock kind = superBase != null && superBase.ringAround(world, t) ? superBase
+                : normalBase.ringAround(world, t) ? normalBase : null;
+        boolean supergate = this instanceof SupergateBaseBlock;
+        if (kind != null && (kind == superBase) != supergate) {
+            SGBaseTE old = getTileEntity(world, pos);
+            GateType type = old != null ? old.getGateType() : null;
+            IBlockState state = world.getBlockState(pos);
+            // The new base merges as it is added (see onBlockAdded)
+            world.setBlockState(pos, kind.getDefaultState().withProperty(FACING, state.getValue(FACING)));
+            SGBaseTE te = SGBaseTE.at(world, pos);
+            if (te != null && type != null) {
+                te.setGateType(type);
+            }
+            return;
+        }
+        checkForVerticalMerge(world, pos);
+        checkForHorizontalMerge(world, pos);
+    }
+
+    // Whether a complete, unmerged ring of this base's kind is round a base placed so
+    boolean ringAround(World world, Trans3 t) {
+        for (GateShape s : getPossibleShapes()) {
+            if (ringMatches(world, t, s, false) || ringMatches(world, t, s, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void checkForVerticalMerge(World world, BlockPos pos) {
         if (!isMerged(world, pos)) {
-            GateShape shape = getShape();
             Trans3 t = localToGlobalTransformation(world, pos);
-            for (int i = -shape.halfWidth; i <= shape.halfWidth; i++) {
-                for (int j = 0; j < shape.height; j++) {
-                    if (!(i == 0 && j == 0)) {
-                        BlockPos rp = t.p(i, j, 0).blockPos();
-                        int type = getRingBlockType(world, rp);
-                        int pat = shape.cellAt(i, j);
-                        if (pat != GateShape.EMPTY && type != pat) {
-                            return;
-                        }
-                    }
+            GateShape shape = null;
+            for (GateShape s : getPossibleShapes()) {
+                if (ringMatches(world, t, s, false)) {
+                    shape = s;
+                    break;
                 }
+            }
+            if (shape == null) {
+                return;
             }
 
             SGBaseTE te = getTileEntity(world, pos);
+            te.setShape(shape);
             te.setMerged(true);
             te.gateOrientation = 1;
             BaseBlockUtils.markBlockForUpdate(world, pos);
             for (int i = -shape.halfWidth; i <= shape.halfWidth; i++)
                 for (int j = 0; j < shape.height; j++)
-                    if (!(i == 0 && j == 0)) {
+                    if (!(i == 0 && j == 0) && shape.cellAt(i, j) != GateShape.EMPTY) {
                         BlockPos rp = t.p(i, j, 0).blockPos();
                         Block block = world.getBlockState(rp).getBlock();
                         if (block instanceof SGRingBlock) {
@@ -232,29 +289,27 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     public void checkForHorizontalMerge(World world, BlockPos pos) {
         boolean debugThisMerge = true;
         if (!isMerged(world, pos)) {
-            GateShape shape = getShape();
             Trans3 t = localToGlobalTransformation(world, pos);
-            for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
-                for (int z = -(shape.height - 1); z <= 0; z++) {
-                    if (!(x == 0 && z == 0)) {
-                        BlockPos rp = t.p(x, 0, z).blockPos();
-                        int type = getRingBlockType(world, rp);
-                        int pat = shape.cellAt(x, -z);
-                        if (pat != GateShape.EMPTY && type != pat) {
-                            return;
-                        }
-                    }
+            GateShape shape = null;
+            for (GateShape s : getPossibleShapes()) {
+                if (ringMatches(world, t, s, true)) {
+                    shape = s;
+                    break;
                 }
+            }
+            if (shape == null) {
+                return;
             }
 
             SGBaseTE te = getTileEntity(world, pos);
+            te.setShape(shape);
             te.setMerged(true);
             te.gateOrientation = 2;
             BaseBlockUtils.markBlockForUpdate(world, pos);
 
             for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
                 for (int z = -(shape.height - 1); z <= 0; z++) {
-                    if (!(x == 0 && z == 0)) {
+                    if (!(x == 0 && z == 0) && shape.cellAt(x, -z) != GateShape.EMPTY) {
                         BlockPos rp = t.p(x, 0, z).blockPos();
                         Block block = world.getBlockState(rp).getBlock();
                         if (block instanceof SGRingBlock) {
@@ -268,13 +323,31 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         }
     }
     
+    // Whether the unmerged ring blocks around the base match the shape's pattern, standing up
+    // (vertical) or lying flat out from the base (horizontal)
+    protected boolean ringMatches(World world, Trans3 t, GateShape shape, boolean horizontal) {
+        for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
+            for (int y = 0; y < shape.height; y++) {
+                int pat = shape.cellAt(x, y);
+                if (pat != GateShape.EMPTY && !(x == 0 && y == 0)) {
+                    BlockPos rp = (horizontal ? t.p(x, 0, -y) : t.p(x, y, 0)).blockPos();
+                    if (getRingBlockType(world, rp) != pat) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     protected int getRingBlockType(World world, BlockPos pos) {
         IBlockState state = world.getBlockState(pos);
         Block block = state.getBlock();
         if (block == Blocks.AIR)
             return GateShape.EMPTY;
-        if (block == SGCraft.sgRingBlock) {
-            if (!SGCraft.sgRingBlock.isMerged(world, pos)) {
+        SGRingBlock ringBlock = getRingBlock();
+        if (block == ringBlock) {
+            if (!ringBlock.isMerged(world, pos)) {
                 switch (state.getValue(SGRingBlock.VARIANT)) {
                     case 0: return GateShape.RING;
                     case 1: return GateShape.CHEVRON;
@@ -323,20 +396,29 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             unmergeRing(world, pos);
         }
         if (goBang && explosionRadius > 0)
-            explode(world, new Vector3(pos).add(0.5, 0.5 + getShape().centreY, 0.5), explosionRadius);
+            explode(world, new Vector3(pos).add(0.5, 0.5 + getShape(world, pos).centreY, 0.5), explosionRadius);
     }
     
     void explode(World world, Vector3 p, double s) {
         world.newExplosion(null, p.x, p.y, p.z, (float)s, fieryExplosion, smokyExplosion);
     }
     
+    // Visit just the ring's own cells, standing up and lying flat, rather than every block around
+    // the base. This can run while the base is being broken, when its block may already be gone,
+    // so the gate's facing comes from the tile entity (numbered as Orient4WaysByState turns it).
     void unmergeRing(World world, BlockPos pos) {
-        GateShape shape = getShape();
-        int r = shape.searchRadius();
-        for (int i = -r; i <= r; i++)
-            for (int j = 0; j <= shape.searchHeight(); j++)
-                for (int k = -r; k <= r; k++)
-                    unmergeRingBlock(world, pos, pos.add(i, j, k));
+        SGBaseTE te = getTileEntity(world, pos);
+        if (te == null) {
+            return;
+        }
+        GateShape shape = te.getShape();
+        Trans3 t = new Trans3(Vector3.blockCenter(pos)).turn(te.facingDirectionOfBase);
+        for (int x = -shape.halfWidth; x <= shape.halfWidth; x++)
+            for (int y = 0; y < shape.height; y++)
+                if (shape.cellAt(x, y) != GateShape.EMPTY && !(x == 0 && y == 0)) {
+                    unmergeRingBlock(world, pos, t.p(x, y, 0).blockPos());
+                    unmergeRingBlock(world, pos, t.p(x, 0, -y).blockPos());
+                }
     }
     
     void unmergeRingBlock(World world, BlockPos pos, BlockPos ringPos) {

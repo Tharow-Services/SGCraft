@@ -6,6 +6,7 @@ import gcewing.sg.SGCraft;
 import gcewing.sg.features.gdo.client.gui.GdoScreen;
 import gcewing.sg.features.pdd.client.gui.PddScreen;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.SGAddressing;
 import gcewing.sg.util.SGState;
 import net.minecraft.client.Minecraft;
@@ -28,6 +29,23 @@ public class GuiNetworkHandler extends SGChannel {
         writeCoords(data, te);
         data.writeInt(guiType);
         data.close();
+    }
+
+    // An empty handed click on a gate's drawn ring that hit no block (see SGCraft.onRightClickEmpty)
+    public static void sendGateActivationToServer(SGBaseTE te) {
+        ChannelOutput data = guiChannel.openServer("activateGate");
+        writeCoords(data, te);
+        data.close();
+    }
+
+    @ServerMessageHandler("activateGate")
+    public void handleGateActivationFromClient(EntityPlayer player, ChannelInput data) {
+        BlockPos pos = readCoords(data);
+        // Only if the player really is looking at that gate's ring
+        SGBaseTE gate = GateUtil.gateLookedAt(player.world, player, GateUtil.reach(player) + 1);
+        if (gate != null && gate.getPos().equals(pos)) {
+            GateUtil.activateGate(gate, player);
+        }
     }
 
     @ServerMessageHandler("requestGUI")
