@@ -54,11 +54,12 @@ abstract class GateRenderer {
         int k = chevronSequenceRow(te);
         float a = te.angleBetweenChevrons();
         // A Milky Way gate dialling out moves its top chevron down and back up to lock each symbol,
-        // as on the show (following the Carter Addon Pack's SG-1 gate). The top chevron lights
-        // while it is down; as it comes back up, the chevron for the symbol lights and the top one
-        // goes dark. The last symbol locks at the top chevron itself, more slowly, and it stays lit.
+        // as on the show (following the Carter Addon Pack's SG-1 gate). When it reaches the bottom,
+        // the top chevron and the chevron for the symbol light together (SG-1 S5E14, 38:03); as it
+        // comes back up, the top one goes dark. The last symbol locks at the top chevron itself,
+        // more slowly, and it stays lit.
         double dip = 0;
-        boolean dipping = false, topLit = false, symbolLit = true;
+        boolean dipping = false, topLit = false, symbolLit = true, topHeld = false;
         if (te.getGateType() == GateType.MILKY_WAY) {
             double t = topChevronLockTime(te, partialTicks);
             int length = te.dialledAddress.length();
@@ -67,7 +68,8 @@ abstract class GateRenderer {
                 dipping = true;
                 dip = chevronDip(t, timing);
                 topLit = t >= timing[0];
-                symbolLit = t >= timing[0] + timing[1];
+                symbolLit = topLit;
+                topHeld = topLit && t < timing[0] + timing[1];
             }
         }
         for (int i = i0; i < i0 + numChevrons; i++) {
@@ -75,7 +77,7 @@ abstract class GateRenderer {
             boolean engaged = chevronEngaged(te, i, j, a, partialTicks);
             if (dipping && j == te.numEngagedChevrons - 1) {
                 engaged = i == 4 ? topLit : symbolLit;
-            } else if (dipping && i == 4 && topLit && !symbolLit) {
+            } else if (dipping && i == 4 && topHeld) {
                 engaged = true;
             }
             glPushMatrix();
