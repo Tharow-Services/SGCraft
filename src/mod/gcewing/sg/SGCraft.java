@@ -57,6 +57,7 @@ import gcewing.sg.interfaces.SoundSource;
 import gcewing.sg.item.SGChevronUpgradeItem;
 import gcewing.sg.item.SGIrisUpgradeItem;
 import gcewing.sg.item.SGPegasusUpgradeItem;
+import gcewing.sg.item.SGUniverseUpgradeItem;
 import gcewing.sg.item.SGRingItem;
 import gcewing.sg.network.GuiNetworkHandler;
 import gcewing.sg.network.SGChannel;
@@ -141,7 +142,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static Block naquadahBlock, naquadahOre;
     public static SGPowerBlock sgPowerUnit;
 
-    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade;
+    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
     public static Block ic2PowerUnit;
@@ -316,8 +317,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             // Creative-only blocks that build a finished gate, for testing
             addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_stargate");
             addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate");
+            addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate");
             addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate");
             addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate");
+            addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate");
         }
         sgControllerBlock = newBlock("stargateController", DHDBlock.class);
         naquadahBlock = newBlock("naquadahBlock", NaquadahBlock.class);
@@ -350,6 +353,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         tollan_phase_shift_device = newItem("tollan_phase_shift_device");
 
         pegasus_upgrade = addItem(new SGPegasusUpgradeItem(), "pegasus_upgrade");
+        universe_upgrade = addItem(new SGUniverseUpgradeItem(), "universe_upgrade");
 
         if (isModLoaded("malisiscore")) {
             new GuiNetworkHandler(Info.modID+"-GUI");
@@ -510,6 +514,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                 newRecipe("pegasus_upgrade_0", pegasus_upgrade, 1, "glg", "rnr", "glg", 'g', Items.GLOWSTONE_DUST, 'l', Blocks.LAPIS_BLOCK, 'r', Items.REDSTONE, 'n', naquadahBlock);
                 newRecipe("pegasus_upgrade_1", pegasus_upgrade, 1, "grg", "lnl", "grg", 'g', Items.GLOWSTONE_DUST, 'l', Blocks.LAPIS_BLOCK, 'r', Items.REDSTONE, 'n', naquadahBlock);
             }
+        }
+
+        // The Universe gate has all nine chevrons, so its upgrade takes two chevron upgrades
+        if (config.getBoolean("recipes", "universe_upgrade", true)) {
+            newRecipe("universe_upgrade", universe_upgrade, 1, "ede", "cnc", "ede", 'e', Items.ENDER_PEARL, 'd', Items.DIAMOND, 'c', sgChevronUpgrade, 'n', sgCoreCrystal);
         }
 
         if (isModLoaded("malisiscore")) {

@@ -22,3 +22,13 @@ SGCraft's gates are built from measurements of these models. The data measured f
   `src/resources/assets/sgcraft/models/gate/pegasus_gate.txt` and `pegasus_glyphs.txt`, and the
   textures in `src/resources/assets/sgcraft/textures/tileentity/pegasus` drawn from it, by the tools
   in `tools/pegasus`
+
+### Destiny Stargate | Stargate: Universe
+
+- By Anquietas System (@anquietas-sys) on Sketchfab:
+  https://sketchfab.com/3d-models/destiny-stargate-stargate-universe-dbeae0025fdf4642bf68fe1619ddde95
+- Licence: as on that page (Creative Commons Attribution-NonCommercial)
+- Used for: the shape of the Universe gate, `src/resources/assets/sgcraft/models/gate/universe_gate.txt`,
+  and its symbols and the masks of its chevrons' lights and paint (`glyphs.png`, `chevron_lights.png`,
+  `chevron_glow.png` and `chevron_paint.png` in `src/resources/assets/sgcraft/textures/tileentity/universe`),
+  measured from it by the tools in `tools/universe`

@@ -244,7 +244,9 @@ public class GdoScreen extends BasicScreen {
     // Picture of a gate for the local or remote gate panel
     private GuiTexture gateImage(int gateType, boolean connected, boolean hasIrisUpgrade, boolean irisClosed) {
         String iris = !hasIrisUpgrade ? "no_iris" : irisClosed ? "iris_closed" : "iris_open";
-        String name = GateType.fromId(gateType).assetName + (connected ? "_connected_" : "_disconnected_") + iris;
+        // A Universe gate has no picture of its own, so shows as a Milky Way gate
+        GateType type = GateType.fromId(gateType);
+        String name = (type == GateType.UNIVERSE ? GateType.MILKY_WAY : type).assetName + (connected ? "_connected_" : "_disconnected_") + iris;
         return new GuiTexture(SGCraft.mod.resourceLocation("textures/" + name + ".png"));
     }
 

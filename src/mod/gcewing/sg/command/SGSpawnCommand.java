@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import javax.annotation.Nullable;
 
-// /sgspawn <stargate|supergate> [milkyway|pegasus] [size]
+// /sgspawn <stargate|supergate> [milkyway|pegasus|universe] [size]
 //
 // Builds a finished gate a few blocks in front of the player, facing them. A supergate's size is
 // its width in blocks, an odd number; without one it gets the default size.
@@ -45,7 +45,7 @@ public class SGSpawnCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/sgspawn <stargate|supergate> [milkyway|pegasus] [size " + MIN_SIZE + "-" + MAX_SIZE + ", supergate only]";
+        return "/sgspawn <stargate|supergate> [milkyway|pegasus|universe] [size " + MIN_SIZE + "-" + MAX_SIZE + ", supergate only]";
     }
 
     @Override
@@ -72,7 +72,8 @@ public class SGSpawnCommand extends CommandBase {
             switch (args[1].toLowerCase()) {
                 case "milkyway": type = GateType.MILKY_WAY; break;
                 case "pegasus": type = GateType.PEGASUS; break;
-                default: throw new CommandException("Unknown gate type '" + args[1] + "': use milkyway or pegasus");
+                case "universe": type = GateType.UNIVERSE; break;
+                default: throw new CommandException("Unknown gate type '" + args[1] + "': use milkyway, pegasus or universe");
             }
         }
 
@@ -96,7 +97,7 @@ public class SGSpawnCommand extends CommandBase {
         if (te == null) {
             throw new CommandException("The gate was placed at " + describe(pos) + " but its ring did not merge");
         }
-        String name = (type == GateType.PEGASUS ? "Pegasus " : "Milky Way ") + (supergate ? "supergate" : "stargate");
+        String name = type.select("Milky Way ", "Pegasus ", "Universe ") + (supergate ? "supergate" : "stargate");
         sender.sendMessage(new TextComponentString("Built a " + shape.width + "-block " + name + " at " + describe(pos)));
     }
 
@@ -110,7 +111,7 @@ public class SGSpawnCommand extends CommandBase {
             case 1:
                 return getListOfStringsMatchingLastWord(args, "stargate", "supergate");
             case 2:
-                return getListOfStringsMatchingLastWord(args, "milkyway", "pegasus");
+                return getListOfStringsMatchingLastWord(args, "milkyway", "pegasus", "universe");
             case 3:
                 if (args[0].equalsIgnoreCase("supergate")) {
                     List<String> sizes = new ArrayList<>();

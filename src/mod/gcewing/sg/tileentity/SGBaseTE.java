@@ -161,6 +161,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // turns the ring to bring its glyph to the top, ringGlyphAngle for each glyph.
     public final static int numRingGlyphs = 39;
     public final static double ringGlyphAngle = 360.0 / numRingGlyphs;
+    // A Universe gate's ring is, as on the show, nine sections, one under each chevron: the
+    // chevron's panel, then four symbols clockwise from it, each in its own slot. Dialling a symbol
+    // turns the whole gate to bring the symbol to the top.
+    public final static double universeGroupAngle = 360.0 / 9;
+    public final static double universeChevronSectorAngle = 8;
+    public final static double universeSlotAngle = (universeGroupAngle - universeChevronSectorAngle) / 4;
+
+    // How far clockwise from the top chevron a Universe gate's symbol is centred, which is also the
+    // angle the gate turns to to bring it to the top
+    public static double universeSymbolOffset(int symbol) {
+        return symbol / 4 * universeGroupAngle + universeChevronSectorAngle / 2
+                + (symbol % 4 + 0.5) * universeSlotAngle;
+    }
 
     public static int ringGlyphForSymbol(int symbol) {
         return symbol + 1;
@@ -252,7 +265,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean wasIrisClosed = false;
 
     // Unique Gate Configurator Options
-    public int gateType = 1; //1 = Milky way 2 = Pegasus
+    public int gateType = 1; // GateType.id: 1 = Milky Way, 2 = Pegasus, 3 = Universe
     public int gateOrientation = 1;
     public int secondsToStayOpen = 5 * 60;
     public int ticksToStayOpen = 20 * secondsToStayOpen;
@@ -955,6 +968,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     //    return SGAddressing.charToSymbol(c);
     //}
 
+    // Seven, or nine with the chevron upgrade, whatever the type of gate
     public int getNumChevrons() {
         return hasChevronUpgrade ? 9 : 7;
     }
@@ -964,7 +978,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     public float angleBetweenChevrons() {
-        if (getGateType() == GateType.MILKY_WAY || getGateType() == GateType.PEGASUS) {
+        if (getGateType() == GateType.UNIVERSE) {
+            // Evenly round the ring, one over each section of its symbols, as on the show
+            return (float) universeGroupAngle;
+        } else if (getGateType() == GateType.MILKY_WAY || getGateType() == GateType.PEGASUS) {
             // Evenly round the ring, where its model has places for them, as on the show; without
             // the chevron upgrade, the bottom two are left out
             return 360f / 9;
@@ -1859,7 +1876,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (Math.abs(ringAngle) >= 720) {
                 ringAngle %= 360;
             }
-            double targetAngle = ringGlyphForSymbol(i) * ringGlyphAngle;
+            // A Universe gate's symbols come in fours between its chevrons
+            double targetAngle = getGateType() == GateType.UNIVERSE
+                    ? universeSymbolOffset(i) : ringGlyphForSymbol(i) * ringGlyphAngle;
             double diff = targetAngle - ringAngle;
             if (Math.abs(diff) < 180) {
                 targetAngle -= Math.copySign(360.0, ringAngle);
@@ -3195,6 +3214,16 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (!getWorld().isRemote && this.gateType != GateType.PEGASUS.id) {
             this.gateType = GateType.PEGASUS.id; //Set type to pegasus style
             this.ringRotationSpeed = 6.0D; //Set rotation speed to 6 as per configurator default
+            stack.shrink(1);
+            markChanged();
+        }
+
+        return EnumActionResult.SUCCESS;
+    }
+
+    public EnumActionResult applyUniverseUpgrade(ItemStack stack, EntityPlayer player) {
+        if (!getWorld().isRemote && this.gateType != GateType.UNIVERSE.id) {
+            this.gateType = GateType.UNIVERSE.id;
             stack.shrink(1);
             markChanged();
         }
