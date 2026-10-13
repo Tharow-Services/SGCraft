@@ -7,12 +7,16 @@
 package gcewing.sg;
 
 import gcewing.sg.block.DHDBlock;
+import gcewing.sg.block.GateSpawnerBlock;
 import gcewing.sg.block.NaquadahBlock;
 import gcewing.sg.block.NaquadahOreBlock;
 import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.block.SGPowerBlock;
 import gcewing.sg.block.SGRingBlock;
+import gcewing.sg.block.SupergateBaseBlock;
+import gcewing.sg.block.SupergateRingBlock;
 import gcewing.sg.client.gui.SGGui;
+import gcewing.sg.command.SGSpawnCommand;
 import gcewing.sg.container.DHDFuelContainer;
 import gcewing.sg.container.PowerContainer;
 import gcewing.sg.container.SGBaseContainer;
@@ -53,18 +57,22 @@ import gcewing.sg.interfaces.SoundSource;
 import gcewing.sg.item.SGChevronUpgradeItem;
 import gcewing.sg.item.SGIrisUpgradeItem;
 import gcewing.sg.item.SGPegasusUpgradeItem;
+import gcewing.sg.item.SGUniverseUpgradeItem;
 import gcewing.sg.item.SGRingItem;
 import gcewing.sg.network.GuiNetworkHandler;
 import gcewing.sg.network.SGChannel;
 import gcewing.sg.generator.NaquadahOreWorldGen;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.GateType;
+import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.GeneralAddressRegistry;
 import gcewing.sg.util.Info;
 import gcewing.sg.util.PermissionsUtil;
 import gcewing.sg.util.SGChunkData;
 import gcewing.sg.util.Sound;
 import net.minecraft.block.Block;
+import net.minecraft.util.NonNullList;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -77,6 +85,8 @@ import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.Ingredient;
+import net.minecraft.util.EnumActionResult;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
@@ -86,6 +96,7 @@ import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.client.model.obj.OBJLoader;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.terraingen.InitMapGenEvent;
 import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
@@ -94,6 +105,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -110,6 +122,8 @@ import static net.minecraftforge.fml.common.registry.VillagerRegistry.VillagerPr
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 @Mod(modid = Info.modID, name = Info.modName, version = Info.versionNumber,
     acceptableRemoteVersions = Info.versionBounds, dependencies = "after:opencomputers;after:ic2;after:computercraft;after:malisiscore")
@@ -124,12 +138,20 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static BaseTEChunkManager chunkManager;
 
     public static SGBaseBlock sgBaseBlock;
+    // Bases that build a gate of their own type, for building one by hand in creative mode
+    public static SGBaseBlock pegasusBaseBlock, universeBaseBlock;
     public static SGRingBlock sgRingBlock;
+    public static SupergateBaseBlock supergateBaseBlock;
+    public static SupergateRingBlock supergateRingBlock;
+    // The order the gates' blocks are shown in the creative tab: each type's base, then the block
+    // that builds that gate finished (see GateSpawnerBlock), side by side, whatever their item ids
+    // (which a world keeps from when they were added)
+    public static final List<Block> creativeGateOrder = new ArrayList<>();
     public static DHDBlock sgControllerBlock;
     public static Block naquadahBlock, naquadahOre;
     public static SGPowerBlock sgPowerUnit;
 
-    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade;
+    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
     public static Block ic2PowerUnit;
@@ -203,6 +225,29 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             @Override public ItemStack createIcon() {
                 return new ItemStack(Item.getItemFromBlock(sgBaseBlock));
             }
+
+            // The gates' blocks together, in creativeGateOrder, where the first of them would be
+            @Override public void displayAllRelevantItems(NonNullList<ItemStack> items) {
+                super.displayAllRelevantItems(items);
+                List<ItemStack> gates = new ArrayList<>();
+                for (Block block : creativeGateOrder) {
+                    for (ItemStack stack : items) {
+                        if (Block.getBlockFromItem(stack.getItem()) == block) {
+                            gates.add(stack);
+                        }
+                    }
+                }
+                int at = -1;
+                for (int i = 0; i < items.size(); i++) {
+                    if (gates.contains(items.get(i))) {
+                        at = at < 0 ? i : at;
+                        items.remove(i--);
+                    }
+                }
+                if (at >= 0) {
+                    items.addAll(at, gates);
+                }
+            }
         };
         FMLCommonHandler.instance().bus().register(this);
         if (FMLCommonHandler.instance().getSide().isClient()) {
@@ -241,6 +286,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             System.out.println("SGCraft - SpongeAPI not found, permissions system NOT initialized!");
         }
         super.postInit(e);
+    }
+
+    @Mod.EventHandler
+    public void serverStarting(FMLServerStartingEvent e) {
+        e.registerServerCommand(new SGSpawnCommand());
     }
 
     @Override
@@ -292,7 +342,32 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerBlocks() {
         sgRingBlock = newBlock("stargateRing", SGRingBlock.class, SGRingItem.class);
+        // Each type's base, then (if they are on) the creative-only block that builds that gate
+        // finished, for testing: stargates, then supergates
+        boolean spawners = config.getBoolean("options", "gateSpawnerBlocks", true);
         sgBaseBlock = newBlock("stargateBase", SGBaseBlock.class);
+        creativeGateOrder.add(sgBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_stargate"));
+        }
+        pegasusBaseBlock = addBlock(new SGBaseBlock(GateType.PEGASUS, "stargatebase_front_pegasus"), "stargateBasePegasus");
+        creativeGateOrder.add(pegasusBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate"));
+        }
+        universeBaseBlock = addBlock(new SGBaseBlock(GateType.UNIVERSE, "stargatebase_front_universe"), "stargateBaseUniverse");
+        creativeGateOrder.add(universeBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate"));
+        }
+        supergateRingBlock = newBlock("supergateRing", SupergateRingBlock.class, SGRingItem.class);
+        supergateBaseBlock = newBlock("supergateBase", SupergateBaseBlock.class);
+        creativeGateOrder.add(supergateBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate"));
+        }
         sgControllerBlock = newBlock("stargateController", DHDBlock.class);
         naquadahBlock = newBlock("naquadahBlock", NaquadahBlock.class);
         naquadahOre = newBlock("naquadahOre", NaquadahOreBlock.class);
@@ -324,6 +399,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         tollan_phase_shift_device = newItem("tollan_phase_shift_device");
 
         pegasus_upgrade = addItem(new SGPegasusUpgradeItem(), "pegasus_upgrade");
+        universe_upgrade = addItem(new SGUniverseUpgradeItem(), "universe_upgrade");
 
         if (isModLoaded("malisiscore")) {
             new GuiNetworkHandler(Info.modID+"-GUI");
@@ -429,6 +505,21 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             newRecipe("sgbaseblock", sgBaseBlock, 1, "CrC", "NeN", "ScS", 'S', smoothSandstone, 'N', "ingotNaquadahAlloy", 'C', chiselledSandstone, 'r', Items.REDSTONE, 'e', Items.ENDER_EYE, 'c', sgCoreCrystal);
         }
 
+        ItemStack sgRingBlockStack = new ItemStack(sgRingBlock, 1, 0);
+        ItemStack supergateRingStack = new ItemStack(supergateRingBlock, 1, 0);
+
+        if (config.getBoolean("recipes", "supergateRingBlock", true)) {
+            newRecipe("supergateringblock", supergateRingBlock, 4, "RNR", "NBN", "RNR", 'R', sgRingBlockStack, 'N', "ingotNaquadahAlloy", 'B', naquadahBlock);
+        }
+
+        if (config.getBoolean("recipes", "supergateChevronBlock", true)) {
+            newRecipe("supergatechevronblock", new ItemStack(supergateRingBlock, 1, 1), "S", "C", 'S', supergateRingStack, 'C', sgChevronBlock);
+        }
+
+        if (config.getBoolean("recipes", "supergateBaseBlock", true)) {
+            newRecipe("supergatebaseblock", supergateBaseBlock, 1, "SeS", "NbN", "SnS", 'S', supergateRingStack, 'N', "ingotNaquadahAlloy", 'e', Items.NETHER_STAR, 'b', sgBaseBlock, 'n', naquadahBlock);
+        }
+
         if (config.getBoolean("recipes", "sgControllerBlock", true)) {
             newRecipe("sgcontrollerblock", sgControllerBlock, 1, "bbb", "OpO", "OcO", 'b', Blocks.STONE_BUTTON, 'O', Blocks.OBSIDIAN, 'p', Items.ENDER_PEARL, 'c', sgControllerCrystal);
         }
@@ -469,6 +560,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                 newRecipe("pegasus_upgrade_0", pegasus_upgrade, 1, "glg", "rnr", "glg", 'g', Items.GLOWSTONE_DUST, 'l', Blocks.LAPIS_BLOCK, 'r', Items.REDSTONE, 'n', naquadahBlock);
                 newRecipe("pegasus_upgrade_1", pegasus_upgrade, 1, "grg", "lnl", "grg", 'g', Items.GLOWSTONE_DUST, 'l', Blocks.LAPIS_BLOCK, 'r', Items.REDSTONE, 'n', naquadahBlock);
             }
+        }
+
+        // The Universe gate has all nine chevrons, so its upgrade takes two chevron upgrades
+        if (config.getBoolean("recipes", "universe_upgrade", true)) {
+            newRecipe("universe_upgrade", universe_upgrade, 1, "ede", "cnc", "ede", 'e', Items.ENDER_PEARL, 'd', Items.DIAMOND, 'c', sgChevronUpgrade, 'n', sgCoreCrystal);
         }
 
         if (isModLoaded("malisiscore")) {
@@ -583,6 +679,40 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                     te.disconnect();
                 }
             }
+        }
+    }
+
+    // A supergate's ring is drawn far wider than its blocks, so most clicks on it would miss them,
+    // landing on whatever is behind or on nothing. An empty handed click on the drawn ring of any
+    // gate in front of what it would otherwise hit acts on the gate.
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock e) {
+        EntityPlayer player = e.getEntityPlayer();
+        if (e.getHand() != EnumHand.MAIN_HAND || !player.getHeldItemMainhand().isEmpty()) {
+            return;
+        }
+        double[] ringDistance = new double[1];
+        SGBaseTE gate = GateUtil.gateLookedAt(e.getWorld(), player, GateUtil.reach(player), ringDistance);
+        if (gate == null || e.getHitVec() == null || ringDistance[0] >= player.getPositionEyes(1).distanceTo(e.getHitVec())) {
+            return;
+        }
+        e.setCanceled(true);
+        e.setCancellationResult(EnumActionResult.SUCCESS);
+        if (!e.getWorld().isRemote) {
+            GateUtil.activateGate(gate, player);
+        }
+    }
+
+    // Client only: an empty handed click on nothing, which the server doesn't hear of
+    @SubscribeEvent
+    public void onRightClickEmpty(PlayerInteractEvent.RightClickEmpty e) {
+        EntityPlayer player = e.getEntityPlayer();
+        if (e.getHand() != EnumHand.MAIN_HAND) {
+            return;
+        }
+        SGBaseTE gate = GateUtil.gateLookedAt(e.getWorld(), player, GateUtil.reach(player));
+        if (gate != null) {
+            GuiNetworkHandler.sendGateActivationToServer(gate);
         }
     }
 

@@ -52,7 +52,7 @@ public class PddItem extends Item {
                 player.inventoryContainer.detectAndSendChanges();
             }
 
-            TileEntity localGateTE = GateUtil.locateLocalGate(worldIn, new BlockPos(player.posX, player.posY, player.posZ), SGCraft.toolSearchRange, false);
+            TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, SGCraft.toolSearchRange);
 
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;

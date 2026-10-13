@@ -38,7 +38,7 @@ public class GdoItem extends Item {
     @Override
     public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer player, EnumHand handIn) {
         if (!worldIn.isRemote) {
-            TileEntity localGateTE = GateUtil.locateLocalGate(worldIn, new BlockPos(player.posX, player.posY, player.posZ), 6, false);
+            TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, 6);
 
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;

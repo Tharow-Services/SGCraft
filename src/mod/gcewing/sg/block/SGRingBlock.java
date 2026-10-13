@@ -12,6 +12,7 @@ import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.block.SGBlock;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.tileentity.SGRingTE;
+import gcewing.sg.util.GateShape;
 import net.minecraft.block.*;
 import net.minecraft.block.material.*;
 import net.minecraft.block.properties.*;
@@ -24,6 +25,10 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.world.*;
 import gcewing.sg.BaseMod.ModelSpec;
+import net.minecraft.tileentity.TileEntity;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class SGRingBlock extends SGBlock<SGRingTE> {
 
@@ -139,6 +144,11 @@ public class SGRingBlock extends SGBlock<SGRingTE> {
         return te != null && te.isMerged;
     }
     
+    // Shape of the largest gate this block can be part of, used to search for its base block
+    public GateShape getShape() {
+        return GateShape.STANDARD;
+    }
+
     public void mergeWith(World world, BlockPos pos, BlockPos basePos) {
         SGRingTE te = getTileEntity(world, pos);
         te.isMerged = true;
@@ -161,7 +171,8 @@ public class SGRingBlock extends SGBlock<SGRingTE> {
         if (SGBaseBlock.debugMerge)
             System.out.printf("SGRingBlock.onBlockAdded: at %s\n", pos);
         SGRingTE te = getTileEntity(world, pos);
-        updateBaseBlocks(world, pos, te);
+        if (!suppressBaseSearch)
+            updateBaseBlocks(world, pos, te);
     }
     
     @Override
@@ -172,28 +183,41 @@ public class SGRingBlock extends SGBlock<SGRingTE> {
             updateBaseBlocks(world, pos, te);
     }
     
+    // Set while a whole gate is being placed at once (see GateBuilder), which merges it itself,
+    // so that each ring block placed doesn't search the area around it for a base
+    public static boolean suppressBaseSearch = false;
+
     void updateBaseBlocks(World world, BlockPos pos, SGRingTE te) {
         if (SGBaseBlock.debugMerge)
             System.out.printf("SGRingBlock.updateBaseBlocks: merged = %s, base = %s\n",
                 te.isMerged, te.basePos);
-        for (int i = -5; i <= 5; i++)
-            for (int j = -4; j <= 0; j++)
-                for (int k = -5; k <= 5; k++) {
-                    BlockPos bp = pos.add(i, j, k);
-                    Block block = world.getBlockState(bp).getBlock();
-                    if (block instanceof SGBaseBlock) {
-                         if (SGBaseBlock.debugMerge)
-                            System.out.printf("SGRingBlock.updateBaseBlocks: found base at %s\n", bp);
-                        SGBaseBlock base = (SGBaseBlock)block;
-                        if (!te.isMerged) {
-                            base.checkForVerticalMerge(world, bp);
-                            if (!te.isMerged) {
-                                base.checkForHorizontalMerge(world, bp);
-                            }
-                        }
-                        else if (te.basePos.equals(bp))
-                            base.unmerge(world, bp);
+        // Look for bases among the loaded gates rather than block by block, which would take
+        // millions of lookups around the biggest supergates. A base must be loaded to merge
+        // anyway. Collect them first, as merging can change the world's tile entity list.
+        GateShape shape = getShape();
+        int r = shape.searchRadius();
+        List<BlockPos> bases = new ArrayList<>();
+        for (TileEntity t : world.loadedTileEntityList) {
+            if (t instanceof SGBaseTE && !t.isInvalid()) {
+                BlockPos bp = t.getPos();
+                int i = bp.getX() - pos.getX(), j = bp.getY() - pos.getY(), k = bp.getZ() - pos.getZ();
+                if (Math.abs(i) <= r && j >= -shape.searchHeight() && j <= 0 && Math.abs(k) <= r) {
+                    bases.add(bp);
                 }
+            }
+        }
+        for (BlockPos bp : bases) {
+            Block block = world.getBlockState(bp).getBlock();
+            if (block instanceof SGBaseBlock) {
+                if (SGBaseBlock.debugMerge)
+                    System.out.printf("SGRingBlock.updateBaseBlocks: found base at %s\n", bp);
+                SGBaseBlock base = (SGBaseBlock)block;
+                if (!te.isMerged) {
+                    base.checkForMerge(world, bp);
+                }
+                else if (te.basePos.equals(bp))
+                    base.unmerge(world, bp);
+            }
         }
     }
 
