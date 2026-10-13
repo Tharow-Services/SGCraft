@@ -5,7 +5,7 @@
 //
 // It writes tileentity/milkyway/{ring,detail,symbols,glyphs,chevron,light,slats}.png into
 // src/resources/assets/sgcraft/textures: repeating metals for the gate's model (see
-// SGBaseTERenderer.renderMilkyWayRings), and the glass of its chevrons' lights.
+// MilkyWayGateRenderer.renderRings), and the glass of its chevrons' lights.
 
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -32,7 +32,7 @@ public class MilkyWayTextures {
     }
 
     // The glass of a chevron's lights, lit, laid over the whole chevron (see
-    // SGBaseTERenderer.lightTriangles), which spans the middle of it: the triangle of the
+    // MilkyWayGateRenderer.lightTriangles), which spans the middle of it: the triangle of the
     // chevron's light, as on the show, glowing pale yellow-orange at its heart, deepening to
     // orange and a red-orange at its edges, a little mottled
     static void light() throws Exception {

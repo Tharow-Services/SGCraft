@@ -1,6 +1,6 @@
 // Draws the glow round the Universe gate's lit symbols: its symbol sheet (tileentity/universe/
 // glyphs.png, from tools/universe/glyphsheet.js) blurred, each cell on its own, so that drawn over a
-// lit symbol it spreads light round it (see SGBaseTERenderer.renderUniverseSymbols). Run from the
+// lit symbol it spreads light round it (see UniverseGateRenderer.renderUniverseSymbols). Run from the
 // project root with a JDK:
 //
 //   javac -d build/tools tools/UniverseGlyphGlow.java && java -cp build/tools UniverseGlyphGlow

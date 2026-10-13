@@ -7,7 +7,7 @@
 //   tileentity/universe/stargate.png   ring tiles and the 36 symbol strip (same layout as the other gates)
 //   tileentity/universe/iris.png
 //   tileentity/universe/{ring,frame,panel,detail,chevron}.png   repeating metals for the gate's model (see
-//                                                   SGBaseTERenderer.renderUniverseRing)
+//                                                   UniverseGateRenderer.renderUniverseRing)
 // Its symbols, tileentity/universe/glyphs.png, are measured from the Destiny gate model by
 // tools/universe/glyphsheet.js.
 //   blocks/gatespawner_universe_{stargate,supergate}.png   (the Pegasus ones, recoloured)
