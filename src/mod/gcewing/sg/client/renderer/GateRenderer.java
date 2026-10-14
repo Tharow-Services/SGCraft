@@ -48,6 +48,13 @@ abstract class GateRenderer {
         return te.chevronIsEngaged(j);
     }
 
+    // Whether the gate is being dialled a symbol at a time with its chevrons locking as each is
+    // entered (see SGBaseTE.chevronsLockOnDial): it stays idle until the whole address is in, but
+    // has chevrons locked, so lights as a gate dialling out does
+    static boolean lockingOnDial(SGBaseTE te) {
+        return te.state == SGState.Idle && te.numEngagedChevrons > 0;
+    }
+
     void renderChevrons(SGBaseTE te, GateShape shape, float partialTicks) {
         int numChevrons = te.getNumChevrons();
         int i0 = numChevrons > 7 ? 0 : 1;
