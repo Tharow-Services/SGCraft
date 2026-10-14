@@ -72,6 +72,19 @@ class PegasusGateRenderer extends GateRenderer {
         return PegasusScreens.chevronEngaged(te, i, j, a, partialTicks);
     }
 
+    // Its ring is thin at the bore, and the screens stand out in front of it, so blades swung
+    // open into it would show. The iris sits just behind the bore's front edge instead, and is
+    // cut off at the bore, so its blades go into the ring as they open.
+    @Override
+    double irisDepth(GateShape shape) {
+        return pegasusModel().boreFront * pegasusDepthScale(shape) - SGBaseTERenderer.irisBladeTilt;
+    }
+
+    @Override
+    double irisClipRadius(GateShape shape) {
+        return pegasusModel().boreRadius * pegasusScale(shape);
+    }
+
     // The gate's rings, fixed as on the show: the ring itself and the inner ring's screens, with
     // the glyphs on them lit as it dials (see PegasusScreens.lit)
     @Override

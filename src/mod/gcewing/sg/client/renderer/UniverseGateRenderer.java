@@ -65,6 +65,20 @@ class UniverseGateRenderer extends GateRenderer {
         glRotatef((float) te.interpolatedRingAngle(partialTicks), 0, 0, 1);
     }
 
+    // Its ring's face is only just in front of the blades near the bore, and there are gaps in
+    // the lattice round its rim, so blades swung open into it would show. The iris sits just
+    // behind the bore's front edge instead, and is cut off at the bore, so its blades go into the
+    // ring as they open.
+    @Override
+    double irisDepth(GateShape shape) {
+        return UniverseGateModel.PROFILE[UniverseGateModel.FACE_FROM][1] * universeDepthScale(shape) - SGBaseTERenderer.irisBladeTilt;
+    }
+
+    @Override
+    double irisClipRadius(GateShape shape) {
+        return UniverseGateModel.INNER_RADIUS * universeScale(shape);
+    }
+
     // A Universe gate lights all its chevrons together as soon as it starts dialling
     @Override
     boolean chevronEngaged(SGBaseTE te, int i, int j, float a, float partialTicks) {

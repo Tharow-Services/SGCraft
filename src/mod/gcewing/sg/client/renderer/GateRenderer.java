@@ -152,6 +152,19 @@ abstract class GateRenderer {
         return k;
     }
 
+    // How far forward of the gate's middle the iris's blades are drawn (see
+    // SGBaseTERenderer.renderIris). Most rings are deep enough to hide the blades wherever they
+    // swing, at the depth where the iris entity blocks things.
+    double irisDepth(GateShape shape) {
+        return SGBaseTE.irisZPosition;
+    }
+
+    // How far out from the centre the iris's blades are drawn; beyond, they are inside the ring.
+    // Most rings hide the blades themselves, so they are drawn in full.
+    double irisClipRadius(GateShape shape) {
+        return Double.POSITIVE_INFINITY;
+    }
+
     // Gates of every size share their gate type's textures
     static String textureFolder(SGBaseTE te) {
         return te.getGateType().assetName;
