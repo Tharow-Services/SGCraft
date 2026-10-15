@@ -14,9 +14,9 @@ import net.malisis.core.client.gui.component.decoration.UILabel;
 import net.malisis.core.client.gui.component.decoration.UISeparator;
 import net.malisis.core.client.gui.component.interaction.UIButton;
 import net.malisis.core.client.gui.component.interaction.UICheckBox;
+import net.malisis.core.client.gui.component.interaction.UIRadioButton;
 import net.malisis.core.client.gui.component.interaction.UITextField;
 import net.malisis.core.client.gui.component.interaction.button.builder.UIButtonBuilder;
-import net.malisis.core.client.gui.event.ComponentEvent;
 import net.malisis.core.client.gui.event.component.StateChangeEvent;
 import net.malisis.core.renderer.font.FontOptions;
 import net.malisis.core.util.FontColors;
@@ -36,9 +36,10 @@ public class ConfiguratorScreen extends BasicScreen {
     private boolean isAdmin;
     private BasicForm form, numericOptionsArea, checkboxOptionsArea;
     private UILabel gateAddressLabel;
-    private UICheckBox oneWayTravelCheckbox, irisUpgradeCheckbox, chevronUpgradeCheckbox, gateTypeCheckbox, universeGateTypeCheckbox, reverseWormholeKillsCheckbox;
+    private UICheckBox oneWayTravelCheckbox, irisUpgradeCheckbox, chevronUpgradeCheckbox, reverseWormholeKillsCheckbox;
+    private UIRadioButton milkyWayGateTypeRadio, pegasusGateTypeRadio, universeGateTypeRadio;
     private UICheckBox closeFromEitherEndCheckbox, preserveInventoryCheckbox, noPowerRequiredCheckbox, chevronsLockOnDialCheckbox, returnIrisToPreviousStateCheckbox;
-    private UICheckBox transientDamageCheckbox, transparencyCheckbox, horizontalFaceUpCheckbox, horizontalFaceDownCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox;
+    private UICheckBox transientDamageCheckbox, transparencyCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox;
     private UITextField secondsToStayOpen, gateRotationSpeed, energyBufferSize, energyPerNaquadah, gateOpeningsPerNaquadah, distanceMultiplier, dimensionalMultiplier;
     private UIButton gateAddressAccessListButton, playerAccessListButton;
     private BlockPos location;
@@ -280,10 +281,30 @@ public class ConfiguratorScreen extends BasicScreen {
 
         // ****************************************************************************************************************************
 
+        // A gate is exactly one type, so the types are radio buttons, kept apart from the true/false options on the right
+        final UILabel gateStyleLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.gateStyle"));
+        gateStyleLabel.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(true).scale(1.1F).build());
+        gateStyleLabel.setPosition(0, this.dimensionalMultiplier.getY() + 35, Anchor.CENTER | Anchor.TOP);
+
+        final UISeparator gateStyleSeparator = new UISeparator(this);
+        gateStyleSeparator.setSize(this.numericOptionsArea.getWidth() - 15, 1);
+        gateStyleSeparator.setPosition(0, gateStyleLabel.getY() + 10, Anchor.TOP | Anchor.CENTER);
+
+        final UILabel gateTypeLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.gateType") + ":");
+        gateTypeLabel.setPosition(10, gateStyleLabel.getY() + 20, Anchor.LEFT | Anchor.TOP);
+
+        final String gateTypeGroup = radioGroup("gateType");
+        final int gateTypeY = gateTypeLabel.getY() + 14;
+        this.milkyWayGateTypeRadio = radio(gateTypeGroup, "milkyWayGateType", 20, gateTypeY);
+        this.pegasusGateTypeRadio = radio(gateTypeGroup, "pegasusGateType", 95, gateTypeY);
+        this.universeGateTypeRadio = radio(gateTypeGroup, "universeGateType", 165, gateTypeY);
+
+        // ****************************************************************************************************************************
+
         this.gateAddressAccessListButton = new UIButtonBuilder(this)
                 .width(160)
                 .anchor(Anchor.TOP | Anchor.CENTER)
-                .position(0, this.dimensionalMultiplier.getY() + 60)
+                .position(0, gateTypeY + 45)
                 .enabled(gateAccessPerm)
                 .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.gateAddressAccessList"))
                 .onClick(() -> {
@@ -316,6 +337,7 @@ public class ConfiguratorScreen extends BasicScreen {
 
         this.numericOptionsArea.add(numericValuesLabel, valuesSeparator, secondsToStayOpenLabel, gateRotationSpeedLabel, energyBufferMaxSizeLabel, energyPerItemLabel, energyPerOpeningLabel, distanceFactorMultiplierLabel, interDimensionalMultiplierLabel);
         this.numericOptionsArea.add(this.secondsToStayOpen, this.gateRotationSpeed, this.energyBufferSize, this.energyPerNaquadah, this.gateOpeningsPerNaquadah, this.distanceMultiplier, this.dimensionalMultiplier);
+        this.numericOptionsArea.add(gateStyleLabel, gateStyleSeparator, gateTypeLabel, this.milkyWayGateTypeRadio, this.pegasusGateTypeRadio, this.universeGateTypeRadio);
         this.numericOptionsArea.add(this.gateAddressAccessListButton, this.playerAccessListButton, accessControlSystemsLabel, accSeparator);
 
         // ****************************************************************************************************************************
@@ -360,22 +382,9 @@ public class ConfiguratorScreen extends BasicScreen {
         this.chevronUpgradeCheckbox.setName("checkbox.chevronupgrade");
         this.chevronUpgradeCheckbox.register(this);
 
-        this.gateTypeCheckbox = new UICheckBox(this);
-        this.gateTypeCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.pegasusGateType"));
-        this.gateTypeCheckbox.setPosition(checkboxIndentPadding, this.chevronUpgradeCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
-        this.gateTypeCheckbox.setName("checkbox.gateType");
-        this.gateTypeCheckbox.register(this);
-
-        // Under it: a gate is one type or the other (or neither, a Milky Way gate)
-        this.universeGateTypeCheckbox = new UICheckBox(this);
-        this.universeGateTypeCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.universeGateType"));
-        this.universeGateTypeCheckbox.setPosition(checkboxIndentPadding, this.gateTypeCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
-        this.universeGateTypeCheckbox.setName("checkbox.universeGateType");
-        this.universeGateTypeCheckbox.register(this);
-
         this.reverseWormholeKillsCheckbox = new UICheckBox(this);
         this.reverseWormholeKillsCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.reverseWormholeKills"));
-        this.reverseWormholeKillsCheckbox.setPosition(checkboxIndentPadding, this.universeGateTypeCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
+        this.reverseWormholeKillsCheckbox.setPosition(checkboxIndentPadding, this.chevronUpgradeCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
         this.reverseWormholeKillsCheckbox.setName("checkbox.reversekills");
         this.reverseWormholeKillsCheckbox.register(this);
 
@@ -474,43 +483,10 @@ public class ConfiguratorScreen extends BasicScreen {
         this.isGeneratedCheckbox.setName("checkbox.isgenerated");
         this.isGeneratedCheckbox.register(this);
 
-        this.horizontalFaceUpCheckbox = new UICheckBox(this);
-        this.horizontalFaceUpCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.renderFaceUp"));
-        this.horizontalFaceUpCheckbox.setPosition(70, -15, Anchor.LEFT | Anchor.BOTTOM);
-        this.horizontalFaceUpCheckbox.setEnabled(true);
-        this.horizontalFaceUpCheckbox.setChecked(localGate.gateOrientation == 2);
-        this.horizontalFaceUpCheckbox.setName("checkbox.horizontalup");
-        this.horizontalFaceUpCheckbox.register(this);
-
-        this.horizontalFaceDownCheckbox = new UICheckBox(this);
-        this.horizontalFaceDownCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.renderFaceDown"));
-        this.horizontalFaceDownCheckbox.setPosition(70, -2, Anchor.LEFT | Anchor.BOTTOM);
-        this.horizontalFaceDownCheckbox.setEnabled(true);
-        this.horizontalFaceDownCheckbox.setChecked(localGate.gateOrientation == 3);
-        this.horizontalFaceDownCheckbox.setName("checkbox.horizontaldown");
-        this.horizontalFaceDownCheckbox.register(this);
-
-        final UILabel horizontalGateLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.horizontalGate"));
-        horizontalGateLabel.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(true).scale(1.1F).build());
-        horizontalGateLabel.setPosition(0, this.horizontalFaceUpCheckbox.getY() - 16, Anchor.CENTER | Anchor.BOTTOM);
-
-        final UISeparator checkbox2Separator = new UISeparator(this);
-        checkbox2Separator.setSize(this.checkboxOptionsArea.getWidth() - 15, 1);
-        checkbox2Separator.setPosition(0, horizontalGateLabel.getY() - 12, Anchor.CENTER | Anchor.BOTTOM);
-
-        final UISeparator checkbox3Separator = new UISeparator(this);
-        checkbox3Separator.setSize(this.checkboxOptionsArea.getWidth() - 15, 1);
-        checkbox3Separator.setPosition(0, horizontalGateLabel.getY() + 2, Anchor.CENTER | Anchor.BOTTOM);
-
-        this.checkboxOptionsArea.add(booleanValuesLabel, checkboxSeparator, this.oneWayTravelCheckbox, this.irisUpgradeCheckbox, this.chevronUpgradeCheckbox, this.gateTypeCheckbox,
-                this.universeGateTypeCheckbox);
+        this.checkboxOptionsArea.add(booleanValuesLabel, checkboxSeparator, this.oneWayTravelCheckbox, this.irisUpgradeCheckbox, this.chevronUpgradeCheckbox);
         this.checkboxOptionsArea.add(this.reverseWormholeKillsCheckbox, this.closeFromEitherEndCheckbox, this.preserveInventoryCheckbox, this.noPowerRequiredCheckbox);
         this.checkboxOptionsArea.add(this.chevronsLockOnDialCheckbox, this.returnIrisToPreviousStateCheckbox, this.transientDamageCheckbox, this.transparencyCheckbox, this.useDHDFuelSourceCheckbox);
         this.checkboxOptionsArea.add(this.allowRedstoneOutputCheckbox, this.allowRedstoneInputCheckbox, this.playerCanDestroyPlayerGateCheckbox, this.playerCanDestroyGeneratedGateCheckbox, this.displayGateAddressCheckbox, this.isGeneratedCheckbox);
-
-        if (localGate.gateOrientation == 2 || localGate.gateOrientation == 3) {
-            this.checkboxOptionsArea.add(checkbox2Separator, checkbox3Separator, horizontalGateLabel, this.horizontalFaceUpCheckbox, this.horizontalFaceDownCheckbox);
-        }
 
         // Load Defaults button
         final UIButton buttonDefaults = new UIButtonBuilder(this)
@@ -565,20 +541,9 @@ public class ConfiguratorScreen extends BasicScreen {
                 .position(-(buttonClose.getX() + buttonClose.getWidth() + 5), 0)
                 .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.save"))
                 .onClick(() -> {
-                    int gateType = 1; // Default
-                    int orientation = 1;
-                    if (this.gateTypeCheckbox.isChecked()) {
-                        gateType = GateType.PEGASUS.id;
-                    } else if (this.universeGateTypeCheckbox.isChecked()) {
-                        gateType = GateType.UNIVERSE.id;
-                    }
-                    if (localGate.gateOrientation == 2 || localGate.gateOrientation == 3) {
-                        if (this.horizontalFaceUpCheckbox.isChecked()) {
-                            orientation = 2;
-                        } else {
-                            orientation = 3;
-                        }
-                    }
+                    int gateType = this.selectedGateType().id;
+                    // The configurator doesn't turn gates, so a lying gate keeps the way it faces
+                    int orientation = localGate.gateOrientation;
                     ConfiguratorNetworkHandler.sendConfiguratorInputToServer(localGate, Integer.valueOf(this.secondsToStayOpen.getText()), Double.valueOf(this.gateRotationSpeed.getText()), Double.valueOf(this.energyBufferSize.getText()),
                             Double.valueOf(this.energyPerNaquadah.getText()), Integer.valueOf(this.gateOpeningsPerNaquadah.getText()), Double.valueOf(this.distanceMultiplier.getText()), Double.valueOf(this.dimensionalMultiplier.getText()),
                             this.oneWayTravelCheckbox.isChecked(), this.irisUpgradeCheckbox.isChecked(), this.chevronUpgradeCheckbox.isChecked(), gateType, this.reverseWormholeKillsCheckbox.isChecked(), this.closeFromEitherEndCheckbox.isChecked(),
@@ -604,36 +569,39 @@ public class ConfiguratorScreen extends BasicScreen {
         this.refresh();
     }
 
+    // Fired before the clicked button becomes the selected one, and only by a click, not by refresh()
     @Subscribe
-    public void onValueChange(ComponentEvent.ValueChange event) {
-        if (event.getComponent().getName() != null) {
-            switch (event.getComponent().getName()) {
-                case "checkbox.horizontalup":
-                    // Face up or face down, one or the other
-                    this.horizontalFaceDownCheckbox.setChecked(!this.horizontalFaceUpCheckbox.isChecked());
-                    break;
-                case "checkbox.horizontaldown":
-                    this.horizontalFaceUpCheckbox.setChecked(!this.horizontalFaceDownCheckbox.isChecked());
-                    break;
-                case "checkbox.gateType":
-                    if (this.gateTypeCheckbox.isChecked()) {
-                        this.universeGateTypeCheckbox.setChecked(false);
-                    }
-                    if (!this.gateTypeCheckbox.isChecked()) {
-                        this.gateRotationSpeed.setText("6.0");
-                        break;
-                    } else {
-                        this.gateRotationSpeed.setText("3.0");
-                        break;
-                    }
-                case "checkbox.universeGateType":
-                    if (this.universeGateTypeCheckbox.isChecked() && this.gateTypeCheckbox.isChecked()) {
-                        this.gateTypeCheckbox.setChecked(false);
-                        this.gateRotationSpeed.setText("6.0");
-                    }
-                    break;
-            }
+    public void onGateTypeSelect(UIRadioButton.SelectEvent event) {
+        final UIRadioButton clicked = event.getComponent();
+        if (clicked == this.pegasusGateTypeRadio) {
+            this.gateRotationSpeed.setText("3.0");
+        } else if (this.pegasusGateTypeRadio.isSelected()) {
+            // Leaving Pegasus: back to the default speed of the other gates
+            this.gateRotationSpeed.setText("6.0");
         }
+    }
+
+    // MalisisCore groups radio buttons by name in a static map that is never cleared, so each screen
+    // needs its own group, or a button left selected on an earlier screen takes part in this one
+    private String radioGroup(String name) {
+        return "radio." + name + "." + System.identityHashCode(this);
+    }
+
+    private UIRadioButton radio(String group, String langKey, int x, int y) {
+        final UIRadioButton radio = new UIRadioButton(this, group, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label." + langKey));
+        radio.setPosition(x, y, Anchor.LEFT | Anchor.TOP);
+        radio.register(this);
+        return radio;
+    }
+
+    private GateType selectedGateType() {
+        if (this.pegasusGateTypeRadio.isSelected()) {
+            return GateType.PEGASUS;
+        }
+        if (this.universeGateTypeRadio.isSelected()) {
+            return GateType.UNIVERSE;
+        }
+        return GateType.MILKY_WAY;
     }
 
     @Subscribe
@@ -705,14 +673,20 @@ public class ConfiguratorScreen extends BasicScreen {
             this.chevronUpgradeCheckbox.setChecked(localGate.hasChevronUpgrade);
             this.chevronUpgradeCheckbox.setEnabled(this.chevronUpgradePerm);
 
-            if (localGate.gateType != GateType.PEGASUS.id) {
-                this.gateTypeCheckbox.setChecked(false);
-            } else {
-                this.gateTypeCheckbox.setChecked(true);
+            switch (GateType.fromId(localGate.gateType)) {
+                case PEGASUS:
+                    this.pegasusGateTypeRadio.setSelected();
+                    break;
+                case UNIVERSE:
+                    this.universeGateTypeRadio.setSelected();
+                    break;
+                default:
+                    this.milkyWayGateTypeRadio.setSelected();
+                    break;
             }
-            this.gateTypeCheckbox.setEnabled(this.pegasusGateTypePerm);
-            this.universeGateTypeCheckbox.setChecked(localGate.gateType == GateType.UNIVERSE.id);
-            this.universeGateTypeCheckbox.setEnabled(this.pegasusGateTypePerm);
+            this.milkyWayGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
+            this.pegasusGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
+            this.universeGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
 
             this.reverseWormholeKillsCheckbox.setChecked(localGate.reverseWormholeKills);
             this.reverseWormholeKillsCheckbox.setEnabled(this.reverseWormholeKillsPerm);
@@ -758,14 +732,6 @@ public class ConfiguratorScreen extends BasicScreen {
 
             this.isGeneratedCheckbox.setChecked(localGate.isGenerated);
             this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
-
-            if (localGate.gateOrientation == 2) {
-                this.horizontalFaceUpCheckbox.setChecked(true);
-                this.horizontalFaceDownCheckbox.setChecked(false);
-            } else if (localGate.gateOrientation == 3) {
-                this.horizontalFaceUpCheckbox.setChecked(false);
-                this.horizontalFaceDownCheckbox.setChecked(true);
-            }
         }
     }
 
