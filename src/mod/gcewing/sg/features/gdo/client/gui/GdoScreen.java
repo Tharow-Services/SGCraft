@@ -1,7 +1,9 @@
 package gcewing.sg.features.gdo.client.gui;
 
 import com.google.common.eventbus.Subscribe;
+import gcewing.sg.client.renderer.SGBaseTERenderer;
 import gcewing.sg.features.gdo.network.GdoNetworkHandler;
+import gcewing.sg.util.GateShape;
 import gcewing.sg.network.GuiNetworkHandler;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.util.GateType;
@@ -22,14 +24,21 @@ import net.malisis.core.client.gui.component.interaction.UIButton;
 import net.malisis.core.client.gui.component.interaction.button.builder.UIButtonBuilder;
 import net.malisis.core.renderer.font.FontOptions;
 import net.malisis.core.util.FontColors;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
+import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
 
@@ -50,6 +59,8 @@ public class GdoScreen extends BasicScreen {
     public String r_address;
     public int r_gateType;
     public SGBaseTE localGate;
+    private IrisState lastIrisState;
+    private SGState lastGateState;
 
     public GdoScreen(EntityPlayer player, World worldIn,  BlockPos gatePos, boolean isAdmin, boolean isRemoteConnected, boolean r_hasIrisUpgrade, boolean r_hasChevronUpgrade,
         boolean r_isIrisClosed, int r_gateType, String r_address, boolean canAccessLocal, boolean canAccessRemote) {
@@ -257,7 +268,12 @@ public class GdoScreen extends BasicScreen {
                 this.localGateAddressLabel.setText(SGAddressing.formatAddress(localGate.homeAddress, "-", "-"));
             }
 
-            this.localGateImage.setIcon(gateImage(localGate.gateType, localGate.isConnected(), localGate.hasIrisUpgrade, localGate.irisIsClosed()), null);
+            if (liveGateRenderer() != null) {
+                // drawScreen draws the live gate here instead; the image just holds its place
+                this.localGateImage.setVisible(false);
+            } else {
+                this.localGateImage.setIcon(gateImage(localGate.gateType, localGate.isConnected(), localGate.hasIrisUpgrade, localGate.irisIsClosed()), null);
+            }
 
             if (!localGate.hasIrisUpgrade) {
                 this.localIrisOpenButton.setEnabled(false);
@@ -295,7 +311,16 @@ public class GdoScreen extends BasicScreen {
                 // The remote gate is always shown connected
                 this.remoteGateImage.setIcon(gateImage(r_gateType, true, r_hasIrisUpgrade, r_isIrisClosed), null);
 
-                if (!r_hasIrisUpgrade) {
+                // The live copy of the remote gate is updated twice a second, far sooner than the timed refresh that
+                // sets r_hasIrisUpgrade and r_isIrisClosed, so its iris decides the buttons once it has arrived
+                if (remoteGateView != null) {
+                    r_hasIrisUpgrade = remoteGateView.hasIrisUpgrade;
+                    r_isIrisClosed = remoteGateView.irisIsClosed();
+                }
+                boolean remoteIrisMoving = remoteGateView != null
+                    && (remoteGateView.irisState == IrisState.Opening || remoteGateView.irisState == IrisState.Closing);
+
+                if (!r_hasIrisUpgrade || remoteIrisMoving) {
                     this.remoteIrisOpenButton.setEnabled(false);
                     this.remoteIrisCloseButton.setEnabled(false);
                 } else {
@@ -309,7 +334,9 @@ public class GdoScreen extends BasicScreen {
                         }
                     }
                 }
-                this.remoteGateImage.setVisible(true);
+                // The picture only stands in when the live gate can't be drawn; otherwise the panel stays empty until the remote
+                // gate's data first arrives, rather than flashing the picture
+                this.remoteGateImage.setVisible(liveGateRenderer() == null);
                 this.localGateCloseButton.setEnabled(true);
                 this.remoteGateCloseButton.setEnabled(true);
             }
@@ -328,6 +355,24 @@ public class GdoScreen extends BasicScreen {
         if (!localGate.isMerged)
             this.close();
 
+        // While connected, ask for the remote gate's latest state twice a second; it ticks itself in between
+        if (this.form != null && localGate.isMerged && localGate.isConnected() && isRemoteConnected) {
+            long now = world.getTotalWorldTime();
+            if (now - lastRemoteGateRequest >= 10 || now < lastRemoteGateRequest) {
+                lastRemoteGateRequest = now;
+                GdoNetworkHandler.requestRemoteGateFromServer(localGate);
+            }
+        } else {
+            remoteGateView = null;
+        }
+
+        // Update the buttons as soon as the gate's iris or connection changes, rather than waiting for the next timed refresh
+        if (this.form != null && localGate.isMerged && (localGate.irisState != this.lastIrisState || localGate.state != this.lastGateState)) {
+            this.lastIrisState = localGate.irisState;
+            this.lastGateState = localGate.state;
+            this.refresh();
+        }
+
         if (this.lastUpdate == 100) {
             if (localGate != null) {
                 GuiNetworkHandler.sendGuiRequestToServer((SGBaseTE) localGate, player, 2);
@@ -340,6 +385,81 @@ public class GdoScreen extends BasicScreen {
         if (++this.lastUpdate > 120) {
             this.lastUpdate = 0;
         }
+    }
+
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        super.drawScreen(mouseX, mouseY, partialTicks);
+        if (liveGateRenderer() != null && localGate != null && localGate.isMerged && localGateImage != null) {
+            drawLiveGate(localGate, localGateImage, partialTicks);
+        }
+        if (liveGateRenderer() != null && remoteGateView != null && remoteGateControlArea != null && remoteGateControlArea.isVisible()) {
+            // Animate it a tick at a time, as the world does the local gate
+            long now = world.getTotalWorldTime();
+            for (int i = 0; i < 20 && remoteGateViewTick < now; i++, remoteGateViewTick++) {
+                remoteGateView.update();
+            }
+            remoteGateViewTick = now;
+            drawLiveGate(remoteGateView, remoteGateImage, partialTicks);
+        }
+    }
+
+    // The far end of the connection, which this client usually can't see, kept up to date from the server while
+    // the remote panel shows (see SGBaseTE.remoteView)
+    private SGBaseTE remoteGateView;
+    private long remoteGateViewTick, lastRemoteGateRequest;
+    private IrisState lastRemoteIrisState;
+
+    public void updateRemoteGate(BlockPos localPos, BlockPos remotePos, NBTTagCompound nbt) {
+        if (localGate == null || !localPos.equals(localGate.getPos())) {
+            return;
+        }
+        if (remoteGateView == null || !remotePos.equals(remoteGateView.getPos())) {
+            remoteGateView = SGBaseTE.remoteView(world, remotePos);
+            remoteGateViewTick = world.getTotalWorldTime();
+        }
+        IrisState oldIrisState = remoteGateView.irisState;
+        remoteGateView.applyRemoteState(nbt);
+        if (remoteGateView.irisState != oldIrisState || remoteGateView.irisState != lastRemoteIrisState) {
+            lastRemoteIrisState = remoteGateView.irisState;
+            refresh(); // update the remote iris buttons as soon as its iris starts or stops moving
+        }
+        if (liveGateRenderer() != null) {
+            remoteGateImage.setVisible(false); // drawn live instead
+        }
+    }
+
+    // The renderer that draws gates in the world, used to show the local gate as it really is: ring
+    // spinning, chevrons locking, event horizon forming and the iris opening and closing
+    private static SGBaseTERenderer liveGateRenderer() {
+        TileEntitySpecialRenderer<TileEntity> renderer = TileEntityRendererDispatcher.instance.getRenderer(SGBaseTE.class);
+        return renderer instanceof SGBaseTERenderer ? (SGBaseTERenderer) renderer : null;
+    }
+
+    // Draws the gate face-on, filling the given component's area
+    private void drawLiveGate(SGBaseTE gate, UIImage area, float partialTicks) {
+        GateShape shape = gate.getShape();
+        double scale = Math.min(area.getWidth(), area.getHeight()) / 2.0 / shape.ringOuterRadius;
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(area.screenX() + area.getWidth() / 2.0, area.screenY() + area.getHeight() / 2.0, 200);
+        GlStateManager.scale(scale, -scale, scale); // GUI y runs down, the gate's y up
+        GlStateManager.clear(GL11.GL_DEPTH_BUFFER_BIT); // the ring hides the iris behind it
+        GlStateManager.enableDepth();
+        GlStateManager.disableBlend();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderHelper.enableGUIStandardItemLighting();
+        mc.entityRenderer.enableLightmap();
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240.0F, 240.0F); // full brightness
+
+        liveGateRenderer().renderGate(gate, shape, partialTicks);
+
+        mc.entityRenderer.disableLightmap();
+        RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.popMatrix();
     }
 
     @Override

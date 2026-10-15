@@ -52,11 +52,11 @@ public class GuiNetworkHandler extends SGChannel {
     public void handleGUIRequestFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
         SGBaseTE localGate = SGBaseTE.at(player.world, pos);
-        boolean canAccessLocal = localGate.allowGateAccess(player.getName());
+        boolean canAccessLocal = localGate.allowGateAccess(player);
         boolean canEditRemote = false;
         if (localGate.isConnected() && localGate.state == SGState.Connected) {
             SGBaseTE remoteGate = localGate.getConnectedStargateTE();
-            canEditRemote = remoteGate.allowGateAccess(player.getName());
+            canEditRemote = remoteGate.allowGateAccess(player);
         }
         int guiType = data.readInt();
         if (guiType == 1) {

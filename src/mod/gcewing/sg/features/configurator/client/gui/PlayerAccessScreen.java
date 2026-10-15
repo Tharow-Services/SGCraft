@@ -313,13 +313,15 @@ public class PlayerAccessScreen extends BasicScreen {
     @Subscribe
     public void onListChange(BasicList.SelectEvent<PlayerAccessData> event) {
         boolean firstClick = (event.getOldValue() == null);
-        if (localGate.getPlayerAccessData().size() > 0) {
-            this.allowAccessCheckbox.setChecked(localGate.allowGateAccess(event.getNewValue().getPlayerName()));
-            this.denyAccessCheckbox.setChecked(!localGate.allowGateAccess(event.getNewValue().getPlayerName()));
-            this.allowIrisControllerCheckbox.setChecked(localGate.allowAccessToIrisController(event.getNewValue().getPlayerName()));
-            this.denyIrisControllerCheckbox.setChecked(!localGate.allowAccessToIrisController(event.getNewValue().getPlayerName()));
-            this.allowAdminCheckbox.setChecked(localGate.allowAdminAccess(event.getNewValue().getPlayerName()));
-            this.denyAdminCheckbox.setChecked(!localGate.allowAdminAccess(event.getNewValue().getPlayerName()));
+        final PlayerAccessData entry = event.getNewValue();
+        if (localGate.getPlayerAccessData().size() > 0 && entry != null) {
+            // The entry's own settings, as listed for the gate
+            this.allowAccessCheckbox.setChecked(entry.hasGateAccess());
+            this.denyAccessCheckbox.setChecked(!entry.hasGateAccess());
+            this.allowIrisControllerCheckbox.setChecked(entry.hasIrisAccess());
+            this.denyIrisControllerCheckbox.setChecked(!entry.hasIrisAccess());
+            this.allowAdminCheckbox.setChecked(entry.isAdmin());
+            this.denyAdminCheckbox.setChecked(!entry.isAdmin());
             this.optionsContainer.setEnabled(true);
         } else {
             this.optionsContainer.setEnabled(false);

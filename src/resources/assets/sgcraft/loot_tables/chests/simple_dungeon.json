@@ -1,6 +1,7 @@
 {
     "pools": [
         {
+            "name": "sgcraft_simple_dungeon",
             "conditions": [
                 {
                     "condition": "random_chance",

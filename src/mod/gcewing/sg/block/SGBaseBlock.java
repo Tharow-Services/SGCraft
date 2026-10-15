@@ -28,6 +28,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.*;
 import net.minecraft.init.*;
 import net.minecraft.item.*;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.*;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
@@ -128,6 +129,13 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
     @Override
     public boolean isOpaqueCube(IBlockState state) {
         return false;
+    }
+
+    // Lit while the gate's event horizon is up (see SGBaseTE.getEventHorizonLight)
+    @Override
+    public int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
+        TileEntity te = world.getTileEntity(pos);
+        return te instanceof SGBaseTE ? ((SGBaseTE) te).getEventHorizonLight() : super.getLightValue(state, world, pos);
     }
     
     @Override

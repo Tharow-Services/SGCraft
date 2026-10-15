@@ -138,6 +138,23 @@ public class SGRingBlock extends SGBlock<SGRingTE> {
         }
     }
 
+    // Lit, like its base, while the gate's event horizon is up (see SGBaseTE.getEventHorizonLight). Lighting runs often
+    // and mustn't load chunks, so a base in an unloaded chunk counts as dark.
+    @Override
+    public int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
+        TileEntity te = world.getTileEntity(pos);
+        if (te instanceof SGRingTE && ((SGRingTE) te).isMerged) {
+            BlockPos basePos = ((SGRingTE) te).basePos;
+            if (!(world instanceof World) || ((World) world).isBlockLoaded(basePos)) {
+                TileEntity base = world.getTileEntity(basePos);
+                if (base instanceof SGBaseTE) {
+                    return ((SGBaseTE) base).getEventHorizonLight();
+                }
+            }
+        }
+        return super.getLightValue(state, world, pos);
+    }
+
     @Override
     public boolean isMerged(IBlockAccess world, BlockPos pos) {
         SGRingTE te = getTileEntity(world, pos);
@@ -163,6 +180,7 @@ public class SGRingBlock extends SGBlock<SGRingTE> {
             //System.out.printf("SGRingBlock.unmergeFrom: unmerging\n");
             te.isMerged = false;
             te.markBlockChanged();
+            world.checkLight(pos); // no longer part of a gate, so no longer lit by its event horizon
         }
     }
     

@@ -602,8 +602,9 @@ public class BaseDataChannel {
         @SideOnly(Side.CLIENT)
         protected void handleClientPacket(ChannelHandlerContext ctx, FMLProxyPacket msg) {
             ChannelInput data = new ChannelInputStream(msg.payload());
-            EntityPlayer player = Minecraft.getMinecraft().player;
-            channel.onReceiveFromServer(player, data);
+            // Handlers open GUIs and touch world state, so run them on the client thread (where the GL context lives).
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.addScheduledTask(() -> channel.onReceiveFromServer(mc.player, data));
         }
     }
 }

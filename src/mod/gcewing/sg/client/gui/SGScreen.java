@@ -56,8 +56,10 @@ public class SGScreen extends BaseGui.Screen {
             int s = SGBaseTE.charToSymbol(address.charAt(i));
             int row = s / symbolsPerRowInTexture;
             int col = s % symbolsPerRowInTexture;
+            // Sample a texel inside the cell: with smooth filtering, its edge would pick up the neighbouring symbol
+            double inset = cellSize / (double) symbolWidthInTexture;
             drawTexturedRect(x0 + i * cellSize, y0, cellSize, cellSize,
-                col * cellSize, row * cellSize);
+                col * cellSize + inset, row * cellSize + inset, cellSize - 2 * inset, cellSize - 2 * inset);
         }
     }
     

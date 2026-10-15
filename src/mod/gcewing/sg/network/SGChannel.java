@@ -11,6 +11,7 @@ import gcewing.sg.BaseDataChannel;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 
@@ -89,6 +90,30 @@ public class SGChannel extends BaseDataChannel {
                 te.enterSymbol(player, symbol);
             } else {
                 SGBaseTE.sendGenericErrorMsg(player,"Dialling exception.  No DHD detected within range.");
+            }
+        }
+    }
+
+    // A player's own access to a gate. Clients aren't sent the gates' access lists, so this is how a client knows
+    // which screens and slots to show its player (see SGBaseTE.setLocalPlayerAccess).
+    public static void sendPlayerAccessToClient(EntityPlayerMP player, SGBaseTE te, boolean gateAccess, boolean irisAccess, boolean adminAccess) {
+        ChannelOutput data = channel.openPlayer(player, "PlayerAccess");
+        writeCoords(data, te);
+        data.writeBoolean(gateAccess);
+        data.writeBoolean(irisAccess);
+        data.writeBoolean(adminAccess);
+        data.close();
+    }
+
+    @ClientMessageHandler("PlayerAccess") public void handlePlayerAccessFromServer(EntityPlayer player, ChannelInput data) {
+        BlockPos pos = readCoords(data);
+        boolean gateAccess = data.readBoolean();
+        boolean irisAccess = data.readBoolean();
+        boolean adminAccess = data.readBoolean();
+        if (player != null) {
+            SGBaseTE te = SGBaseTE.at(player.world, pos);
+            if (te != null) {
+                te.setLocalPlayerAccess(gateAccess, irisAccess, adminAccess);
             }
         }
     }

@@ -32,6 +32,7 @@ import gcewing.sg.util.SGState;
 import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
 import gcewing.sg.block.DHDBlock;
+import gcewing.sg.block.EventHorizonLightBlock;
 import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.entity.EntityStargateIris;
@@ -81,6 +82,10 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraft.world.EnumSkyBlock;
+import net.minecraft.server.management.PlayerChunkMap;
+import gcewing.sg.network.SGChannel;
+import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -602,7 +607,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.homeAddress = getStringOrNull(nbt, "address");
         this.addressError = nbt.getString("addressError");
 
-        if (oldState != this.state && this.state == SGState.Connected && this.world.isRemote) {
+        if (oldState != this.state && this.state == SGState.Connected && this.world.isRemote && !this.isRemoteView) {
             SGCraft.playSound(this, eventHorizonSound);
         }
 
@@ -751,8 +756,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.ticksToStayOpen = 20 * this.secondsToStayOpen;
         updateEnergyCosts();
 
-        if (SGCraft.pdd != null) { // Skip this if the PDD is not in-use.
+        // Access lists are always kept, whether or not the screens that edit them (MalisisCore) are installed, so a
+        // restart without them doesn't lose the lists. Clients aren't sent them with the gate's other data (see
+        // getUpdateTag), so a client keeps whatever an admin's Configurator was last sent.
+        if (nbt.hasKey(PlayerAccessData.PLAYERACCESSLIST) || this.playerAccessData == null) {
             this.playerAccessData = PlayerAccessData.getPlayerAccessList(nbt);
+        }
+        if (nbt.hasKey(GateAccessData.GATEACCESSLIST) || this.gateAccessData == null) {
             this.gateAccessData = GateAccessData.getGateAccessList(nbt);
         }
 
@@ -904,19 +914,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
 
         // Access Lists...
-        if (SGCraft.pdd != null) {
-            if (this.playerAccessData == null)
-                this.playerAccessData = PlayerAccessData.getPlayerAccessList(nbt);
+        if (this.playerAccessData != null)
+            PlayerAccessData.writeAddresses(nbt, this.playerAccessData);
 
-            if (this.gateAccessData == null)
-                this.gateAccessData = GateAccessData.getGateAccessList(nbt);
-
-            if (this.playerAccessData != null)
-                PlayerAccessData.writeAddresses(nbt, this.playerAccessData);
-
-            if (this.gateAccessData != null)
-                GateAccessData.writeAddresses(nbt, this.gateAccessData);
-        }
+        if (this.gateAccessData != null)
+            GateAccessData.writeAddresses(nbt, this.gateAccessData);
 
         nbt.setBoolean("defaultAllowIncoming", this.defaultAllowIncoming);
         nbt.setBoolean("defaultAllowOutgoing", this.defaultAllowOutgoing);
@@ -1046,6 +1048,200 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             clearKawooshBlocks();
         }
         irisUpdate();
+        updateEventHorizonLight();
+    }
+
+    // *********************************************************************************************
+    // Event horizon light: while the event horizon is up and the iris isn't closed over it, the
+    // gate's blocks (its base and ring) give off light, lighting the world round the gate. Server
+    // and client each relight their own world as the gate's state changes.
+    // *********************************************************************************************
+
+    // -1 until the gate's first tick, which always relights round it: a gate whose chunk was unloaded while lit (it is
+    // disconnected then, but no longer ticks to put its light out) was saved with the light still in the world
+    private int eventHorizonLight = -1;
+
+    // The light the gate's blocks give off now (see SGBaseBlock and SGRingBlock getLightValue)
+    public int getEventHorizonLight() {
+        return Math.max(0, eventHorizonLight);
+    }
+
+    private int targetEventHorizonLight() {
+        if (!isMerged || SGCraft.eventHorizonLightLevel <= 0) {
+            return 0;
+        }
+        // Block light shines every way from the gate's blocks, so with the iris closed over the front they go dark,
+        // and hidden light blocks behind the gate light the back instead (see irisLightPositions)
+        return eventHorizonUp() && !irisIsClosed() ? Math.min(15, SGCraft.eventHorizonLightLevel) : 0;
+    }
+
+    private boolean eventHorizonUp() {
+        return state == SGState.Transient || state == SGState.Connected || state == SGState.Disconnecting;
+    }
+
+    // Where the light behind a closed iris goes: just behind the middle of the opening, and for a gate big enough,
+    // halfway out from there each way. Empty while the iris isn't closed over a live event horizon.
+    public List<BlockPos> irisLightPositions() {
+        List<BlockPos> positions = new ArrayList<>();
+        if (!isMerged || SGCraft.eventHorizonLightLevel <= 0 || !eventHorizonUp() || !irisIsClosed()) {
+            return positions;
+        }
+        GateShape shape = getShape();
+        Trans3 t = localToGlobalTransformation();
+        int cy = (int) Math.floor(shape.centreY + 0.5);
+        int k = (int) Math.floor(shape.ringInnerRadius / 2);
+        int[][] offsets = k > 0 ? new int[][] {{0, 0}, {k, 0}, {-k, 0}, {0, k}, {0, -k}} : new int[][] {{0, 0}};
+        for (int[] o : offsets) {
+            positions.add(t.p(fromGateFrame(new Vector3(o[0], cy + o[1], -1))).blockPos()); // z -1: behind the gate
+        }
+        return positions;
+    }
+
+    // The light blocks this gate has placed, to remove once no longer wanted
+    private final List<BlockPos> placedIrisLights = new ArrayList<>();
+
+    // Server only: puts the light behind a closed iris where it should be, into empty air only, and takes away any no
+    // longer wanted. Run when the iris or the connection changes, and every second to replace any broken.
+    private void updateIrisLights() {
+        List<BlockPos> wanted = irisLightPositions();
+        if (wanted.equals(placedIrisLights) && world.getTotalWorldTime() % 20 != 0) {
+            return;
+        }
+        Block lightBlock = SGCraft.eventHorizonLightBlock;
+        for (BlockPos p : placedIrisLights) {
+            if (!wanted.contains(p) && world.isBlockLoaded(p) && world.getBlockState(p).getBlock() == lightBlock) {
+                world.setBlockToAir(p);
+            }
+        }
+        placedIrisLights.clear();
+        if (lightBlock == null) {
+            return;
+        }
+        IBlockState light = lightBlock.getDefaultState().withProperty(EventHorizonLightBlock.LIGHT, Math.min(15, SGCraft.eventHorizonLightLevel));
+        for (BlockPos p : wanted) {
+            if (!world.isBlockLoaded(p)) {
+                continue;
+            }
+            IBlockState current = world.getBlockState(p);
+            if (current.getBlock() == lightBlock || world.isAirBlock(p)) {
+                if (current != light) {
+                    world.setBlockState(p, light, 3);
+                }
+                placedIrisLights.add(p);
+            }
+        }
+    }
+
+    // Whether any gate near pos wants an iris light there (see EventHorizonLightBlock, which removes itself if not).
+    // Looks only in loaded chunks, without loading any.
+    public static boolean wantsIrisLightAt(World world, BlockPos pos) {
+        int cx = pos.getX() >> 4, cz = pos.getZ() >> 4;
+        for (int x = cx - 2; x <= cx + 2; x++) {
+            for (int z = cz - 2; z <= cz + 2; z++) {
+                if (!world.isBlockLoaded(new BlockPos(x << 4, 0, z << 4))) {
+                    continue;
+                }
+                for (TileEntity te : world.getChunk(x, z).getTileEntityMap().values()) {
+                    if (te instanceof SGBaseTE && ((SGBaseTE) te).irisLightPositions().contains(pos)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // When the gate last connected, disconnected or its iris opened or closed, and when to sweep the light round it
+    private boolean lastHorizonUp, lastIrisClosed;
+    private long areaRelightAt = -1, areaRelightAgainAt = -1;
+
+    // How far round the gate (blocks, each way from the middle of its ring) leftover light is cleared
+    private static final int AREA_RELIGHT_RANGE = 30;
+
+    // Clears leftover light round the gate. Lighting is worked out a block at a time, so when the gate's light sources
+    // change together some light can be left with nothing to give it. Every block in range still holding block light is
+    // checked: one whose light has no source loses it, along with all it lit. Server and client each sweep their world.
+    private void relightArea() {
+        Vector3 c = localToGlobalTransformation().p(ringCentre());
+        int cx = (int) Math.floor(c.x), cy = (int) Math.floor(c.y), cz = (int) Math.floor(c.z), r = AREA_RELIGHT_RANGE;
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        for (int x = cx - r; x <= cx + r; x++) {
+            for (int z = cz - r; z <= cz + r; z++) {
+                if (!world.isBlockLoaded(p.setPos(x, 64, z))) {
+                    continue;
+                }
+                for (int y = Math.max(0, cy - r); y <= Math.min(255, cy + r); y++) {
+                    p.setPos(x, y, z);
+                    if (world.getLightFor(EnumSkyBlock.BLOCK, p) > 0) {
+                        world.checkLightFor(EnumSkyBlock.BLOCK, p.toImmutable());
+                    }
+                }
+            }
+        }
+        if (world.isRemote) {
+            world.markBlockRangeForRenderUpdate(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
+        }
+    }
+
+    private void updateEventHorizonLight() {
+        if (!world.isRemote && !isRemoteView) {
+            updateIrisLights();
+        }
+        if (!isRemoteView) {
+            // Sweep a moment after the gate connects, disconnects or its iris opens or closes, once the light sources
+            // have changed (the iris lights reach clients a little later), and again a second later
+            boolean horizonUp = isMerged && eventHorizonUp(), irisClosed = irisIsClosed();
+            long now = world.getTotalWorldTime();
+            if (horizonUp != lastHorizonUp || irisClosed != lastIrisClosed) {
+                lastHorizonUp = horizonUp;
+                lastIrisClosed = irisClosed;
+                areaRelightAt = now + 3;
+                areaRelightAgainAt = now + 20;
+            }
+            if (now == areaRelightAt || now == areaRelightAgainAt) {
+                relightArea();
+            }
+        }
+        int light = targetEventHorizonLight();
+        if (light != eventHorizonLight && !isRemoteView) {
+            boolean dimming = eventHorizonLight < 0 || light < eventHorizonLight;
+            eventHorizonLight = light;
+            relightGate();
+            if (dimming) {
+                // All the gate's blocks go dark at once, but are relit one at a time, so the first ones pick light
+                // back up from the rest; a second pass clears that, rather than leaving it for Minecraft's slow
+                // background light checks (which took tens of seconds)
+                relightGate();
+            }
+            if (world.isRemote) {
+                // Redraw everything the light reaches straight away
+                int r = 16 + Math.max(getShape().halfWidth, getShape().height);
+                world.markBlockRangeForRenderUpdate(pos.add(-r, -r, -r), pos.add(r, r, r));
+            }
+        }
+    }
+
+    // Has the world work out the light round the gate again: at its base and each block of its ring
+    private void relightGate() {
+        world.checkLight(pos);
+        GateShape shape = getShape();
+        Trans3 t = new Trans3(Vector3.blockCenter(pos)).turn(facingDirectionOfBase);
+        for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
+            for (int y = 0; y < shape.height; y++) {
+                if (shape.cellAt(x, y) != GateShape.EMPTY && !(x == 0 && y == 0)) {
+                    // Standing up or lying flat, as SGBaseBlock.unmergeRing visits the ring
+                    relightRingBlock(t.p(x, y, 0).blockPos());
+                    relightRingBlock(t.p(x, 0, -y).blockPos());
+                }
+            }
+        }
+    }
+
+    private void relightRingBlock(BlockPos ringPos) {
+        TileEntity te = world.isBlockLoaded(ringPos) ? world.getTileEntity(ringPos) : null;
+        if (te instanceof SGRingTE && ((SGRingTE) te).isMerged && pos.equals(((SGRingTE) te).basePos)) {
+            world.checkLight(ringPos);
+        }
     }
 
     @Override
@@ -1216,7 +1412,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
             // Player Access Control System
-            if (!this.allowGateAccess(player.getName())) {
+            if (!this.allowGateAccess(player)) {
                 if (!isPermissionsAdmin) return diallingFailure(player, "accessFromDenied");
             }
         }
@@ -1248,41 +1444,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
 
         // Player Access Control System
-        if (player != null && !targetGate.allowGateAccess(player.getName())) {
+        if (player != null && !targetGate.allowGateAccess(player)) {
             if (!isPermissionsAdmin) return diallingFailure(player, "playerAccessToDenied");
         }
 
-        // Gate Address Control System
-        boolean accessSystemDialDestination = true;
-
-        if (this.defaultAllowOutgoing) {
-            if (!this.allowOutgoingAddress(address, true)) {
-                accessSystemDialDestination = false;
-            }
-        } else {
-            if (!this.allowOutgoingAddress(address, false)) {
-                accessSystemDialDestination = false;
-            }
-        }
-
-        if (!accessSystemDialDestination) {
+        // Gate Address Control System. Both gates' full addresses are checked, not what was dialled: within one
+        // dimension that is only the 7-symbol local address, which would never match a list entry.
+        if (!this.allowOutgoingAddress(targetGate.homeAddress, this.defaultAllowOutgoing)) {
             if (!isPermissionsAdmin)
                 return diallingFailure(player, "accessSystemDeniedOrigin");
         }
 
-        boolean accessSystemAcceptIncoming = true;
-
-        if (targetGate.defaultAllowIncoming) {
-            if (!targetGate.allowIncomingAddress(this.homeAddress, true)) {
-                accessSystemAcceptIncoming = false;
-            }
-        } else {
-            if (!this.allowIncomingAddress(this.homeAddress, false)) {
-                accessSystemAcceptIncoming = false;
-            }
-        }
-
-        if (!accessSystemAcceptIncoming) {
+        // Whether the gate being dialled accepts this one is up to its own list
+        if (!targetGate.allowIncomingAddress(this.homeAddress, targetGate.defaultAllowIncoming)) {
             if (!isPermissionsAdmin)
                 return diallingFailure(player, "accessSystemDeniedDestination");
         }
@@ -1465,157 +1639,178 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // Access Control Subsystem
     // *********************************************************************************************
 
-    //return this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().map(GateAccessData::hasOutgoingAccess).orElse(false);
+    // Addresses: entries are matched whatever the dashes or case, and always against a full 9-symbol address, so
+    // pass the other gate's homeAddress rather than whatever was dialled (which may be the 7-symbol local form).
 
-    public boolean allowOutgoingAddress(String inputRawAddress, boolean defaultValue) {
-        if (inputRawAddress.length() == 9) {
-            inputRawAddress = SGAddressing.formatAddress(inputRawAddress, "-", "-");
-        }
-        final String address = inputRawAddress;
-        if (this.gateAccessData != null && this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().isPresent()) {
-            GateAccessData gateAccessEntry = this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().get();
-            return gateAccessEntry.hasOutgoingAccess();
-        }
-        return defaultValue;
+    public boolean allowOutgoingAddress(String address, boolean defaultValue) {
+        GateAccessData entry = findGateAccessEntry(address);
+        return entry != null ? entry.hasOutgoingAccess() : defaultValue;
     }
 
     public void setAllowOutgoingAddress(String address, boolean value) {
-        if (this.gateAccessData != null && this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().isPresent()) {
-            GateAccessData gateAccessEntry = this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().get();
-            gateAccessEntry.setOutgoingAccess(value);
+        GateAccessData entry = findGateAccessEntry(address);
+        if (entry != null) {
+            entry.setOutgoingAccess(value);
         }
     }
 
-    public boolean allowIncomingAddress(String inputRawAddress, boolean defaultValue) {
-        if (inputRawAddress.length() == 9) {
-            inputRawAddress = SGAddressing.formatAddress(inputRawAddress, "-", "-");
-        }
-        final String address = inputRawAddress;
-
-        if (this.gateAccessData != null && this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().isPresent()) {
-            GateAccessData gateAccessEntry = this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().get();
-            return gateAccessEntry.hasIncomingAccess();
-        }
-        return defaultValue;
+    public boolean allowIncomingAddress(String address, boolean defaultValue) {
+        GateAccessData entry = findGateAccessEntry(address);
+        return entry != null ? entry.hasIncomingAccess() : defaultValue;
     }
 
     public void setAllowIncomingAddress(String address, boolean value) {
-        if (this.gateAccessData != null && this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().isPresent()) {
-            GateAccessData gateAccessEntry = this.gateAccessData.stream().filter(g -> g.getAddress().equalsIgnoreCase(address)).findFirst().get();
-            gateAccessEntry.setIncomingAccess(value);
+        GateAccessData entry = findGateAccessEntry(address);
+        if (entry != null) {
+            entry.setIncomingAccess(value);
         }
     }
 
-    public boolean allowAccessToIrisController(String playerName) {
-        boolean value = true;
-        if (!this.defaultAllowIrisAccess) {
-            value = false;
+    @Nullable
+    public GateAccessData findGateAccessEntry(String address) {
+        if (this.gateAccessData == null || address == null) {
+            return null;
         }
+        return this.gateAccessData.stream().filter(g -> g.matches(address)).findFirst().orElse(null);
+    }
 
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData playerAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            value = playerAccessEntry.hasIrisAccess();
+    // Players: entries are tied to a player's UUID, so renaming keeps a player's access and a new player taking an
+    // old name doesn't inherit it. A player with the sgcraft.admin permission may do anything.
+    //
+    // On a client, the local player's answers come from the server (setLocalPlayerAccess), since only the server
+    // knows the lists and the player's permissions; until they arrive the client falls back to the gate's defaults.
+
+    // This client's own access to this gate, as last sent by the server; null until then
+    @Nullable private Boolean localGateAccess, localIrisAccess, localAdminAccess;
+
+    public void setLocalPlayerAccess(boolean gateAccess, boolean irisAccess, boolean adminAccess) {
+        this.localGateAccess = gateAccess;
+        this.localIrisAccess = irisAccess;
+        this.localAdminAccess = adminAccess;
+    }
+
+    public boolean allowGateAccess(EntityPlayer player) {
+        if (world != null && world.isRemote && localGateAccess != null) {
+            return localGateAccess;
         }
-
-        if (!this.world.isRemote && SGCraft.hasPermissionSystem()) {
-            EntityPlayer player = world.getPlayerEntityByName(playerName);
-            if (player != null) {
-                boolean isPermissionsAdmin = SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-                if (isPermissionsAdmin) {
-                    return true;
-                }
-            }
+        if (isPermissionsAdmin(player)) {
+            return true;
         }
+        PlayerAccessData entry = findPlayerAccessEntry(player);
+        return entry != null ? entry.hasGateAccess() : this.defaultAllowGateAccess;
+    }
 
-        return value;
+    public boolean allowAccessToIrisController(EntityPlayer player) {
+        if (world != null && world.isRemote && localIrisAccess != null) {
+            return localIrisAccess;
+        }
+        if (isPermissionsAdmin(player)) {
+            return true;
+        }
+        PlayerAccessData entry = findPlayerAccessEntry(player);
+        return entry != null ? entry.hasIrisAccess() : this.defaultAllowIrisAccess;
+    }
+
+    public boolean allowAdminAccess(EntityPlayer player) {
+        if (world != null && world.isRemote && localAdminAccess != null) {
+            return localAdminAccess;
+        }
+        if (isPermissionsAdmin(player)) {
+            return true;
+        }
+        PlayerAccessData entry = findPlayerAccessEntry(player);
+        return entry != null ? entry.isAdmin() : this.defaultAllowAdminAccess;
+    }
+
+    // The permissions system's fallback override of the access lists; only the server can check it
+    private boolean isPermissionsAdmin(EntityPlayer player) {
+        return world != null && !world.isRemote && SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin");
+    }
+
+    // The player's entry: theirs by UUID, or one made for their name before they were known. On the server that
+    // ties a name-only entry to the player, and keeps an entry's name up to date when the player renames.
+    @Nullable
+    private PlayerAccessData findPlayerAccessEntry(EntityPlayer player) {
+        if (this.playerAccessData == null || player == null) {
+            return null;
+        }
+        PlayerAccessData entry = this.playerAccessData.stream()
+            .filter(p -> player.getUniqueID().equals(p.getUuid())).findFirst()
+            .orElseGet(() -> this.playerAccessData.stream().filter(p -> p.getUuid() == null && p.isFor(player)).findFirst().orElse(null));
+        if (entry != null && world != null && !world.isRemote
+                && (entry.getUuid() == null || !entry.getPlayerName().equals(player.getName()))) {
+            entry.setUuid(player.getUniqueID());
+            entry.setPlayerName(player.getName());
+            markDirty();
+        }
+        return entry;
+    }
+
+    // Entries are edited by the name shown in the Configurator
+    @Nullable
+    public PlayerAccessData findPlayerAccessEntry(String playerName) {
+        if (this.playerAccessData == null || playerName == null) {
+            return null;
+        }
+        return this.playerAccessData.stream().filter(p -> p.getPlayerName().equalsIgnoreCase(playerName)).findFirst().orElse(null);
     }
 
     public void setAllowAccessToIrisController(String playerName, boolean value) {
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData gateAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            gateAccessEntry.setIrisAccess(value);
+        PlayerAccessData entry = findPlayerAccessEntry(playerName);
+        if (entry != null) {
+            entry.setIrisAccess(value);
         }
-    }
-
-    public boolean allowGateAccess(String playerName) {
-        boolean value = true;
-        if (!this.defaultAllowGateAccess) {
-            value = false;
-        }
-
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData playerAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            value = playerAccessEntry.hasGateAccess();
-        }
-
-        if (!this.world.isRemote && SGCraft.hasPermissionSystem()) {
-            EntityPlayer player = world.getPlayerEntityByName(playerName);
-            if (player != null) {
-                boolean isPermissionsAdmin = SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-                if (isPermissionsAdmin) {
-                    return true;
-                }
-            }
-        }
-
-        return value;
     }
 
     public void setAllowGateAccessAccess(String playerName, boolean value) {
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData gateAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            gateAccessEntry.setGateAccess(value);
+        PlayerAccessData entry = findPlayerAccessEntry(playerName);
+        if (entry != null) {
+            entry.setGateAccess(value);
         }
-    }
-
-    public boolean allowAdminAccess(String playerName) {
-        boolean value = true;
-        if (!this.defaultAllowAdminAccess) {
-            value = false;
-        }
-
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData playerAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            value = playerAccessEntry.isAdmin();
-        }
-
-        if (!this.world.isRemote && SGCraft.hasPermissionSystem()) {
-            EntityPlayer player = world.getPlayerEntityByName(playerName);
-            if (player != null) {
-                boolean isPermissionsAdmin = SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-                if (isPermissionsAdmin) {
-                    return true;
-                }
-            }
-        }
-
-        return value;
     }
 
     public void setAllowAccessAdmin(String playerName, boolean value) {
-        if (this.playerAccessData != null && this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().isPresent()) {
-            PlayerAccessData gateAccessEntry = this.playerAccessData.stream().filter(g -> g.getPlayerName().equalsIgnoreCase(playerName)).findFirst().get();
-            gateAccessEntry.setAdmin(value);
+        PlayerAccessData entry = findPlayerAccessEntry(playerName);
+        if (entry != null) {
+            entry.setAdmin(value);
         }
+    }
+
+    // Tells a player what they may do at this gate
+    public void sendPlayerAccessTo(EntityPlayerMP player) {
+        SGChannel.sendPlayerAccessToClient(player, this, allowGateAccess(player), allowAccessToIrisController(player), allowAdminAccess(player));
+    }
+
+    // Tells every player who can see this gate what they may now do at it, after its access settings change
+    public void sendPlayerAccessToWatchers() {
+        if (world instanceof WorldServer) {
+            PlayerChunkMap chunks = ((WorldServer) world).getPlayerChunkMap();
+            for (EntityPlayer player : world.playerEntities) {
+                if (player instanceof EntityPlayerMP && chunks.isPlayerWatchingChunk((EntityPlayerMP) player, pos.getX() >> 4, pos.getZ() >> 4)) {
+                    sendPlayerAccessTo((EntityPlayerMP) player);
+                }
+            }
+        }
+    }
+
+    // The client's copy of the lists, sent only to an admin using the Configurator
+    public void setClientAccessLists(List<GateAccessData> gateAccessData, List<PlayerAccessData> playerAccessData) {
+        this.gateAccessData = gateAccessData;
+        this.playerAccessData = playerAccessData;
     }
 
     public List<GateAccessData> getGateAccessData() {
-        if (this.gateAccessData != null) {
-            return this.gateAccessData;
-        } else {
-            System.err.println("Exception in SGBaseTE: getGateAccessData is null when it shouldn't be.");
-            Thread.dumpStack();
-            return null;
+        if (this.gateAccessData == null) {
+            this.gateAccessData = new ArrayList<>();
         }
+        return this.gateAccessData;
     }
 
-    public List <PlayerAccessData>getPlayerAccessData() {
-        if (this.playerAccessData != null) {
-            return this.playerAccessData;
-        } else {
-            System.err.println("Exception in SGBaseTE: getPlayerAccessData is null when it shouldn't be.");
-            return null;
+    public List<PlayerAccessData> getPlayerAccessData() {
+        if (this.playerAccessData == null) {
+            this.playerAccessData = new ArrayList<>();
         }
+        return this.playerAccessData;
     }
 
     // *********************************************************************************************
@@ -2427,6 +2622,21 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return fromGateFrame(new Vector3(0, getShape().centreY, 0));
     }
 
+    // The light round the gate, to draw it by, as World.getCombinedLight gives it: the brightest of the light in the
+    // middle of its opening and a block in front of and behind that. Minecraft would use the light at the base, but
+    // the base is a solid block, which light never gets into, so the gate would always be drawn in the dark.
+    public int lightAroundGate() {
+        Trans3 t = localToGlobalTransformation();
+        Vector3 centre = ringCentre(), front = fromGateFrame(new Vector3(0, 0, 1));
+        int sky = 0, block = 0;
+        for (int k = -1; k <= 1; k++) {
+            int light = world.getCombinedLight(t.p(centre.add(front.mul(k))).blockPos(), 0);
+            sky = Math.max(sky, light >> 20 & 15);
+            block = Math.max(block, light >> 4 & 15);
+        }
+        return sky << 20 | block << 4;
+    }
+
     // Where entities are watched for going through the gate: its opening, either side of its
     // event horizon
     AxisAlignedBB portalTrackingBox() {
@@ -2528,7 +2738,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         boolean allowTeleport = true;
 
         if (entity instanceof EntityPlayer) {
-            if (!this.allowGateAccess(entity.getName()) || !dte.allowGateAccess(entity.getName())) {
+            if (!this.allowGateAccess((EntityPlayer) entity) || !dte.allowGateAccess((EntityPlayer) entity)) {
                 allowTeleport = false;
             }
         }
@@ -3128,6 +3338,28 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // Client Handlers
     // *********************************************************************************************
 
+    // The gate's data as sent to every player near it: without the access lists, which name who may use the gate.
+    // Each player is sent only their own access instead (see sendPlayerAccessTo).
+    @Override
+    public NBTTagCompound getUpdateTag() {
+        return withoutAccessLists(super.getUpdateTag());
+    }
+
+    @Override
+    public SPacketUpdateTileEntity getUpdatePacket() {
+        SPacketUpdateTileEntity packet = super.getUpdatePacket();
+        if (packet != null) {
+            withoutAccessLists(packet.getNbtCompound());
+        }
+        return packet;
+    }
+
+    private static NBTTagCompound withoutAccessLists(NBTTagCompound nbt) {
+        nbt.removeTag(PlayerAccessData.PLAYERACCESSLIST);
+        nbt.removeTag(GateAccessData.GATEACCESSLIST);
+        return nbt;
+    }
+
     @Override
     public void onDataPacket(NetworkManager net, SPacketUpdateTileEntity pkt) {
         //System.out.printf("SGBaseTE.onDataPacket: with state %s numEngagedChevrons %s\n",
@@ -3166,6 +3398,32 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                         SGCraft.playSound(this, irisCloseSound);
                         break;
                 }
+            }
+        }
+    }
+
+    // A client's copy of a gate it can't see (the far end of a GDO's connection, usually unloaded or in another
+    // dimension), kept only to draw it on the GDO's screen: never in the world, silent, updated from the server's
+    // data for the real gate and otherwise animated by ticking it as the client does its own gates.
+    private boolean isRemoteView = false;
+
+    public static SGBaseTE remoteView(World clientWorld, BlockPos pos) {
+        SGBaseTE view = new SGBaseTE();
+        view.setWorld(clientWorld);
+        view.setPos(pos);
+        view.isRemoteView = true;
+        return view;
+    }
+
+    // Takes on the real gate's latest data, starting the event horizon's opening or closing surge as onDataPacket does
+    public void applyRemoteState(NBTTagCompound nbt) {
+        SGState oldState = state;
+        readFromNBT(nbt);
+        if (isMerged && state != oldState) {
+            if (state == SGState.Transient) {
+                initiateOpeningTransient();
+            } else if (state == SGState.Disconnecting) {
+                initiateClosingTransient();
             }
         }
     }
@@ -3357,6 +3615,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     void enterIrisState(IrisState newState) {
         if (irisState != newState) {
+            if (isRemoteView) { // only animating a copy of a gate elsewhere: nothing here to tell
+                irisState = newState;
+                return;
+            }
             String oldDesc = irisStateDescription(irisState);
             String newDesc = irisStateDescription(newState);
             irisState = newState;

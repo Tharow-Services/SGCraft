@@ -20,7 +20,11 @@ public class SGRingTE extends BaseTileEntity {
     public void readFromNBT(NBTTagCompound nbt) {
         //System.out.printf("SGRingTE.readFromNBT\n");
         super.readFromNBT(nbt);
+        boolean wasMerged = isMerged;
         isMerged = nbt.getBoolean("isMerged");
+        if (wasMerged && !isMerged && world != null && world.isRemote) {
+            world.checkLight(pos); // no longer part of a gate, so the client stops lighting it by the event horizon
+        }
         int baseX = nbt.getInteger("baseX");
         int baseY = nbt.getInteger("baseY");
         int baseZ = nbt.getInteger("baseZ");

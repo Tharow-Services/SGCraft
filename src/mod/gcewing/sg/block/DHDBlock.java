@@ -132,7 +132,7 @@ public class DHDBlock extends BaseBlock<DHDTE> {
                 SGBaseTE localGate = localDHD.getLinkedStargateTE();
                 if (localGate != null) {
                     if (cy <= 0.5) {
-                        if (player != null && localGate.allowAdminAccess(player.getName())) {
+                        if (player != null && localGate.allowAdminAccess(player)) {
                             if (!world.isRemote) {
                                 SGCraft.mod.openGui(player, SGGui.DHDFuel, world, pos);
                                 return true;
@@ -140,7 +140,7 @@ public class DHDBlock extends BaseBlock<DHDTE> {
                         }
                     } else {
                         if (world.isRemote) { // Only call on the client, server call here not needed because it doesn't have a container.
-                            if (player != null && localGate.allowGateAccess(player.getName())) {
+                            if (player != null && localGate.allowGateAccess(player)) {
                                 SGCraft.mod.openGui(player, SGGui.SGController, world, pos);
                                 return true;
                             }

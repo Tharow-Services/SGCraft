@@ -74,7 +74,9 @@ public class ConfiguratorItem extends Item {
 
               boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
-              if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && localGate.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
+              if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && localGate.allowAdminAccess(player) || isPermissionsAdmin) {
+                  // The lists for the gate and player access screens; clients aren't otherwise sent them
+                  ConfiguratorNetworkHandler.sendAccessListsToClient(player, localGate);
                   ConfiguratorNetworkHandler.openGuiAtClient(localGate, player, 1, isPermissionsAdmin,
                       SGCraft.hasPermission(player, "sgcraft.configurator.secondsToStayOpen"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.ringRotationSpeed"),
@@ -98,8 +100,8 @@ public class ConfiguratorItem extends Item {
                       SGCraft.hasPermission(player, "sgcraft.configurator.useDHDFuelSource"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.allowRedstoneOutput"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.allowRedstoneInput"),
-                      SGCraft.hasPermission(player, "sgcraft.gui.gateAccessMenu") && localGate.allowAdminAccess(player.getName()),
-                      SGCraft.hasPermission(player, "sgcraft.gui.playerAccessMenu") && localGate.allowAdminAccess(player.getName()),
+                      SGCraft.hasPermission(player, "sgcraft.gui.gateAccessMenu") && localGate.allowAdminAccess(player),
+                      SGCraft.hasPermission(player, "sgcraft.gui.playerAccessMenu") && localGate.allowAdminAccess(player),
                       SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakPlayerGate"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGeneratedGate"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress"),
@@ -108,7 +110,7 @@ public class ConfiguratorItem extends Item {
               } else {
                   if (!SGCraft.hasPermission(player, "sgcraft.gui.configurator"))
                       sendErrorMsg(player, "configuratorPermission");
-                  if (!localGate.allowAdminAccess(player.getName()))
+                  if (!localGate.allowAdminAccess(player))
                       sendErrorMsg(player, "insufficientPlayerAdminAccessPermission");
 
                   return new ActionResult<>(EnumActionResult.FAIL, player.getHeldItem(handIn));

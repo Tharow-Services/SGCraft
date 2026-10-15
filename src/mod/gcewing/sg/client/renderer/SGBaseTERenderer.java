@@ -14,6 +14,7 @@ import gcewing.sg.util.GateShape;
 import gcewing.sg.util.GateType;
 import gcewing.sg.util.SGState;
 import gcewing.sg.Vector3;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.tileentity.TileEntity;
 import org.lwjgl.opengl.GL11;
 
@@ -53,6 +54,9 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
 
             glEnable(GL_RESCALE_NORMAL);
             glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            // Lit by the light round the gate, not the light inside its solid base block, which is always dark
+            int light = gate.lightAroundGate();
+            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light & 0xFFFF, light >> 16);
 
             // The middle of the base block; renderStargate turns from there to the gate's frame
             glTranslated(x + 0.5, y + 0.5, z + 0.5);
@@ -86,6 +90,12 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             glRotatef(-90, 1, 0, 0);
         }
         glTranslated(0, shape.centreY, 0);
+        renderGate(gate, shape, partialTicks);
+    }
+
+    // The gate in its own frame, centred on the origin, its front towards +z, with whatever its
+    // ring, chevrons, iris and event horizon are doing. Also draws the live gate on the GDO's screen.
+    public void renderGate(SGBaseTE gate, GateShape shape, float partialTicks) {
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(gate) + "/stargate.png"));
 
         glNormal3f(0, 1, 0);
@@ -94,7 +104,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         if (gate.hasIrisUpgrade)
             renderIris(gate, renderer, partialTicks);
         if (gate.isConnected() && gate.state != SGState.SyncAwait) {
-            renderEventHorizon(gate, partialTicks);
+            renderEventHorizon(gate, renderer, partialTicks);
         }
     }
 
@@ -112,7 +122,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
     }
 
-    void renderEventHorizon(SGBaseTE te, float partialTicks) {
+    void renderEventHorizon(SGBaseTE te, GateRenderer renderer, float partialTicks) {
         if (SGCraft.useHDEventHorizionTexture) {
             bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/eventhorizonhd.png"));
         } else {
@@ -124,20 +134,25 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glNormal3d(0, 0, 1);
         GateShape shape = te.getShape();
         double grid[][] = te.getEventHorizonGrid()[0];
-        double rclip = shape.ehClipRadius * (te.irisIsClosed() ?  te.getIrisAperture(partialTicks) : 1.0);
+        // While the iris is anything but fully open, its blades are across the opening: the horizon is flattened
+        // outside the gap they leave, and its ripples kept behind the blades everywhere, so none show through them.
+        // (Cut back only once the iris was half closed, the horizon came through the blades for the rest of each swing.)
+        double aperture = te.hasIrisUpgrade ? te.getIrisAperture(partialTicks) : 1.0;
+        double rclip = shape.ehClipRadius * aperture;
+        double zmax = aperture < 1 ? renderer.irisDepth(shape) - 2 * irisBladeTilt : Double.POSITIVE_INFINITY;
         for (int i = 1; i < shape.ehGridRadialSize; i++) {
             glBegin(GL_QUAD_STRIP);
             for (int j = 0; j <= shape.ehGridPolarSize; j++) {
-                ehVertex(shape, grid, i, j, rclip);
-                ehVertex(shape, grid, i+1, j, rclip);
+                ehVertex(shape, grid, i, j, rclip, zmax);
+                ehVertex(shape, grid, i+1, j, rclip, zmax);
             }
             glEnd();
         }
         glBegin(GL_TRIANGLE_FAN);
         glTexCoord2d(0, 0);
-        glVertex3d(0, 0, ehClip(grid[1][0] * shape.depthScale(), 0, rclip));
+        glVertex3d(0, 0, ehClip(grid[1][0] * shape.depthScale(), 0, rclip, zmax));
         for (int j = 0; j <= shape.ehGridPolarSize; j++)
-            ehVertex(shape, grid, 1, j, rclip);
+            ehVertex(shape, grid, 1, j, rclip, zmax);
         glEnd();
         glDepthMask(true);
         glEnable(GL_CULL_FACE);
@@ -145,19 +160,19 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         setLightingDisabled(false);
     }
     
-    void ehVertex(GateShape shape, double[][] grid, int i, int j, double rclip) {
+    void ehVertex(GateShape shape, double[][] grid, int i, int j, double rclip, double zmax) {
         double r = i * shape.ehBandWidth;
         double x = r * shape.ehCos[j];
         double y = r * shape.ehSin[j];
-        double z = ehClip(grid[j+1][i] * shape.depthScale(), r, rclip); // ripples scale with the ring's thickness
+        double z = ehClip(grid[j+1][i] * shape.depthScale(), r, rclip, zmax); // ripples scale with the ring's thickness
         glTexCoord2d(x, y);
         glVertex3d(x, y, z);
     }
     
-    double ehClip(double z, double r, double rclip) {
+    double ehClip(double z, double r, double rclip, double zmax) {
         if (r >= rclip)
             z = min(z, 0);
-        return z;
+        return min(z, zmax);
     }       
     
     // Draws the iris at the depth the gate's renderer gives, cut off where its ring hides it
