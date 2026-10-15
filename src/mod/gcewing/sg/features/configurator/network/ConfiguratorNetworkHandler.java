@@ -1,6 +1,7 @@
 package gcewing.sg.features.configurator.network;
 
 import static gcewing.sg.tileentity.SGBaseTE.sendBasicMsg;
+import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 
 import gcewing.sg.BaseDataChannel;
 import gcewing.sg.SGCraft;
@@ -9,10 +10,18 @@ import gcewing.sg.network.SGChannel;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
+import gcewing.sg.util.GateUtil;
+import com.mojang.authlib.GameProfile;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
 
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import javax.annotation.Nullable;
 
 public class ConfiguratorNetworkHandler extends SGChannel {
 
@@ -119,7 +128,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
 
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
-        if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && te.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
+        if (canConfigure(player, te)) {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.secondsToStayOpen") || isPermissionsAdmin) {
                 te.secondsToStayOpen = secondsToStayOpen;
                 te.ticksToStayOpen = te.secondsToStayOpen * 20;
@@ -155,8 +164,93 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated") || isPermissionsAdmin) te.isGenerated = isGenerated;
             sendBasicMsg(player, "changesSaved");
             te.updateIrisEntity();
-            te.markForUpdate();
+            te.markChanged(); // saved with the world, not just sent to players nearby
         }
+    }
+
+    // Whether the player may change this gate's settings. A client can send any gate's position, so the player must
+    // be at the gate holding a Configurator, as when opening its screens, and be the gate's admin (or have the
+    // permissions system's sgcraft.admin).
+    private static boolean canConfigure(EntityPlayer player, SGBaseTE te) {
+        if (te == null) {
+            System.err.println("SGCraft - Configurator Exception - SGBaseTE disappeared");
+            return false;
+        }
+        boolean holdingConfigurator = player.getHeldItemMainhand().getItem() == SGCraft.configurator
+            || player.getHeldItemOffhand().getItem() == SGCraft.configurator;
+        // Generous: ConfiguratorItem picks a gate up to toolSearchRange blocks away in each direction
+        double range = 2 * Math.max(SGCraft.toolSearchRange, GateUtil.reach(player));
+        if (!holdingConfigurator || GateUtil.distanceToGate(te, player.getPositionEyes(1)) > range) {
+            return false;
+        }
+        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin");
+        return SGCraft.hasPermission(player, "sgcraft.gui.configurator") && te.allowAdminAccess(player) || isPermissionsAdmin;
+    }
+
+    // After an access setting changes: save it, tell everyone who can see the gate what they may now do there, and
+    // send the editor the updated lists for their screen
+    private static void accessChanged(EntityPlayer player, SGBaseTE te) {
+        te.markChanged();
+        te.sendPlayerAccessToWatchers();
+        sendAccessListsToClient(player, te);
+    }
+
+    // The gate's full access lists, for an admin's Configurator screens; other players are never sent them
+    public static void sendAccessListsToClient(EntityPlayer player, SGBaseTE te) {
+        ChannelOutput data = configuratorChannel.openPlayer(player, "AccessLists");
+        writeCoords(data, te);
+        List<GateAccessData> gates = te.getGateAccessData();
+        data.writeInt(gates.size());
+        for (GateAccessData entry : gates) {
+            data.writeUTF(entry.getAddress());
+            data.writeBoolean(entry.hasIncomingAccess());
+            data.writeBoolean(entry.hasOutgoingAccess());
+        }
+        List<PlayerAccessData> players = te.getPlayerAccessData();
+        data.writeInt(players.size());
+        for (PlayerAccessData entry : players) {
+            data.writeUTF(entry.getPlayerName());
+            data.writeUTF(entry.getUuid() == null ? "" : entry.getUuid().toString());
+            data.writeBoolean(entry.hasGateAccess());
+            data.writeBoolean(entry.hasIrisAccess());
+            data.writeBoolean(entry.isAdmin());
+        }
+        data.close();
+    }
+
+    @ClientMessageHandler("AccessLists")
+    public void handleAccessListsFromServer(EntityPlayer player, ChannelInput data) {
+        BlockPos pos = readCoords(data);
+        List<GateAccessData> gates = new ArrayList<>();
+        for (int i = data.readInt(); i > 0; i--) {
+            gates.add(new GateAccessData(data.readUTF(), data.readBoolean(), data.readBoolean()));
+        }
+        List<PlayerAccessData> players = new ArrayList<>();
+        for (int i = data.readInt(); i > 0; i--) {
+            String name = data.readUTF();
+            String uuid = data.readUTF();
+            players.add(new PlayerAccessData(name, uuid.isEmpty() ? null : UUID.fromString(uuid), data.readBoolean(), data.readBoolean(), data.readBoolean()));
+        }
+        SGBaseTE te = player == null ? null : SGBaseTE.at(player.world, pos);
+        if (te != null) {
+            te.setClientAccessLists(gates, players);
+        }
+    }
+
+    // The UUID of the player with this name: one online now, or else as the server's profile cache (or Mojang) knows it.
+    // Null for a name nobody has; the entry is then tied to whoever first uses the gate under that name.
+    @Nullable
+    private static UUID uuidForName(EntityPlayer editor, String name) {
+        MinecraftServer server = editor.getServer();
+        if (server == null) {
+            return null;
+        }
+        EntityPlayerMP online = server.getPlayerList().getPlayerByUsername(name);
+        if (online != null) {
+            return online.getUniqueID();
+        }
+        GameProfile profile = server.getPlayerProfileCache().getGameProfileForUsername(name);
+        return profile != null ? profile.getId() : null;
     }
 
     public static void sendGateAddressAccessInputToServer(SGBaseTE te, String address, boolean defaultAllowIncoming, boolean defaultAllowOutgoing, boolean allowIncoming, boolean allowOutgoing) {
@@ -181,14 +275,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean allowIncoming = data.readBoolean();
         boolean allowOutgoing = data.readBoolean();
 
-        if (te == null) {
-            System.err.println("SGCraft - HandleGAA Exception - SGBaseTE disappeared");
-            return;
-        }
-
-        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-
-        if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && te.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
+        if (canConfigure(player, te)) {
             if (address.isEmpty()) { // indicates the user clicked the bottom save button
                 te.defaultAllowIncoming = defaultAllowIncoming;
                 te.defaultAllowOutgoing = defaultAllowOutgoing;
@@ -198,9 +285,9 @@ public class ConfiguratorNetworkHandler extends SGChannel {
                 te.setAllowIncomingAddress(address, allowIncoming);
                 te.setAllowOutgoingAddress(address, allowOutgoing);
             }
-        }
 
-        te.markForUpdate();
+            accessChanged(player, te);
+        }
     }
 
     public static void sendPlayerAccessInputToServer(SGBaseTE te, String playerName, boolean defaultAllowAccess, boolean defaultAllowIris, boolean defaultAllowAdmin, boolean allowAccess, boolean allowIris, boolean allowAdmin) {
@@ -229,25 +316,18 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean allowIris = data.readBoolean();
         boolean allowAdmin = data.readBoolean();
 
-        if (te == null) {
-            System.err.println("SGCraft - HandleGAA Exception - SGBaseTE disappeared");
-            return;
-        }
-
-        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-
-        if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && te.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
+        if (canConfigure(player, te)) {
             if (playerName.isEmpty()) {
                 te.defaultAllowGateAccess = defaultAllowAccess;
                 te.defaultAllowIrisAccess = defaultAllowIris;
                 te.defaultAllowAdminAccess = defaultAllowAdmin;
+            } else {
+                te.setAllowGateAccessAccess(playerName, allowAccess);
+                te.setAllowAccessToIrisController(playerName, allowIris);
+                te.setAllowAccessAdmin(playerName, allowAdmin);
             }
 
-            te.setAllowGateAccessAccess(playerName, allowAccess);
-            te.setAllowAccessToIrisController(playerName, allowIris);
-            te.setAllowAccessAdmin(playerName, allowAdmin);
-
-            te.markChanged();
+            accessChanged(player, te);
         }
     }
 
@@ -268,37 +348,35 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         String newAddress = data.readUTF();
         int function = data.readInt();
 
-        if (localGate == null) {
-            System.err.println("SGCraft - HandleGAA Exception - SGBaseTE disappeared");
+        if (!canConfigure(player, localGate)) {
             return;
         }
-        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
-        if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && localGate.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
-            if (localGate.getGateAccessData() != null) {
-                if (oldAddress.isEmpty() && function == 1) {
-                    localGate.getGateAccessData().add(new GateAccessData(newAddress, true, true));
-                }
+        List<GateAccessData> list = localGate.getGateAccessData();
+        GateAccessData existing = oldAddress.isEmpty() ? null : localGate.findGateAccessEntry(oldAddress);
 
-                if (localGate.getGateAccessData() != null) {
-                    Optional<GateAccessData> gateAccessEntry = localGate.getGateAccessData().stream().filter(g -> g.getAddress().equalsIgnoreCase(oldAddress)).findFirst();
-                    if (gateAccessEntry.isPresent()) {
-                        if (!oldAddress.isEmpty() && !newAddress.isEmpty() && function == 2) {
-                            gateAccessEntry.get().setAddress(newAddress);
-                        }
-
-                        if (!oldAddress.isEmpty() && function == 3) {
-                            // Delete
-                            localGate.getGateAccessData().remove(gateAccessEntry.get());
-                        }
-                    }
-                }
-
-                localGate.markChanged();
-            } else {
-                System.out.println("Exception in handleGAAEntryUpdateFromClient Handler");
+        if (function == 1 || function == 2) { // Add, or change an entry's address
+            // Only full, valid addresses, written XXXX-XXX-XX, and each only once
+            String address = GateAccessData.formatForList(newAddress);
+            if (address == null) {
+                sendErrorMsg(player, "invalidAccessListAddress", newAddress);
+                return;
             }
+            GateAccessData clash = localGate.findGateAccessEntry(address);
+            if (clash != null && clash != existing) {
+                sendErrorMsg(player, "duplicateAccessListAddress", address);
+                return;
+            }
+            if (function == 1 && oldAddress.isEmpty()) {
+                list.add(new GateAccessData(address, true, true));
+            } else if (function == 2 && existing != null) {
+                existing.setAddress(address);
+            }
+        } else if (function == 3 && existing != null) { // Delete
+            list.remove(existing);
         }
+
+        accessChanged(player, localGate);
     }
 
     public static void sendPAEntryUpdateToServer(SGBaseTE te, String oldName, String newName, int function) {
@@ -318,36 +396,39 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         String newName = data.readUTF();
         int function = data.readInt();
 
-        if (localGate == null) {
-            System.err.println("SGCraft - HandleGAA Exception - SGBaseTE disappeared");
+        if (!canConfigure(player, localGate)) {
             return;
         }
 
-        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
+        List<PlayerAccessData> list = localGate.getPlayerAccessData();
+        PlayerAccessData existing = oldName.isEmpty() ? null : localGate.findPlayerAccessEntry(oldName);
 
-        if (SGCraft.hasPermission(player, "sgcraft.gui.configurator") && localGate.allowAdminAccess(player.getName()) || isPermissionsAdmin) {
-            if (localGate.getPlayerAccessData() != null) {
-                if (oldName.isEmpty() && function == 1) {
-                    localGate.getPlayerAccessData().add(new PlayerAccessData(newName, true, true, player.getName().equalsIgnoreCase(newName)));
-                }
-
-                if (localGate.getPlayerAccessData() != null) {
-                    Optional<PlayerAccessData> playerAccessEntry = localGate.getPlayerAccessData().stream().filter(g -> g.getPlayerName().equalsIgnoreCase(oldName)).findFirst();
-                    if (playerAccessEntry.isPresent()) {
-                        if (!oldName.isEmpty() && !newName.isEmpty() && function == 2) {
-                            playerAccessEntry.get().setPlayerName(newName);
-                        }
-
-                        if (!oldName.isEmpty() && function == 3) {
-                            // Delete
-                            localGate.getPlayerAccessData().remove(playerAccessEntry.get());
-                        }
-                    }
-                }
-
-                localGate.markChanged();
+        if (function == 1 || function == 2) { // Add, or change which player an entry is for
+            String name = newName.trim();
+            if (!PlayerAccessData.isValidName(name)) {
+                sendErrorMsg(player, "invalidAccessListPlayer", name);
+                return;
             }
+            // Each player only once, whether by name or, when known, by UUID
+            UUID uuid = uuidForName(player, name);
+            for (PlayerAccessData other : list) {
+                if (other != existing && (other.getPlayerName().equalsIgnoreCase(name) || (uuid != null && uuid.equals(other.getUuid())))) {
+                    sendErrorMsg(player, "duplicateAccessListPlayer", name);
+                    return;
+                }
+            }
+            if (function == 1 && oldName.isEmpty()) {
+                // Adding yourself makes you an admin, so you can't lock yourself out of the gate's settings
+                list.add(new PlayerAccessData(name, uuid, true, true, player.getUniqueID().equals(uuid)));
+            } else if (function == 2 && existing != null) {
+                existing.setPlayerName(name);
+                existing.setUuid(uuid);
+            }
+        } else if (function == 3 && existing != null) { // Delete
+            list.remove(existing);
         }
+
+        accessChanged(player, localGate);
     }
 
     public static void openGuiAtClient(SGBaseTE te,

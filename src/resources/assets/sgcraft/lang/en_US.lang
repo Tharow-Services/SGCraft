@@ -180,3 +180,8 @@ sgcraft.gui.zpmConsole.label.availablePower=Available Power
 
 item.sgcraft:pegasus_upgrade.name=Pegasus Type Upgrade Crystal
 item.sgcraft:universe_upgrade.name=Universe Type Upgrade Crystal
+sgcraft.book.gateAddress.page=The symbols of a distant Stargate are scrawled across this page:
+message.sgcraft:invalidAccessListAddress=%s is not a full gate address (XXXX-XXX-XX)
+message.sgcraft:duplicateAccessListAddress=%s is already in the list
+message.sgcraft:invalidAccessListPlayer=%s is not a valid player name
+message.sgcraft:duplicateAccessListPlayer=%s is already in the list

@@ -281,11 +281,13 @@ public class GateAddressAccessScreen extends BasicScreen {
     @Subscribe
     public void onListChange(BasicList.SelectEvent<GateAccessData> event) {
         boolean firstClick = (event.getOldValue() == null);
-        if (localGate.getGateAccessData().size() > 0) {
-            this.allowIncomingCheckbox.setChecked(localGate.allowIncomingAddress(event.getNewValue().getAddress(), true));
-            this.denyIncomingCheckbox.setChecked(!localGate.allowIncomingAddress(event.getNewValue().getAddress(), true));
-            this.allowOutgoingCheckbox.setChecked(localGate.allowOutgoingAddress(event.getNewValue().getAddress(), true));
-            this.denyOutgoingCheckbox.setChecked(!localGate.allowOutgoingAddress(event.getNewValue().getAddress(), true));
+        final GateAccessData entry = event.getNewValue();
+        if (localGate.getGateAccessData().size() > 0 && entry != null) {
+            // The entry's own settings, as listed for the gate
+            this.allowIncomingCheckbox.setChecked(entry.hasIncomingAccess());
+            this.denyIncomingCheckbox.setChecked(!entry.hasIncomingAccess());
+            this.allowOutgoingCheckbox.setChecked(entry.hasOutgoingAccess());
+            this.denyOutgoingCheckbox.setChecked(!entry.hasOutgoingAccess());
             this.addressOptionsContainer.setEnabled(true);
         } else {
             this.addressOptionsContainer.setEnabled(false);

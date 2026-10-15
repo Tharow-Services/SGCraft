@@ -57,12 +57,12 @@ public class PddItem extends Item {
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;
 
-                boolean canEditLocal = localGate.allowGateAccess(player.getName());
+                boolean canEditLocal = localGate.allowGateAccess(player);
                 boolean canEditRemote = false;
                 if (localGate.isConnected() && localGate.state == SGState.Connected) {
                     SGBaseTE remoteGate = localGate.getConnectedStargateTE();
                     if (remoteGate != null) {
-                        canEditRemote = remoteGate.allowGateAccess(player.getName());
+                        canEditRemote = remoteGate.allowGateAccess(player);
                     }
                 }
                 // This will return false always unless it detects a permissions plugin AND has sgcraft.admin.
@@ -83,12 +83,12 @@ public class PddItem extends Item {
                             sendErrorMsg(player, "gateAddressHidden");
                         }
                     } else {
-                        if (localGate.allowGateAccess(player.getName()) || isPermissionsAdmin){
+                        if (localGate.allowGateAccess(player) || isPermissionsAdmin){
                             GuiNetworkHandler.openGuiAtClient(localGate, player, 3, isPermissionsAdmin, canEditLocal, canEditRemote);
                         } else {
                             if (!SGCraft.hasPermission(player, "sgcraft.gui.pdd"))
                                 sendErrorMsg(player, "pddPermission");
-                            if (!localGate.allowGateAccess(player.getName()))
+                            if (!localGate.allowGateAccess(player))
                                 sendErrorMsg(player, "insufficientPlayerAccessPermission");
                         }
                     }

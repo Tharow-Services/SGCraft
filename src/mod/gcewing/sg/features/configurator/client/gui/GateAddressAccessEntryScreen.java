@@ -5,6 +5,7 @@ import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 import gcewing.sg.features.configurator.network.ConfiguratorNetworkHandler;
 import gcewing.sg.features.pdd.network.PddNetworkHandler;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.tileentity.data.GateAccessData;
 import net.malisis.core.client.gui.Anchor;
 import net.malisis.core.client.gui.BasicScreen;
 import net.malisis.core.client.gui.component.container.BasicForm;
@@ -124,17 +125,7 @@ public class GateAddressAccessEntryScreen extends BasicScreen {
                 .visible(!(function == 3))
                 .anchor(Anchor.BOTTOM | Anchor.RIGHT)
                 .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.save"))
-                .onClick(() -> {
-                    if (this.addressTextField.getText().length() == 11 && this.addressTextField.getText().substring(4,5).equalsIgnoreCase("-") && this.addressTextField.getText().substring(8,9).equalsIgnoreCase("-")) {
-                        ConfiguratorNetworkHandler.sendGAAEntryUpdateToServer(localGate, this.oldAddress, this.addressTextField.getText().trim().toUpperCase(), function);
-                        if (parent instanceof GateAddressAccessScreen) {
-                            ((GateAddressAccessScreen) parent).delayedUpdate();
-                        }
-                        this.close();
-                    } else {
-                        sendErrorMsg(player, "invalidFormat");
-                    }
-                })
+                .onClick(this::saveEntry)
                 .listener(this)
                 .build("button.save");
 
@@ -161,19 +152,25 @@ public class GateAddressAccessEntryScreen extends BasicScreen {
 
     @Override
     protected void keyTyped(char keyChar, int keyCode) {
-        if (keyCode == Keyboard.KEY_RETURN) {
-            if (this.addressTextField.getText().length() == 9 && this.addressTextField.getText().substring(4,5).equalsIgnoreCase("-") && this.addressTextField.getText().substring(8,9).equalsIgnoreCase("-")) {
-                ConfiguratorNetworkHandler.sendGAAEntryUpdateToServer(localGate, this.oldAddress, this.addressTextField.getText().trim().toUpperCase(), function);
-                if (parent instanceof GateAddressAccessScreen) {
-                    ((GateAddressAccessScreen) parent).delayedUpdate();
-                }
-                this.close();
-            } else {
-                sendErrorMsg(player, "invalidFormat");
-            }
+        if (keyCode == Keyboard.KEY_RETURN && function != 3) {
+            saveEntry();
         }
         super.keyTyped(keyChar, keyCode);
         this.lastUpdate = 0; // Reset the timer when key is typed.
+    }
+
+    // Saves the address, as Save or Enter: a full gate address, with or without its dashes
+    private void saveEntry() {
+        String address = GateAccessData.formatForList(this.addressTextField.getText());
+        if (address != null) {
+            ConfiguratorNetworkHandler.sendGAAEntryUpdateToServer(localGate, this.oldAddress, address, function);
+            if (parent instanceof GateAddressAccessScreen) {
+                ((GateAddressAccessScreen) parent).delayedUpdate();
+            }
+            this.close();
+        } else {
+            sendErrorMsg(player, "invalidFormat");
+        }
     }
 
     @Override

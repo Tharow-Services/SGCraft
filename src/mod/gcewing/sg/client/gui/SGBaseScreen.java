@@ -62,7 +62,7 @@ public class SGBaseScreen extends SGScreen {
 
     @Override
     protected void drawBackgroundLayer() {
-        if (this.te.gateOrientation == 1 && this.te.allowAdminAccess(player.getName())) {
+        if (this.te.gateOrientation == 1 && this.te.allowAdminAccess(player)) {
             bindTexture(SGCraft.mod.resourceLocation("textures/gui/sg_gui.png"), 256, 256);
             guiHeight = 208;
         } else {
@@ -82,7 +82,7 @@ public class SGBaseScreen extends SGScreen {
         if (this.te.displayGateAddress) {
             drawCenteredString(this.formattedAddress, cx, 72);
         }
-        if (this.te.numCamouflageSlots > 0 && this.te.gateOrientation == 1 && this.te.allowAdminAccess(player.getName()))
+        if (this.te.numCamouflageSlots > 0 && this.te.gateOrientation == 1 && this.te.allowAdminAccess(player))
             drawCenteredString("Base Camouflage", 92, 92);
     }
 

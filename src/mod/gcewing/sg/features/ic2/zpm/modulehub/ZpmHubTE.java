@@ -31,8 +31,12 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.energy.CapabilityEnergy;
+import net.minecraftforge.energy.IEnergyStorage;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource, IEnergySource, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(3, ItemStack.EMPTY);
@@ -47,6 +51,10 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
 
     private double energyPerSGEnergyUnit = 80;
     private int update = 0;
+
+    // Same per-call cap as the ZPM console and cart.
+    private static final int maxForgeEnergyExtract = 5000;
+    private final IEnergyStorage forgeEnergy = new ForgeEnergyAdapter();
 
     public ZpmHubTE() {
         this.hubSource = new ZpmHubBasicSource(this, Integer.MAX_VALUE, 3);
@@ -81,6 +89,93 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
         }
 
         this.hubSource.update();
+        pushForgeEnergy();
+    }
+
+    // Feed neighbouring Forge Energy acceptors (EnderIO conduits, RF/FE machines) alongside the IC2 network.
+    private void pushForgeEnergy() {
+        if (this.hubSource.getEnergyStored() <= 0) {
+            return;
+        }
+        for (EnumFacing side : EnumFacing.values()) {
+            TileEntity tile = this.world.getTileEntity(this.pos.offset(side));
+            if (tile == null || tile instanceof ZpmHubTE || !tile.hasCapability(CapabilityEnergy.ENERGY, side.getOpposite())) {
+                continue;
+            }
+            IEnergyStorage acceptor = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite());
+            if (acceptor == null || !acceptor.canReceive()) {
+                continue;
+            }
+            int accepted = acceptor.receiveEnergy(this.forgeEnergy.extractEnergy(maxForgeEnergyExtract, true), true);
+            if (accepted > 0) {
+                acceptor.receiveEnergy(this.forgeEnergy.extractEnergy(accepted, false), false);
+            }
+        }
+    }
+
+    @Override
+    public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
+        return capability == CapabilityEnergy.ENERGY || super.hasCapability(capability, facing);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    @Nullable
+    public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
+        if (capability == CapabilityEnergy.ENERGY) {
+            return (T) this.forgeEnergy;
+        }
+        return super.getCapability(capability, facing);
+    }
+
+    /**
+     * Extract-only Forge Energy view of the IC2 buffer, converting at {@link SGCraft#Ic2FEPerEU}. Draws go through
+     * {@link ZpmHubBasicSource#drawEnergy}, so the loaded ZPMs share them exactly as they do IC2 draws.
+     */
+    private class ForgeEnergyAdapter implements IEnergyStorage {
+        @Override
+        public int receiveEnergy(int maxReceive, boolean simulate) {
+            return 0;
+        }
+
+        @Override
+        public int extractEnergy(int maxExtract, boolean simulate) {
+            double ratio = SGCraft.Ic2FEPerEU;
+            if (ratio <= 0 || maxExtract <= 0 || getZpmSlotsloaded() == 0) {
+                return 0;
+            }
+            int fe = (int) Math.min(Math.min(maxExtract, maxForgeEnergyExtract), Math.floor(hubSource.getEnergyStored() * ratio));
+            if (fe <= 0) {
+                return 0;
+            }
+            if (!simulate) {
+                if (isTainted(getStackInSlot(0)) || isTainted(getStackInSlot(1)) || isTainted(getStackInSlot(2))) {
+                    world.newExplosion(null, pos.getX(), pos.getY(), pos.getZ(), (float) 250, true, true);
+                }
+                hubSource.drawEnergy(fe / ratio);
+            }
+            return fe;
+        }
+
+        @Override
+        public int getEnergyStored() {
+            return (int) Math.min(Integer.MAX_VALUE, hubSource.getEnergyStored() * SGCraft.Ic2FEPerEU);
+        }
+
+        @Override
+        public int getMaxEnergyStored() {
+            return (int) Math.min(Integer.MAX_VALUE, hubSource.getCapacity() * SGCraft.Ic2FEPerEU);
+        }
+
+        @Override
+        public boolean canExtract() {
+            return true;
+        }
+
+        @Override
+        public boolean canReceive() {
+            return false;
+        }
     }
 
     @Override

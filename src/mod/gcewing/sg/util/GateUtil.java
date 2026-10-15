@@ -172,7 +172,7 @@ public class GateUtil {
     }
 
     // How far a point is from the gate's rendered ring and the opening inside it
-    static double distanceToGate(SGBaseTE gate, Vec3d at) {
+    public static double distanceToGate(SGBaseTE gate, Vec3d at) {
         GateShape shape = gate.getShape();
         double[] p = toRing(gate, at.x, at.y, at.z, false);
         double dr = Math.max(0, Math.sqrt(p[0] * p[0] + p[1] * p[1]) - shape.ringOuterRadius);

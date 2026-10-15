@@ -7,6 +7,7 @@
 package gcewing.sg;
 
 import gcewing.sg.block.DHDBlock;
+import gcewing.sg.block.EventHorizonLightBlock;
 import gcewing.sg.block.GateSpawnerBlock;
 import gcewing.sg.block.NaquadahBlock;
 import gcewing.sg.block.NaquadahOreBlock;
@@ -67,6 +68,9 @@ import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateType;
 import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.GeneralAddressRegistry;
+import gcewing.sg.generator.GateAddressBookFunction;
+import gcewing.sg.util.LootTableConfig;
+import net.minecraft.world.storage.loot.functions.LootFunctionManager;
 import gcewing.sg.util.Info;
 import gcewing.sg.util.PermissionsUtil;
 import gcewing.sg.util.SGChunkData;
@@ -80,6 +84,8 @@ import net.minecraft.client.audio.SoundHandler;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
@@ -100,11 +106,13 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.terraingen.InitMapGenEvent;
 import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
+import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -123,6 +131,7 @@ import static net.minecraftforge.fml.common.registry.VillagerRegistry.VillagerPr
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Mod(modid = Info.modID, name = Info.modName, version = Info.versionNumber,
@@ -138,6 +147,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static BaseTEChunkManager chunkManager;
 
     public static SGBaseBlock sgBaseBlock;
+    public static EventHorizonLightBlock eventHorizonLightBlock;
     // Bases that build a gate of their own type, for building one by hand in creative mode
     public static SGBaseBlock pegasusBaseBlock, universeBaseBlock;
     public static SGRingBlock sgRingBlock;
@@ -181,6 +191,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static int Ic2SafeInput = 2048;
     public static int Ic2MaxEnergyBuffer = 1000000;
     public static double Ic2euPerSGEnergyUnit = 20.0;
+    public static double Ic2FEPerEU = 4.0; // Forge Energy given per EU when an IC2 block feeds a Forge Energy (RF/FE) acceptor
     public static int Ic2PowerTETier = 5; //3
 
     // SG Power Block Options
@@ -209,6 +220,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     // Search Ranges for ZPM & Tools
     public static int zpmSearchRange = 6;
+    public static int eventHorizonLightLevel = 12; // Light (0-15) a gate gives off while its event horizon is up; 0 for none
     public static int toolSearchRange = 6;
 
     public static PermissionsUtil permissionsUtil;
@@ -264,6 +276,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         GameRegistry.registerTileEntity(ZpmConsoleTE.class, new ResourceLocation(this.modID + ":" + "tile_zpmconsole"));
 
+        LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
+        MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
+
         super.preInit(e);
     }
 
@@ -291,6 +306,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent e) {
         e.registerServerCommand(new SGSpawnCommand());
+    }
+
+    @Mod.EventHandler
+    public void serverStarted(FMLServerStartedEvent e) {
+        checkInjectLootTables(FMLCommonHandler.instance().getMinecraftServerInstance().getWorld(0));
     }
 
     @Override
@@ -341,6 +361,12 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     @Override
     protected void registerBlocks() {
+        // The hidden light behind a closed iris (see EventHorizonLightBlock): no item, never in the creative tab
+        eventHorizonLightBlock = new EventHorizonLightBlock();
+        eventHorizonLightBlock.setTranslationKey(assetKey + ":event_horizon_light");
+        eventHorizonLightBlock.setRegistryName(assetKey, "event_horizon_light");
+        ForgeRegistries.BLOCKS.register(eventHorizonLightBlock);
+
         sgRingBlock = newBlock("stargateRing", SGRingBlock.class, SGRingItem.class);
         // Each type's base, then (if they are on) the creative-only block that builds that gate
         // finished, for testing: stargates, then supergates
@@ -682,6 +708,19 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
     }
 
+    // When a player starts seeing a chunk, tell them their own access to any gates in it: clients aren't sent the
+    // gates' access lists, but need to know which screens and slots to show
+    @SubscribeEvent
+    public void onChunkWatch(ChunkWatchEvent.Watch e) {
+        EntityPlayerMP player = e.getPlayer();
+        Chunk chunk = e.getChunkInstance() != null ? e.getChunkInstance() : player.world.getChunk(e.getChunk().x, e.getChunk().z);
+        for (TileEntity te : chunk.getTileEntityMap().values()) {
+            if (te instanceof SGBaseTE) {
+                ((SGBaseTE) te).sendPlayerAccessTo(player);
+            }
+        }
+    }
+
     // A supergate's ring is drawn far wider than its blocks, so most clicks on it would miss them,
     // landing on whatever is behind or on nothing. An empty handed click on the drawn ring of any
     // gate in front of what it would otherwise hit acts on the gate.
@@ -719,6 +758,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @SubscribeEvent
     @SideOnly(Side.CLIENT)
     public void onModelRegistry(ModelRegistryEvent event) {
+        // The hidden iris light has no model; mapping it to none keeps Minecraft from looking for one
+        ModelLoader.setCustomStateMapper(eventHorizonLightBlock, block -> Collections.emptyMap());
+
         // Register Complex Block Models
         // Note: Complex Item Models register within their creation class because their registration order isn't important.
         if (SGCraft.zpm_interface_cart != null) {
@@ -753,6 +795,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         Ic2MaxEnergyBuffer = config.getInteger("ic2", "energyBufferSize", Ic2MaxEnergyBuffer);
         Ic2euPerSGEnergyUnit = config.getDouble("ic2", "euPerSGEnergyUnit", Ic2euPerSGEnergyUnit);
         Ic2PowerTETier = config.getInteger("ic2", "PowerTETier", Ic2PowerTETier);
+        Ic2FEPerEU = config.getDouble("ic2", "fePerEU", Ic2FEPerEU);
         forceIC2CfgUpdate = config.getBoolean("ic2", "force-update", forceIC2CfgUpdate);
 
         // FP Power Block (Forge Power) i.e.: RF/FE
@@ -766,6 +809,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         // Range lookups for various things...
         zpmSearchRange = config.getInteger("stargate", "zpmSearchRange", zpmSearchRange);
+        eventHorizonLightLevel = Math.max(0, Math.min(15, config.getInteger("stargate", "eventHorizonLightLevel", eventHorizonLightLevel)));
+
+        // Loot
+        LootTableConfig.load(config, assetKey);
+        debugLoot = config.getBoolean("loot", "debugLoot", debugLoot); // log 100 sample rolls of each loot table at server start
         toolSearchRange = config.getInteger("stargate", "toolSearchRange", toolSearchRange);
 
         // World Update / Fixes

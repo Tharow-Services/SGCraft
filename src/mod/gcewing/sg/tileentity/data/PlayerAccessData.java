@@ -2,7 +2,6 @@ package gcewing.sg.tileentity.data;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.collect.Lists;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -11,25 +10,40 @@ import net.minecraftforge.common.util.Constants;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+import javax.annotation.Nullable;
 
 public class PlayerAccessData {
-    static final String PLAYERACCESSLIST = "playeraccesslist";
+    public static final String PLAYERACCESSLIST = "playeraccesslist";
     private static final String PLAYER = "player";
+    private static final String UUID_KEY = "uuid";
     private static final String ACCESS = "access";
     private static final String IRIS = "iris";
     private static final String ADMIN = "admin";
 
+    // What Minecraft allows in a player name
+    private static final Pattern VALID_NAME = Pattern.compile("[A-Za-z0-9_]{1,16}");
+
     private String playerName;
+    // The player the entry belongs to. Null until known (an entry added for a name the server has never seen); the
+    // first player to use the gate under that name is then tied to it.
+    @Nullable private UUID uuid;
     private boolean access;
     private boolean iris;
     private boolean admin;
 
-
-    public PlayerAccessData(final String playerName, final boolean access, boolean iris, boolean admin) {
+    public PlayerAccessData(final String playerName, @Nullable final UUID uuid, final boolean access, boolean iris, boolean admin) {
         this.playerName = playerName;
+        this.uuid = uuid;
         this.access = access;
         this.iris = iris;
         this.admin = admin;
+    }
+
+    public static boolean isValidName(String name) {
+        return name != null && VALID_NAME.matcher(name).matches();
     }
 
     public String getPlayerName() {
@@ -38,6 +52,20 @@ public class PlayerAccessData {
 
     public void setPlayerName(String playerName) {
         this.playerName = playerName;
+    }
+
+    @Nullable
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(@Nullable UUID uuid) {
+        this.uuid = uuid;
+    }
+
+    // An entry belongs to a player by UUID once known; before that, by name
+    public boolean isFor(EntityPlayer player) {
+        return uuid != null ? uuid.equals(player.getUniqueID()) : playerName.equalsIgnoreCase(player.getName());
     }
 
     public boolean hasGateAccess() {
@@ -64,51 +92,23 @@ public class PlayerAccessData {
         this.admin = value;
     }
 
-    public static void updatePlayer(EntityPlayer player, NBTTagCompound compound, String oldPlayerName, String newPlayerName, boolean newAccess, boolean newIris, boolean newAdmin, int command) {
-        checkNotNull(compound);
-        final List<PlayerAccessData> playerAccessData = new ArrayList<>();
-        final NBTTagList list = compound.getTagList(PLAYERACCESSLIST, Constants.NBT.TAG_COMPOUND);
-        for (int i = 0; i < list.tagCount(); i++) {
-            final NBTTagCompound accessCompound = list.getCompoundTagAt(i);
-
-            final String compoundEntryPlayerName = accessCompound.getString(PLAYER);
-            if (compoundEntryPlayerName.equalsIgnoreCase(oldPlayerName)) {
-                accessCompound.setString(PLAYER, newPlayerName);
-                accessCompound.setBoolean(ACCESS, newAccess);
-                accessCompound.setBoolean(IRIS, newIris);
-                accessCompound.setBoolean(ADMIN, newIris);
-            }
-        }
-
-        if (command == 1) { // Indicates new request.
-            playerAccessData.add(new PlayerAccessData(newPlayerName, newAccess, newIris, newAdmin));
-        }
-
-        writeAddresses(compound, playerAccessData);
-    }
-
     public static List<PlayerAccessData> getPlayerAccessList(final NBTTagCompound compound) {
         checkNotNull(compound);
 
-        if (!compound.hasKey(PlayerAccessData.PLAYERACCESSLIST)) {
-            List<PlayerAccessData> genericAddressList = Lists.newArrayList();
-            /*
-            genericAddressList.add(new PlayerAccessData( "Wifee", true, true, true));
-            */
-            PlayerAccessData.writeAddresses(compound, genericAddressList);
-        }
-
         final List<PlayerAccessData> playerAccessData = new ArrayList<>();
         final NBTTagList list = compound.getTagList(PLAYERACCESSLIST, Constants.NBT.TAG_COMPOUND);
         for (int i = 0; i < list.tagCount(); i++) {
-            final NBTTagCompound addressCompound = list.getCompoundTagAt(i);
+            final NBTTagCompound entry = list.getCompoundTagAt(i);
 
-            final String name = addressCompound.getString(PLAYER);
-            final boolean access = addressCompound.getBoolean(ACCESS);
-            final boolean iris = addressCompound.getBoolean(IRIS);
-            final boolean admin = addressCompound.getBoolean(ADMIN);
-
-            playerAccessData.add(new PlayerAccessData(name, access, iris, admin));
+            UUID uuid = null;
+            if (entry.hasKey(UUID_KEY, Constants.NBT.TAG_STRING)) {
+                try {
+                    uuid = UUID.fromString(entry.getString(UUID_KEY));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            playerAccessData.add(new PlayerAccessData(entry.getString(PLAYER), uuid, entry.getBoolean(ACCESS), entry.getBoolean(IRIS),
+                entry.getBoolean(ADMIN)));
         }
 
         return playerAccessData;
@@ -118,22 +118,19 @@ public class PlayerAccessData {
         checkNotNull(compound);
         checkNotNull(playerAccessData);
 
-        if (playerAccessData.size() >= 0) {
-
-            final NBTTagList list = new NBTTagList();
-
-            for (final PlayerAccessData data : playerAccessData) {
-                final NBTTagCompound addressCompound = new NBTTagCompound();
-                addressCompound.setString(PLAYER, data.getPlayerName());
-                addressCompound.setBoolean(ACCESS, data.hasGateAccess());
-                addressCompound.setBoolean(IRIS, data.hasIrisAccess());
-                addressCompound.setBoolean(ADMIN, data.isAdmin());
-
-                list.appendTag(addressCompound);
+        final NBTTagList list = new NBTTagList();
+        for (final PlayerAccessData data : playerAccessData) {
+            final NBTTagCompound entry = new NBTTagCompound();
+            entry.setString(PLAYER, data.getPlayerName());
+            if (data.getUuid() != null) {
+                entry.setString(UUID_KEY, data.getUuid().toString());
             }
-
-            compound.setTag(PLAYERACCESSLIST, list);
+            entry.setBoolean(ACCESS, data.hasGateAccess());
+            entry.setBoolean(IRIS, data.hasIrisAccess());
+            entry.setBoolean(ADMIN, data.isAdmin());
+            list.appendTag(entry);
         }
+        compound.setTag(PLAYERACCESSLIST, list);
 
         return compound;
     }
@@ -147,11 +144,12 @@ public class PlayerAccessData {
             return false;
         }
         PlayerAccessData that = (PlayerAccessData) o;
-        return Objects.equals(playerName, that.playerName);
+        return access == that.access && iris == that.iris && admin == that.admin && Objects.equals(playerName, that.playerName)
+            && Objects.equals(uuid, that.uuid);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(playerName);
+        return Objects.hash(playerName, uuid, access, iris, admin);
     }
 }

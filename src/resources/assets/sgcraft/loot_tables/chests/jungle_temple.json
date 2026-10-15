@@ -1,0 +1,26 @@
+{
+    "pools": [
+        {
+            "name": "sgcraft_jungle_temple",
+            "conditions": [
+                {
+                    "condition": "random_chance",
+                    "chance": 0.25
+                }
+            ],
+            "rolls": 1,
+            "entries": [
+                {
+                    "type": "item",
+                    "name": "minecraft:written_book",
+                    "weight": 1,
+                    "functions": [
+                        {
+                            "function": "sgcraft:gate_address_book"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

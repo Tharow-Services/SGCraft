@@ -1,6 +1,7 @@
 {
     "pools": [
         {
+            "name": "sgcraft_spawn_bonus_chest",
             "conditions": [
                 {
                     "condition": "random_chance",
@@ -43,6 +44,7 @@
             ]
         },
         {
+            "name": "sgcraft_spawn_bonus_chest_2",
             "conditions": [
                 {
                     "condition": "random_chance",
@@ -68,6 +70,7 @@
             ]
         },
         {
+            "name": "sgcraft_spawn_bonus_chest_3",
             "conditions": [
                 {
                     "condition": "random_chance",
@@ -93,6 +96,7 @@
             ]
         },
         {
+            "name": "sgcraft_spawn_bonus_chest_4",
             "conditions": [
                 {
                     "condition": "random_chance",

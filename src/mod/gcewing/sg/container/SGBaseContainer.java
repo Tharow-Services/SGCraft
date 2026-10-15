@@ -39,7 +39,7 @@ public class SGBaseContainer extends BaseContainer {
         this.te = te;
 //      addFuelSlots();
 //      addUpgradeSlots();
-        if (this.te.gateOrientation == 1 && this.te.allowAdminAccess(player.getName())) {
+        if (this.te.gateOrientation == 1 && this.te.allowAdminAccess(player)) {
             addCamouflageSlots();
             addPlayerSlots(player); //(player, playerSlotsX, playerSlotsY);
         }

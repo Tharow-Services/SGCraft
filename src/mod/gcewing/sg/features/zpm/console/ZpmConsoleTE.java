@@ -323,7 +323,7 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
 
     @Override
     public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
-        return capability == CapabilityEnergy.ENERGY;
+        return capability == CapabilityEnergy.ENERGY || super.hasCapability(capability, facing);
     }
 
     @SuppressWarnings("unchecked")
@@ -331,11 +331,11 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
     @Nullable
     public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
         if (capability == CapabilityEnergy.ENERGY) {
-            if (this.storage != null) {
-                return (T) this.storage;
-            }
+            // Hand out the console itself, not its storage, so external cables (EnderIO conduits etc.) go through the
+            // extraction cap, taint check and receive block below.
+            return this.storage != null ? (T) this : null;
         }
-        return null;
+        return super.getCapability(capability, facing);
     }
 
     @Override
@@ -371,10 +371,7 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
     // **********************************************************
     @Override
     public int receiveEnergy(int maxReceive, boolean simulate) {
-        int result = storage.receiveEnergy(maxReceive, simulate);
-        markChanged();
-
-        return result;
+        return 0; // A ZPM is a source only; never accept power from cables.
     }
 
     @Override
@@ -384,11 +381,14 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
         }
         int result = storage.extractEnergy(extract, simulate);
 
-        if (isTainted(this.getStackInSlot(0))) {
-            world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
-        }
+        // Cables simulate constantly; only a real draw should set off a tainted ZPM or dirty the TE.
+        if (!simulate) {
+            if (isTainted(this.getStackInSlot(0))) {
+                world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
+            }
 
-        markChanged();
+            markChanged();
+        }
 
         return result;
     }

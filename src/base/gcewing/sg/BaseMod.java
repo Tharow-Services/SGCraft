@@ -6,9 +6,6 @@
 
 package gcewing.sg;
 
-import com.google.common.base.Charsets;
-import com.google.common.io.Resources;
-import com.google.gson.Gson;
 import gcewing.sg.BaseModClient.IModel;
 import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.item.SGRingItem;
@@ -33,9 +30,15 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraft.world.storage.loot.LootContext;
 import net.minecraft.world.storage.loot.LootPool;
 import net.minecraft.world.storage.loot.LootTable;
+import net.minecraft.world.storage.loot.LootTableList;
 import net.minecraft.world.storage.loot.LootTableManager;
+import net.minecraft.world.storage.loot.LootEntry;
+import net.minecraft.world.storage.loot.LootEntryTable;
+import net.minecraft.world.storage.loot.RandomValueRange;
+import net.minecraft.world.storage.loot.conditions.LootCondition;
 import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.LootTableLoadEvent;
@@ -63,6 +66,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class BaseMod<CLIENT extends BaseModClient<? extends BaseMod>>
     extends BaseSubsystem implements IGuiHandler
@@ -790,44 +796,70 @@ public class BaseMod<CLIENT extends BaseModClient<? extends BaseMod>>
 
     //------------------------- Loot --------------------------------------------------
     
-    static Field lootGsonField = BaseReflectionUtils.getFieldDef(LootTableManager.class, "GSON_INSTANCE", "field_186526_b");
-    static Field lootPoolsField = BaseReflectionUtils.getFieldDef(LootTable.class, "pools", "field_186466_c");
-    static Field lootNameField = BaseReflectionUtils.getFieldDef(LootPool.class, "name", "");
-    
+    // Inject each of our /loot_tables/<vanilla path>.json tables into the matching vanilla table as a single pool that
+    // references it. Keeps the entries stable-named and unfrozen so LootTweaker and similar mods can edit them (issue #183).
     @SubscribeEvent
     public void onLootTableLoad(LootTableLoadEvent event) {
-        //if (debugLoot)
-        //    System.out.printf("BaseMod.onLootTableLoad\n");
         ResourceLocation locn = event.getName();
         if (locn.getNamespace().equals("minecraft")) {
             String path = String.format("/assets/%s/loot_tables/%s.json", assetKey, locn.getPath());
-            //if (debugLoot)
-            //    System.out.printf("BaseMod.onLootTableLoad: Looking for %s\n", path);
-            URL url = getClass().getResource(path);
-            if (url != null) {
+            if (getClass().getResource(path) != null) {
                 if (debugLoot)
-                    System.out.printf("BaseMod.onLootTableLoad: Loading %s\n", path);
-                String data;
-                try {
-                    data = Resources.toString(url, Charsets.UTF_8);
-                }
-                catch (Exception e) {
-                    throw new RuntimeException("Error loading " + path + ": " + e);
-                }
-                //if (debugLoot)
-                //    System.out.printf("BaseMod.onLootTableLoad: data = %s\n", data);
-                Gson gson = (Gson)BaseReflectionUtils.getField(null, lootGsonField);
-                LootTable table = event.getTable();
-                LootTable newTable = ForgeHooks.loadLootTable(gson, locn, data, true, null);
-                List<LootPool> newPools = (List<LootPool>)BaseReflectionUtils.getField(newTable, lootPoolsField);
-                int i = 0;
-                for (LootPool pool : newPools) {
-                    BaseReflectionUtils.setField(pool, lootNameField, modID + (i++));
-                    if (debugLoot)
-                        System.out.printf("BaseMod.onLootTableLoad: Adding pool %s\n", pool.getName());
-                    table.addPool(pool);
-                }
+                    System.out.printf("BaseMod.onLootTableLoad: Injecting %s\n", path);
+                event.getTable().addPool(new LootPool(
+                    new LootEntry[] {
+                        new LootEntryTable(new ResourceLocation(assetKey, locn.getPath()),
+                            1, // weight is arbitrary, the pool holds only this entry
+                            0, // default quality
+                            new LootCondition[0], modID + "_inject_entry")
+                    },
+                    new LootCondition[0],
+                    new RandomValueRange(1), // roll the inject table exactly once,
+                    new RandomValueRange(0), // equivalent to adding its pools directly
+                    modID + "_inject_pool"));
             }
+        }
+    }
+
+    // Load every inject table once at server start so a table that fails to parse (Forge silently swaps in an empty
+    // table) shows up in the log straight away. With debugLoot on, also roll each one and log what it produced.
+    public void checkInjectLootTables(WorldServer world) {
+        Logger log = LogManager.getLogger(modID);
+        LootTableManager manager = world.getLootTableManager();
+        int checked = 0, failed = 0;
+        for (ResourceLocation vanilla : LootTableList.getAll()) {
+            if (!vanilla.getNamespace().equals("minecraft")
+                    || getClass().getResource(String.format("/assets/%s/loot_tables/%s.json", assetKey, vanilla.getPath())) == null) {
+                continue;
+            }
+            checked++;
+            ResourceLocation ours = new ResourceLocation(assetKey, vanilla.getPath());
+            LootTable table = manager.getLootTableFromLocation(ours);
+            if (table == LootTable.EMPTY_LOOT_TABLE) {
+                failed++;
+                log.error("Loot table {} failed to load; its loot will never appear. See the loot table error above.", ours);
+                continue;
+            }
+            if (manager.getLootTableFromLocation(vanilla).getPool(modID + "_inject_pool") == null) {
+                failed++;
+                log.error("Loot table {} was not injected into {}.", ours, vanilla);
+                continue;
+            }
+            if (debugLoot) {
+                Map<String, Integer> totals = new HashMap<>();
+                int rolls = 100;
+                for (int i = 0; i < rolls; i++) {
+                    for (ItemStack stack : table.generateLootForPools(world.rand, new LootContext.Builder(world).build())) {
+                        totals.merge(stack.getItem().getRegistryName().toString(), stack.getCount(), Integer::sum);
+                    }
+                }
+                log.info("Loot table {} OK; {} rolls produced {}", ours, rolls, totals);
+            }
+        }
+        if (failed == 0) {
+            log.info("All {} injected loot tables loaded.", checked);
+        } else {
+            log.error("{} of {} injected loot tables are broken.", failed, checked);
         }
     }
 
