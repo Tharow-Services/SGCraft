@@ -33,6 +33,9 @@ public class PegasusGateModel {
     // Where the screens are: from screenInner out to screenOuter, their surface screenZ0 forward
     // at the inside, rising by screenSlope for each metre out
     public double screenInner, screenOuter, screenZ0, screenSlope;
+    // The bore, the inside of the ring: how far it is from the centre, and how far forward its
+    // front edge is
+    public double boreRadius, boreFront;
 
     public static PegasusGateModel load(InputStream in) throws IOException {
         PegasusGateModel model = new PegasusGateModel();
@@ -130,6 +133,13 @@ public class PegasusGateModel {
         for (double[] t : group("front")) {
             for (int k = 0; k < 3; k++) {
                 outerRadius = Math.max(outerRadius, Math.hypot(t[5 * k], t[5 * k + 1]));
+            }
+        }
+        boreRadius = Double.MAX_VALUE;
+        for (double[] t : group("rim")) {
+            for (int k = 0; k < 3; k++) {
+                boreRadius = Math.min(boreRadius, Math.hypot(t[5 * k], t[5 * k + 1]));
+                boreFront = Math.max(boreFront, t[5 * k + 2]);
             }
         }
         // The screens' front: a line through the corners of its forward faces, fitted

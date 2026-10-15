@@ -75,6 +75,20 @@ class MilkyWayGateRenderer extends GateRenderer {
         return 90;
     }
 
+    // Its fixed ring is thin at the bore, and the symbol ring's face is only just behind the
+    // blades, so blades swung open into it would show in front of it. The iris sits just behind
+    // the bore's front edge instead, and is cut off at the bore, so its blades go into the ring
+    // as they open.
+    @Override
+    double irisDepth(GateShape shape) {
+        return milkyWayModel().boreFront() * milkyWayDepthScale(shape) - SGBaseTERenderer.irisBladeTilt;
+    }
+
+    @Override
+    double irisClipRadius(GateShape shape) {
+        return milkyWayModel().boreRadius() * milkyWayScale(shape);
+    }
+
     // The gate's rings: the fixed ring, and the symbol ring turned to its angle, with its point of
     // origin under the top chevron at rest
     @Override

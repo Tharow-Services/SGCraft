@@ -48,6 +48,13 @@ abstract class GateRenderer {
         return te.chevronIsEngaged(j);
     }
 
+    // Whether the gate is being dialled a symbol at a time with its chevrons locking as each is
+    // entered (see SGBaseTE.chevronsLockOnDial): it stays idle until the whole address is in, but
+    // has chevrons locked, so lights as a gate dialling out does
+    static boolean lockingOnDial(SGBaseTE te) {
+        return te.state == SGState.Idle && te.numEngagedChevrons > 0;
+    }
+
     void renderChevrons(SGBaseTE te, GateShape shape, float partialTicks) {
         int numChevrons = te.getNumChevrons();
         int i0 = numChevrons > 7 ? 0 : 1;
@@ -150,6 +157,19 @@ abstract class GateRenderer {
             }
         }
         return k;
+    }
+
+    // How far forward of the gate's middle the iris's blades are drawn (see
+    // SGBaseTERenderer.renderIris). Most rings are deep enough to hide the blades wherever they
+    // swing, at the depth where the iris entity blocks things.
+    double irisDepth(GateShape shape) {
+        return SGBaseTE.irisZPosition;
+    }
+
+    // How far out from the centre the iris's blades are drawn; beyond, they are inside the ring.
+    // Most rings hide the blades themselves, so they are drawn in full.
+    double irisClipRadius(GateShape shape) {
+        return Double.POSITIVE_INFINITY;
     }
 
     // Gates of every size share their gate type's textures

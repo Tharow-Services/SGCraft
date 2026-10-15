@@ -65,10 +65,25 @@ class UniverseGateRenderer extends GateRenderer {
         glRotatef((float) te.interpolatedRingAngle(partialTicks), 0, 0, 1);
     }
 
-    // A Universe gate lights all its chevrons together as soon as it starts dialling
+    // Its ring's face is only just in front of the blades near the bore, and there are gaps in
+    // the lattice round its rim, so blades swung open into it would show. The iris sits just
+    // behind the bore's front edge instead, and is cut off at the bore, so its blades go into the
+    // ring as they open.
+    @Override
+    double irisDepth(GateShape shape) {
+        return UniverseGateModel.PROFILE[UniverseGateModel.FACE_FROM][1] * universeDepthScale(shape) - SGBaseTERenderer.irisBladeTilt;
+    }
+
+    @Override
+    double irisClipRadius(GateShape shape) {
+        return UniverseGateModel.INNER_RADIUS * universeScale(shape);
+    }
+
+    // A Universe gate lights all its chevrons together as soon as it starts dialling, or, dialled
+    // a symbol at a time, as soon as the first locks
     @Override
     boolean chevronEngaged(SGBaseTE te, int i, int j, float a, float partialTicks) {
-        return te.isActive();
+        return te.isActive() || lockingOnDial(te);
     }
 
     @Override
@@ -210,7 +225,7 @@ class UniverseGateRenderer extends GateRenderer {
         }
         // Lit: adding light where it is white, in white for a bright core, then in blue where its
         // blurred glow is, for the light it gives off round it
-        int locked = te.isActive() ? Math.min(te.numEngagedChevrons, te.dialledAddress.length()) : 0;
+        int locked = te.isActive() || lockingOnDial(te) ? Math.min(te.numEngagedChevrons, te.dialledAddress.length()) : 0;
         if (locked > 0) {
             glBlendFunc(GL_ONE, GL_ONE);
             for (int layer = 0; layer <= universeCoreLayers; layer++) {

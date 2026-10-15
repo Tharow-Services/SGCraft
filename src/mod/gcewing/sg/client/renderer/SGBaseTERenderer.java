@@ -17,6 +17,9 @@ import gcewing.sg.Vector3;
 import net.minecraft.tileentity.TileEntity;
 import org.lwjgl.opengl.GL11;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static gcewing.sg.client.renderer.GateRenderer.setLightingDisabled;
 import static gcewing.sg.client.renderer.GateRenderer.textureFolder;
 import static java.lang.Math.min;
@@ -86,9 +89,10 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(gate) + "/stargate.png"));
 
         glNormal3f(0, 1, 0);
-        gateRenderer(gate).render(gate, shape, partialTicks);
+        GateRenderer renderer = gateRenderer(gate);
+        renderer.render(gate, shape, partialTicks);
         if (gate.hasIrisUpgrade)
-            renderIris(gate, partialTicks);
+            renderIris(gate, renderer, partialTicks);
         if (gate.isConnected() && gate.state != SGState.SyncAwait) {
             renderEventHorizon(gate, partialTicks);
         }
@@ -156,21 +160,24 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return z;
     }       
     
-    void renderIris(SGBaseTE te, double t) {
+    // Draws the iris at the depth the gate's renderer gives, cut off where its ring hides it
+    void renderIris(SGBaseTE te, GateRenderer renderer, double t) {
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/iris.png"));
         double a = te.getIrisAperture(t);
         // The blades are sized for a standard gate; stretch them across a bigger opening but
-        // keep them at the same depth, where the iris entity blocks things
-        double s = te.getShape().ringInnerRadius / GateShape.STANDARD.ringInnerRadius;
+        // keep them at the same depth
+        GateShape shape = te.getShape();
+        double s = shape.ringInnerRadius / GateShape.STANDARD.ringInnerRadius;
+        double z0 = renderer.irisDepth(shape), clip = renderer.irisClipRadius(shape) / s;
         glPushMatrix();
         glScaled(s, s, 1);
         glNormal3f(0, 0, 1);
         glBegin(GL_TRIANGLES);
         for (int i = 0; i < numIrisBlades; i++) {
-            renderIrisBlade(a, 360.0 * i / numIrisBlades);
+            renderIrisBlade(a, 360.0 * i / numIrisBlades, z0, clip);
         }
         glEnd();
-        renderIrisHub(a, s);
+        renderIrisHub(a, s, z0, clip);
         glPopMatrix();
     }
 
@@ -187,6 +194,9 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // its inner and outer edges, all the way through the swing
     final static double irisBladeSwing = 62;
     final static double irisBladeOpenWidth = 0.03;
+    // How far forward of the blade's point the end at its pivot is tilted, which keeps
+    // overlapping blades in order, and how far behind it the back of that end is
+    final static double irisBladeTilt = 0.01;
     // How finely each of a blade's triangles is cut, so that it can follow the swirl (see
     // irisSwirl)
     final static int irisBladeSteps = 8;
@@ -206,14 +216,13 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return irisSwirl * Math.max(0, 1 - dist / GateShape.STANDARD.ringInnerRadius);
     }
 
-    // Draws the blade at the given angle round the iris, opened by a. Call inside
-    // glBegin(GL_TRIANGLES).
-    void renderIrisBlade(double a, double angle) {
+    // Draws the blade at the given angle round the iris, opened by a, its point z0 forward,
+    // cut off the given distance from the centre. Call inside glBegin(GL_TRIANGLES).
+    void renderIrisBlade(double a, double angle, double z0, double clip) {
         double w1 = irisBladeLength, w2 = irisBladeEdge, h0 = irisBladeEndWidth, h1 = irisBladeWidth;
         double h = irisBladeWidthAt(a);
         double u = w2 / w1, v = h / h1, v0 = h0 / h1;
-        double z0 = SGBaseTE.irisZPosition;
-        double z1 = 0.01;
+        double z1 = irisBladeTilt;
         // Its corners in its own frame as {x, y, z, u, v}: its point near the centre, the two
         // corners of its end at the pivot (tilted a little, which keeps overlapping blades in
         // order), and the two corners of its trailing edge
@@ -223,34 +232,33 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         // From its frame to the gate's: swung open about its pivot, then turned to its place
         double swing = Math.toRadians(-a * irisBladeSwing), turn = Math.toRadians(angle);
         double[] frame = {Math.cos(swing), Math.sin(swing), Math.cos(turn), Math.sin(turn)};
-        irisTriangle(tip, front1, front2, frame);
-        irisTriangle(tip, front2, edge, frame);
-        irisTriangle(tip, edge, tail, frame);
-        irisTriangle(tip, tail, edge, frame);
-        irisTriangle(tip, edge, back2, frame);
-        irisTriangle(tip, back2, back1, frame);
+        irisTriangle(tip, front1, front2, frame, clip);
+        irisTriangle(tip, front2, edge, frame, clip);
+        irisTriangle(tip, edge, tail, frame, clip);
+        irisTriangle(tip, tail, edge, frame, clip);
+        irisTriangle(tip, edge, back2, frame, clip);
+        irisTriangle(tip, back2, back1, frame, clip);
     }
 
-    // Draws a triangle of a blade between corners given in its frame, cut into small pieces
-    void irisTriangle(double[] p, double[] q, double[] s, double[] frame) {
+    // Draws a triangle of a blade between corners given in its frame, cut into small pieces, and
+    // cut off the given distance from the centre
+    void irisTriangle(double[] p, double[] q, double[] s, double[] frame, double clip) {
         int n = irisBladeSteps;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n - i; j++) {
-                irisVertex(p, q, s, i, j, frame);
-                irisVertex(p, q, s, i + 1, j, frame);
-                irisVertex(p, q, s, i, j + 1, frame);
+                irisPolygon(new double[][] {irisVertex(p, q, s, i, j, frame), irisVertex(p, q, s, i + 1, j, frame),
+                        irisVertex(p, q, s, i, j + 1, frame)}, clip);
                 if (j < n - i - 1) {
-                    irisVertex(p, q, s, i + 1, j, frame);
-                    irisVertex(p, q, s, i + 1, j + 1, frame);
-                    irisVertex(p, q, s, i, j + 1, frame);
+                    irisPolygon(new double[][] {irisVertex(p, q, s, i + 1, j, frame), irisVertex(p, q, s, i + 1, j + 1, frame),
+                            irisVertex(p, q, s, i, j + 1, frame)}, clip);
                 }
             }
         }
     }
 
     // The point of a blade's triangle i steps from p towards q and j steps towards s, placed in
-    // the gate and swirled
-    void irisVertex(double[] p, double[] q, double[] s, int i, int j, double[] frame) {
+    // the gate and swirled, as {x, y, z, u, v}
+    double[] irisVertex(double[] p, double[] q, double[] s, int i, int j, double[] frame) {
         double bq = (double) i / irisBladeSteps, bs = (double) j / irisBladeSteps, bp = 1 - bq - bs;
         double[] c = new double[5];
         for (int k = 0; k < 5; k++) {
@@ -260,8 +268,49 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         double y = c[0] * frame[1] + c[1] * frame[0];
         double gx = x * frame[2] - y * frame[3], gy = x * frame[3] + y * frame[2];
         double dist = Math.hypot(gx, gy), ang = Math.atan2(gy, gx) + Math.toRadians(irisSwirlAt(dist));
-        glTexCoord2d(c[3], c[4]);
-        glVertex3d(dist * Math.cos(ang), dist * Math.sin(ang), c[2]);
+        return new double[] {dist * Math.cos(ang), dist * Math.sin(ang), c[2], c[3], c[4]};
+    }
+
+    // Draws a small, flat, convex piece of the iris, corners given as {x, y, z, u, v} in order
+    // round it, as triangles, without whatever is more than the given distance from the centre.
+    // It is cut along the edge of that circle where the piece is: a straight line, so it reaches
+    // a little beyond the circle either side, into the ring. Call inside glBegin(GL_TRIANGLES).
+    void irisPolygon(double[][] p, double clip) {
+        double cx = 0, cy = 0;
+        boolean inside = true;
+        for (double[] q : p) {
+            cx += q[0];
+            cy += q[1];
+            inside &= q[0] * q[0] + q[1] * q[1] <= clip * clip;
+        }
+        double len = Math.hypot(cx, cy);
+        if (!inside && len > 0) {
+            // Corners beyond the line are left out, and edges crossing it end where they cross it
+            double dx = cx / len, dy = cy / len;
+            List<double[]> kept = new ArrayList<>();
+            for (int k = 0; k < p.length; k++) {
+                double[] q1 = p[k], q2 = p[(k + 1) % p.length];
+                double f1 = q1[0] * dx + q1[1] * dy - clip, f2 = q2[0] * dx + q2[1] * dy - clip;
+                if (f1 <= 0) {
+                    kept.add(q1);
+                }
+                if ((f1 < 0 && f2 > 0) || (f1 > 0 && f2 < 0)) {
+                    double t = f1 / (f1 - f2);
+                    double[] c = new double[5];
+                    for (int m = 0; m < 5; m++) {
+                        c[m] = q1[m] + (q2[m] - q1[m]) * t;
+                    }
+                    kept.add(c);
+                }
+            }
+            p = kept.toArray(new double[0][]);
+        }
+        for (int k = 1; k + 1 < p.length; k++) {
+            for (double[] q : new double[][] {p[0], p[k], p[k + 1]}) {
+                glTexCoord2d(q[3], q[4]);
+                glVertex3d(q[0], q[1], q[2]);
+            }
+        }
     }
 
     // As on the show, the middle of a closed iris stands out of it like a twisting tower:
@@ -292,33 +341,34 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     final static int irisHubSteps = 10, irisHubAcross = 4, irisHubDown = 8;
 
     // Draws the tower in the middle of the iris (see irisHubBlades), opened by a, on a gate the
-    // given times as big as a standard one. As the iris opens, it opens out into a crown round
+    // given times as big as a standard one, standing out from the blades' points z0 forward, cut
+    // off the given distance from the centre. As the iris opens, it opens out into a crown round
     // the edge of the hole, settling down into the iris as it goes (see hubPoint).
-    void renderIrisHub(double a, double scale) {
+    void renderIrisHub(double a, double scale, double z0, double clip) {
         double rise = 1 - a;
         if (rise <= 0) {
             return;
         }
-        glBegin(GL_QUADS);
+        glBegin(GL_TRIANGLES);
         for (int b = 0; b < irisHubBlades; b++) {
             for (int i = 0; i < irisHubSteps; i++) {
                 double r1 = irisHubRadius * i / irisHubSteps, r2 = irisHubRadius * (i + 1) / irisHubSteps;
                 // Its top
                 for (int j = 0; j < irisHubAcross; j++) {
                     double p1 = (double) j / irisHubAcross, p2 = (double) (j + 1) / irisHubAcross;
-                    irisQuad(new double[][] {hubPoint(b, r1, p1, 0, a, rise, scale), hubPoint(b, r2, p1, 0, a, rise, scale),
-                            hubPoint(b, r2, p2, 0, a, rise, scale), hubPoint(b, r1, p2, 0, a, rise, scale)},
-                            new double[] {0, 0, 1});
+                    irisQuad(new double[][] {hubPoint(b, r1, p1, 0, a, rise, scale, z0), hubPoint(b, r2, p1, 0, a, rise, scale, z0),
+                            hubPoint(b, r2, p2, 0, a, rise, scale, z0), hubPoint(b, r1, p2, 0, a, rise, scale, z0)},
+                            new double[] {0, 0, 1}, clip);
                 }
                 // Its leading and trailing edges, twisting down the tower's sides to the iris
                 for (int k = 0; k < irisHubDown; k++) {
                     double d1 = (double) k / irisHubDown, d2 = (double) (k + 1) / irisHubDown;
                     for (int edge = 0; edge <= 1; edge++) {
-                        double[] q1 = hubPoint(b, r1, edge, d1, a, rise, scale), q2 = hubPoint(b, r2, edge, d1, a, rise, scale);
-                        double[] q3 = hubPoint(b, r2, edge, d2, a, rise, scale), q4 = hubPoint(b, r1, edge, d2, a, rise, scale);
+                        double[] q1 = hubPoint(b, r1, edge, d1, a, rise, scale, z0), q2 = hubPoint(b, r2, edge, d1, a, rise, scale, z0);
+                        double[] q3 = hubPoint(b, r2, edge, d2, a, rise, scale, z0), q4 = hubPoint(b, r1, edge, d2, a, rise, scale, z0);
                         // Facing away from the blade, round the tower
                         double ang = Math.atan2(q1[1] + q2[1], q1[0] + q2[0]), side = edge == 0 ? 1 : -1;
-                        irisQuad(new double[][] {q1, q2, q3, q4}, new double[] {side * Math.sin(ang), -side * Math.cos(ang), 0});
+                        irisQuad(new double[][] {q1, q2, q3, q4}, new double[] {side * Math.sin(ang), -side * Math.cos(ang), 0}, clip);
                     }
                 }
             }
@@ -330,16 +380,17 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // the way across from its leading edge; then the given fraction of the way down the tower's
     // side towards the iris. As the iris opens by a, the tower opens out with the hole in the
     // main blades into a crown of blades round its edge, as on the show, turning as the main
-    // blades do and settling into the iris (it stands out the given fraction of its full height).
-    // Fully open, the hole's edge is behind the ring. As {x, y, z, u, v}.
-    static double[] hubPoint(int b, double rho, double across, double down, double a, double rise, double scale) {
+    // blades do and settling into the iris (it stands out the given fraction of its full height,
+    // from the blades' points z0 forward). Fully open, the hole's edge is behind the ring. As
+    // {x, y, z, u, v}.
+    static double[] hubPoint(int b, double rho, double across, double down, double a, double rise, double scale, double z0) {
         double spacing = 360.0 / irisHubBlades, widest = spacing * irisHubOverlap;
         double t = rho / irisHubRadius, f = 1 - t;
         // It narrows to a point at its outer end
         double phi = across * widest * (1 - t * t);
         double step = irisHubStep * (0.3 + 0.7 * f);
         double top = irisHubTowerHeight + irisHubHeight * f + step * (1 - phi / widest);
-        double z = SGBaseTE.irisZPosition + scale * (0.005 + rise * top * (1 - down));
+        double z = z0 + scale * (0.005 + rise * top * (1 - down));
         // Narrow in the middle, flaring out to the top
         double up = 1 - down;
         double r = rho * (irisHubBase + (1 - irisHubBase) * up * up);
@@ -352,9 +403,9 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return new double[] {dist * Math.cos(at), dist * Math.sin(at), z, t, across + down};
     }
 
-    // Draws a quad of the iris, corners given as {x, y, z, u, v}, facing roughly the given way.
-    // Call inside glBegin(GL_QUADS).
-    void irisQuad(double[][] p, double[] towards) {
+    // Draws a quad of the iris, corners given as {x, y, z, u, v}, facing roughly the given way,
+    // cut off the given distance from the centre. Call inside glBegin(GL_TRIANGLES).
+    void irisQuad(double[][] p, double[] towards, double clip) {
         double ax = p[2][0] - p[0][0], ay = p[2][1] - p[0][1], az = p[2][2] - p[0][2];
         double bx = p[3][0] - p[1][0], by = p[3][1] - p[1][1], bz = p[3][2] - p[1][2];
         double cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
@@ -365,11 +416,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         boolean reverse = cx * towards[0] + cy * towards[1] + cz * towards[2] < 0;
         double sign = reverse ? -len : len;
         glNormal3d(cx / sign, cy / sign, cz / sign);
-        for (int k = 0; k < 4; k++) {
-            double[] q = p[reverse ? 3 - k : k];
-            glTexCoord2d(q[3], q[4]);
-            glVertex3d(q[0], q[1], q[2]);
-        }
+        irisPolygon(reverse ? new double[][] {p[3], p[2], p[1], p[0]} : p, clip);
     }
 
 }

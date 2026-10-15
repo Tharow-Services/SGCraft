@@ -122,6 +122,8 @@ class PegasusScreens {
     // dark behind them.
     //  - Dialling out, a single light steps round the ring a screen at a time to each chevron in
     //    turn (see SGBaseTE.pegasusLightTravel), and the glyph under each locked chevron stays lit.
+    //    Dialled a symbol at a time with its chevrons locking as each is entered, the glyph under
+    //    each lights as it locks (see GateRenderer.lockingOnDial).
     //  - Dialled into, the ring stays dark until the last few seconds of the dial, then fills
     //    with light clockwise from the top, lighting each chevron as it reaches it, so that the
     //    whole ring is lit as the last chevron locks (see fill).
@@ -133,7 +135,7 @@ class PegasusScreens {
         float a = te.angleBetweenChevrons();
         int length = te.dialledAddress.length();
         int locked = Math.min(te.numEngagedChevrons, length);
-        if (te.isInitiator) {
+        if (te.isInitiator || GateRenderer.lockingOnDial(te)) {
             for (int e = 0; e < locked; e++) {
                 int i = chevronPosition(te, row, e);
                 if (i >= 0) {

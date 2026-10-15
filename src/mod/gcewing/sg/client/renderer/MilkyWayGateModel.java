@@ -106,6 +106,26 @@ public class MilkyWayGateModel {
         return model;
     }
 
+    // The bore, the inside of the fixed ring: how far it is from the centre
+    public double boreRadius() {
+        double r = Double.MAX_VALUE;
+        for (double[] p : staticProfile) {
+            r = Math.min(r, p[0]);
+        }
+        return r;
+    }
+
+    // How far forward the bore's front edge is
+    public double boreFront() {
+        double r = boreRadius(), z = 0;
+        for (double[] p : staticProfile) {
+            if (p[0] == r) {
+                z = Math.max(z, p[1]);
+            }
+        }
+        return z;
+    }
+
     // The corners of a polygon line, each of the given number of values
     static double[][] corners(String[] f, int each) {
         double[][] p = new double[(f.length - 1) / each][];
