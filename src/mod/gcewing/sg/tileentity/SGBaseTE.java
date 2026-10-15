@@ -82,6 +82,8 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.server.management.PlayerChunkMap;
 import gcewing.sg.network.SGChannel;
@@ -2625,6 +2627,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // The light round the gate, to draw it by, as World.getCombinedLight gives it: the brightest of the light in the
     // middle of its opening and a block in front of and behind that. Minecraft would use the light at the base, but
     // the base is a solid block, which light never gets into, so the gate would always be drawn in the dark.
+    @SideOnly(Side.CLIENT) // World.getCombinedLight is client-only; only the gate renderer uses this
     public int lightAroundGate() {
         Trans3 t = localToGlobalTransformation();
         Vector3 centre = ringCentre(), front = fromGateFrame(new Vector3(0, 0, 1));
@@ -3341,20 +3344,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // The gate's data as sent to every player near it: without the access lists, which name who may use the gate.
     // Each player is sent only their own access instead (see sendPlayerAccessTo).
     @Override
-    public NBTTagCompound getUpdateTag() {
-        return withoutAccessLists(super.getUpdateTag());
-    }
-
-    @Override
-    public SPacketUpdateTileEntity getUpdatePacket() {
-        SPacketUpdateTileEntity packet = super.getUpdatePacket();
-        if (packet != null) {
-            withoutAccessLists(packet.getNbtCompound());
-        }
-        return packet;
-    }
-
-    private static NBTTagCompound withoutAccessLists(NBTTagCompound nbt) {
+    protected NBTTagCompound writeToClientNBT(NBTTagCompound nbt) {
+        super.writeToClientNBT(nbt);
         nbt.removeTag(PlayerAccessData.PLAYERACCESSLIST);
         nbt.removeTag(GateAccessData.GATEACCESSLIST);
         return nbt;

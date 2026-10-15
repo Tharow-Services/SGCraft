@@ -97,14 +97,14 @@ public class PddScreen extends BasicScreen {
         }
 
         // Master Panel
-        this.form = new BasicForm(this, 300, 225, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.personalDialerDevice"));
+        this.form = new BasicForm(this, BASE_FORM_WIDTH, 225, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.personalDialerDevice"));
         this.form.setMovable(true);
         this.form.setBackgroundAlpha(255);
 
         // ****************************************************************************************************************************
         // Address List Area
         // ****************************************************************************************************************************
-        this.addressContainer = new BasicContainer(this, 295, 185);
+        this.addressContainer = new BasicContainer(this, BASE_CONTAINER_WIDTH, 185);
         this.addressContainer.setPosition(0, 0, Anchor.LEFT | Anchor.MIDDLE);
         this.addressContainer.setBorder(FontColors.WHITE, 1, 185);
         this.addressContainer.setPadding(0, 3);
@@ -475,6 +475,8 @@ public class PddScreen extends BasicScreen {
 // ******************************************************************************************************************************
 
     final static String symbolTextureFile = "symbols48.png";
+    // The same symbols in teal, for the address list
+    private final GuiTexture tealSymbols = new GuiTexture(SGCraft.mod.resourceLocation("textures/gui/symbols48_teal.png"), symbolTextureWidth, symbolTextureHeight);
     final static int symbolsPerRowInTexture = 10;
     final static int symbolWidthInTexture = 48;
     final static int symbolHeightInTexture = 48;
@@ -492,8 +494,11 @@ public class PddScreen extends BasicScreen {
             List<AddressData> comparedList = AddressData.getAddresses(compound);
             if (!comparedList.equals(clonedList)) {
                 this.addressList.clearItems();
+                resetAddressLineWidth();
                 this.clonedList = AddressData.getAddresses(compound);
                 this.addressList.addItems(AddressData.getAddresses(compound));
+                this.availableAddressesLabel.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.availableAddresses")
+                    + ": (" + this.clonedList.size() + ")");
 
                 // Ask the server which world any new addresses lead to; setWorldNames shows them when they arrive
                 final Set<String> unknown = new HashSet<>();
@@ -515,6 +520,7 @@ public class PddScreen extends BasicScreen {
             // Rebuild the entries so their address lines pick up the names, keeping the selection
             final AddressData selected = this.addressList.getSelectedItem();
             this.addressList.clearItems();
+            resetAddressLineWidth();
             this.addressList.addItems(new ArrayList<>(this.clonedList));
             if (selected != null) {
                 for (AddressData data : this.clonedList) {
@@ -704,9 +710,45 @@ public class PddScreen extends BasicScreen {
         return a.equals(home) || (a.length() == SGAddressing.numCoordSymbols && home.startsWith(a));
     }
 
+    // ---- Widening the window to fit the longest address line ----
+
+    // The window's normal widths, which it never shrinks below
+    private static final int BASE_FORM_WIDTH = 300, BASE_CONTAINER_WIDTH = 295;
+    // Room each list entry keeps on its right for the move arrows and locked marker
+    private static final int ENTRY_RIGHT_RESERVE = 27;
+    // The widest address line (to the end of its world name) among the entries shown
+    private int widestAddressLine = 0;
+
+    // Called by each entry as it is laid out; widens the window if this line wouldn't fit
+    private void fitAddressLine(int lineEnd) {
+        if (lineEnd > this.widestAddressLine) {
+            this.widestAddressLine = lineEnd;
+            resizeToAddressLines();
+        }
+    }
+
+    // Starts over when the list is rebuilt, so the window narrows again once long lines are gone
+    private void resetAddressLineWidth() {
+        this.widestAddressLine = 0;
+        resizeToAddressLines();
+    }
+
+    private void resizeToAddressLines() {
+        // An entry's width at the normal size: the list's inner width, less room for its scroll bar whether or not it shows
+        int baseEntryWidth = BASE_CONTAINER_WIDTH - this.addressList.getLeftPadding() - this.addressList.getRightPadding()
+            - (this.addressList.getScrollBar().getRawWidth() + 5);
+        int extra = Math.max(0, this.widestAddressLine + ENTRY_RIGHT_RESERVE - baseEntryWidth);
+        this.form.setWidth(BASE_FORM_WIDTH + extra);
+        this.addressContainer.setWidth(BASE_CONTAINER_WIDTH + extra);
+        this.valuesSeparator.setSize(BASE_CONTAINER_WIDTH + extra - 55, 1);
+    }
+
     private class AddressItemComponent extends BasicList.ItemComponent<AddressData> {
 
         private UILabel addressLabel, nameLabel;
+
+        // Each address's symbols, small and in teal, shown in its list entry
+        private static final int listSymbolSize = 9;
         private BasicContainer lockedStatusContainer;
         private UIButton moveUpButton, moveDownButton;
 
@@ -740,10 +782,34 @@ public class PddScreen extends BasicScreen {
             this.nameLabel = new UILabel(this.getGui(), (isLocal ? TextFormatting.DARK_GRAY : TextFormatting.WHITE) + this.item.getName());
             this.nameLabel.setPosition(4, 3);
 
+            // The address, then its symbols in teal, then the world it leads to: "ABCD-EFG-HI - <symbols> - world"
             final String worldName = worldNames.get(this.item.getAddress());
+            final String symbols = this.item.getAddress().replace("-", "").trim().toUpperCase();
+            final boolean showSymbols = !symbols.isEmpty() && SGAddressing.validSymbols(symbols);
             this.addressLabel = new UILabel(this.getGui(), (isLocal ? TextFormatting.DARK_GRAY : TextFormatting.BLUE) + this.item.getAddress()
-                + (worldName == null ? "" : TextFormatting.GRAY + " - " + worldName));
+                + (showSymbols || worldName != null ? TextFormatting.GRAY + " - " : ""));
             this.addressLabel.setPosition(4, BasicScreen.getPaddedY(this.nameLabel, 2));
+
+            int x = this.addressLabel.getX() + this.addressLabel.getWidth() + 1;
+            if (showSymbols) {
+                for (int i = 0; i < symbols.length(); i++) {
+                    int s = SGBaseTE.charToSymbol(symbols.charAt(i));
+                    final UIImage symbol = new UIImage(this.getGui(), tealSymbols,
+                        tealSymbols.getIcon((s % symbolsPerRowInTexture) * symbolWidthInTexture, (s / symbolsPerRowInTexture) * symbolHeightInTexture,
+                            symbolWidthInTexture, symbolHeightInTexture));
+                    symbol.setSize(listSymbolSize, listSymbolSize);
+                    symbol.setPosition(x, this.addressLabel.getY() - 1);
+                    this.add(symbol);
+                    x += listSymbolSize + 1;
+                }
+            }
+            if (worldName != null) {
+                final UILabel worldLabel = new UILabel(this.getGui(), TextFormatting.GRAY + (showSymbols ? " - " : "") + worldName);
+                worldLabel.setPosition(x, this.addressLabel.getY());
+                this.add(worldLabel);
+                x += worldLabel.getWidth();
+            }
+            fitAddressLine(x);
 
             this.lockedStatusContainer = new BasicContainer(this.getGui(), 5, UIComponent.INHERITED);
             this.lockedStatusContainer.setPosition(0, 0, Anchor.MIDDLE | Anchor.RIGHT);
