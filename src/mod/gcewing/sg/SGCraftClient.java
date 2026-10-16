@@ -6,6 +6,9 @@
 
 package gcewing.sg;
 
+import gcewing.sg.features.cityshield.CityShieldTE;
+import gcewing.sg.features.cityshield.client.CityShieldRenderer;
+
 // import gcewing.sg.ic2.*; //[IC2]
 
 import gcewing.sg.client.gui.DHDFuelScreen;
@@ -47,6 +50,9 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     protected void registerTileEntityRenderers() {
         addTileEntityRenderer(SGBaseTE.class, new SGBaseTERenderer());
         addTileEntityRenderer(DHDTE.class, new DHDTERenderer());
+        if (BaseMod.isModLoaded("malisiscore")) {
+            addTileEntityRenderer(CityShieldTE.class, new CityShieldRenderer());
+        }
     }
     
     @Override

@@ -36,6 +36,12 @@ import gcewing.sg.features.zpm.ZPMMultiplierRegistry;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartContainer;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCart;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartTE;
+import gcewing.sg.features.edd.EddItem;
+import gcewing.sg.features.cityshield.CityShieldBlock;
+import gcewing.sg.features.cityshield.CityShieldTE;
+import gcewing.sg.features.cityshield.network.CityShieldNetworkHandler;
+import gcewing.sg.features.shield.ShieldConsoleBlock;
+import gcewing.sg.features.shield.network.ShieldConsoleNetworkHandler;
 import gcewing.sg.features.pdd.PddItem;
 import gcewing.sg.features.pdd.network.PddNetworkHandler;
 import gcewing.sg.features.tokra.SGTradeHandler;
@@ -57,10 +63,12 @@ import gcewing.sg.interfaces.IIntegration;
 import gcewing.sg.interfaces.SoundSource;
 import gcewing.sg.item.SGChevronUpgradeItem;
 import gcewing.sg.item.SGIrisUpgradeItem;
+import gcewing.sg.item.SGShieldUpgradeItem;
 import gcewing.sg.item.SGPegasusUpgradeItem;
 import gcewing.sg.item.SGUniverseUpgradeItem;
 import gcewing.sg.item.SGRingItem;
 import gcewing.sg.network.GuiNetworkHandler;
+import gcewing.sg.network.SupergatePowerNetworkHandler;
 import gcewing.sg.network.SGChannel;
 import gcewing.sg.generator.NaquadahOreWorldGen;
 import gcewing.sg.tileentity.DHDTE;
@@ -159,9 +167,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static final List<Block> creativeGateOrder = new ArrayList<>();
     public static DHDBlock sgControllerBlock;
     public static Block naquadahBlock, naquadahOre;
+    public static Block shieldConsole;
+    public static Block cityShieldGenerator;
     public static SGPowerBlock sgPowerUnit;
 
-    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
+    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgShieldUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
     public static Block ic2PowerUnit;
@@ -175,7 +185,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static OCIntegration ocIntegration; //[OC]
 
     public static Block zpm_interface_cart, zpm_console, zpm_hub;
-    public static Item zpm, gdo, pdd, configurator;
+    public static Item zpm, gdo, pdd, edd, configurator;
 
     public static CreativeTabs creativeTabs;
 
@@ -275,6 +285,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
 
         GameRegistry.registerTileEntity(ZpmConsoleTE.class, new ResourceLocation(this.modID + ":" + "tile_zpmconsole"));
+        // The City Shield Generator holds its ZPMs in a MalisisCore inventory, so needs MalisisCore
+        if (isModLoaded("malisiscore")) {
+            GameRegistry.registerTileEntity(CityShieldTE.class, new ResourceLocation(this.modID + ":" + "tile_cityshield"));
+            MinecraftForge.EVENT_BUS.register(CityShieldTE.class); // keeps explosions outside the shield from reaching in
+        }
 
         LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
         MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
@@ -289,6 +304,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         System.out.printf("SGCraft.init\n");
         configure();
         channel = new SGChannel(Info.modID);
+        new SupergatePowerNetworkHandler(Info.modID + "-power");
         chunkManager = new BaseTEChunkManager(this);
     }
 
@@ -324,6 +340,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         NaquadahOreWorldGen.configure(config);
         SGBaseBlock.configure(config);
         SGBaseTE.configure(config);
+        if (isModLoaded("malisiscore")) {
+            CityShieldTE.configure(config);
+        }
         FeatureGeneration.configure(config);
 
         // Server-Side Options
@@ -393,6 +412,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate"));
             creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate"));
             creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.ORI), "gatespawner_ori_supergate"));
         }
         sgControllerBlock = newBlock("stargateController", DHDBlock.class);
         naquadahBlock = newBlock("naquadahBlock", NaquadahBlock.class);
@@ -416,6 +436,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         sgControllerCrystal = newItem("sgControllerCrystal"); //, "Stargate Controller Crystal");
         sgChevronUpgrade = addItem(new SGChevronUpgradeItem(), "sgChevronUpgrade");
         sgIrisUpgrade = addItem(new SGIrisUpgradeItem(), "sgIrisUpgrade");
+        sgShieldUpgrade = addItem(new SGShieldUpgradeItem(), "sgShieldUpgrade");
         sgIrisBlade = newItem("sgIrisBlade");
         if (isModLoaded("ic2")) {
             ic2Capacitor = newItem("ic2Capacitor");
@@ -435,6 +456,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
             pdd = addItem(new PddItem(), "pdd");
             new PddNetworkHandler(Info.modID+"-pdd");
+            edd = addItem(new EddItem(), "edd");
+
+            shieldConsole = newBlock("shield_console", ShieldConsoleBlock.class);
+            new ShieldConsoleNetworkHandler(Info.modID+"-shield");
+
+            cityShieldGenerator = newBlock("city_shield_generator", CityShieldBlock.class);
+            new CityShieldNetworkHandler(Info.modID+"-cityshield");
 
             // PDD default address loader
             final ConfigurationNode rootNode;
@@ -485,7 +513,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     }
 
     public static boolean isValidStargateUpgrade(Item item) {
-        return item == sgChevronUpgrade || item == sgIrisUpgrade;
+        return item == sgChevronUpgrade || item == sgIrisUpgrade || item == sgShieldUpgrade;
     }
 
     @Override
@@ -562,6 +590,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             newRecipe("sgirisupgrade", sgIrisUpgrade, 1, "bbb", "brb", "bbb", 'b', sgIrisBlade, 'r', Items.REDSTONE);
         }
 
+        if (config.getBoolean("recipes", "sgShieldUpgradeItem", true)) {
+            newRecipe("sgshieldupgrade", sgShieldUpgrade, 1, "ili", "rcr", "ili", 'i', naquadahIngot, 'l', blueDye, 'r', Items.REDSTONE, 'c', sgCoreCrystal);
+        }
+
         if (config.getBoolean("recipes", "sgCoreCrystalItem", false)) {
             newRecipe("sgcorecrystal", sgCoreCrystal, 1, "bbr", "rdb", "brb", 'b', blueDye, 'r', Items.REDSTONE, 'd', Items.DIAMOND);
         }
@@ -596,6 +628,15 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         if (isModLoaded("malisiscore")) {
             if (config.getBoolean("recipes", "pdd", true)) {
                 newRecipe("pdd", pdd, 1, "rcr", "nCn", "xbz", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'C', Items.CLOCK, 'c', Items.COMPASS);
+            }
+            if (config.getBoolean("recipes", "edd", true)) {
+                newRecipe("edd", edd, 1, "rcr", "nMn", "xbz", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'M', Items.MAP, 'c', Items.COMPASS);
+            }
+            if (config.getBoolean("recipes", "shieldConsole", true)) {
+                newRecipe("shield_console", shieldConsole, 1, "IBI", "RCR", "III", 'I', Items.IRON_INGOT, 'B', Blocks.STONE_BUTTON, 'R', Items.REDSTONE, 'C', sgControllerCrystal);
+            }
+            if (config.getBoolean("recipes", "cityShieldGenerator", true)) {
+                newRecipe("city_shield_generator", cityShieldGenerator, 1, "NSN", "CXC", "NSN", 'N', naquadahBlock, 'S', sgShieldUpgrade, 'C', sgCoreCrystal, 'X', Items.NETHER_STAR);
             }
             if (config.getBoolean("recipes", "gdo", true)) {
                 newRecipe("gdo", gdo, 1, "rCr", "xLz", "nbn", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'C', Items.CLOCK, 'L', Blocks.LEVER);

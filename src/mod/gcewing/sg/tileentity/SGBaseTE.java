@@ -19,6 +19,7 @@ import gcewing.sg.BaseUtils;
 import gcewing.sg.event.SGMergeEvent;
 import gcewing.sg.features.ic2.zpm.modulehub.ZpmHubTE;
 import gcewing.sg.features.zpm.console.ZpmConsoleTE;
+import gcewing.sg.features.edd.ExplorerData;
 import gcewing.sg.generator.GeneratorAddressRegistry;
 import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
@@ -38,6 +39,7 @@ import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.entity.EntityStargateIris;
 import gcewing.sg.features.ic2.IC2PowerTE;
 import gcewing.sg.features.zpm.ZpmAddon;
+import gcewing.sg.features.zpm.ZpmSlotSource;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartTE;
 import gcewing.sg.features.oc.OCIntegration;
 import gcewing.sg.features.oc.OCInterfaceTE;
@@ -45,6 +47,7 @@ import gcewing.sg.features.oc.OCWirelessEndpoint;
 import gcewing.sg.interfaces.IComputerInterface;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.util.IrisState;
+import gcewing.sg.util.OriGate;
 import gcewing.sg.interfaces.LoopingSoundSource;
 import gcewing.sg.util.FakeTeleporter;
 import net.minecraft.block.Block;
@@ -70,7 +73,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.EnumActionResult;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ITickable;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
@@ -118,6 +123,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             irisOpenSound,
             irisCloseSound,
             irisHitSound,
+            shieldActivationSound,
+            shieldDeactivationSound,
+            oriLinkSound,
             m_dhdPressSound,
             p_dhdPressSound,
             m_dhdDialSound,
@@ -143,6 +151,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         irisOpenSound = mod.newSound("iris_open");
         irisCloseSound = mod.newSound("iris_close");
         irisHitSound = mod.newSound("iris_hit");
+        shieldActivationSound = mod.newSound("shield_activation");
+        shieldDeactivationSound = mod.newSound("shield_deactivation");
+        oriLinkSound = mod.newSound("ori_link");
         m_dhdPressSound = mod.newSound("m_dhd_press");
         p_dhdPressSound = mod.newSound("p_dhd_press");
         m_dhdDialSound = mod.newSound("m_dhd_dial");
@@ -190,6 +201,12 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public final static DamageSource irisDamageSource = new DamageSource("sgcraft:iris");
     public final static float irisDamageAmount = 1000000;
     public static int minutesOpenPerFuelItem = 80;
+    // Energy a raised shield takes each tick (see tickShieldEnergy)
+    public static double shieldEnergyPerTick = 1.0;
+    // How far a Shield Console reaches for a gate with a shield (to the nearest part of its ring)
+    public static int shieldConsoleRange = 40;
+    // Ticks a shield takes to rise or fall, against the iris blades' maxIrisPhase
+    final static int shieldRiseTicks = 10;
 
 
     final static int interDiallingTime = 10; // ticks
@@ -198,6 +215,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     final static int milkyWayInterDiallingTime = 24; // ticks
     public int syncAwaitTime = 30; // ticks  // 10 - withinWorld, 30 - dimensional
     final static int transientDuration = 20; // ticks
+    // An Ori gate's event horizon first fills in from the ring to the middle, taking this long, before the kawoosh
+    public final static int oriFillTicks = 30;
     final static int disconnectTime = 40; // ticks
 
     final static double openingTransientIntensity = 1.3;
@@ -208,7 +227,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public static int firstCamouflageSlot = 0;
     public static int numCamouflageSlots = 5;
-    public static int numInventorySlots = numCamouflageSlots;
+    // A supergate's base also holds ZPMs (see zpmSources)
+    public static int firstZpmSlot = numCamouflageSlots, numZpmSlots = 3;
+    public static int numInventorySlots = numCamouflageSlots + numZpmSlots;
 
     static float defaultChevronAngle = 40f;
     static float chevronAngles[][] = {
@@ -243,6 +264,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public BlockPos linkedPos = new BlockPos(0, 0, 0);
     public boolean hasChevronUpgrade;
     public boolean hasIrisUpgrade;
+    // The gate's iris upgrade is an energy shield (the Shield Upgrade) rather than metal blades. Both close and open the
+    // same way, so whatever works the iris works the shield; it only looks and sounds different, and takes energy.
+    public boolean hasShield;
     public IrisState irisState = IrisState.Open;
     public int irisPhase = maxIrisPhase; // 0 = fully closed, maxIrisPhase = fully open
     public int lastIrisPhase = maxIrisPhase;
@@ -272,7 +296,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean wasIrisClosed = false;
 
     // Unique Gate Configurator Options
-    public int gateType = 1; // GateType.id: 1 = Milky Way, 2 = Pegasus, 3 = Universe
+    public int gateType = 1; // GateType.id: 1 = Milky Way, 2 = Pegasus, 3 = Universe, 4 = Ori
     public int gateOrientation = 1;
     public int secondsToStayOpen = 5 * 60;
     public int ticksToStayOpen = 20 * secondsToStayOpen;
@@ -452,6 +476,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
         // Global static config values
         minutesOpenPerFuelItem = cfg.getInteger("stargate", "minutesOpenPerFuelItem", minutesOpenPerFuelItem);
+        shieldEnergyPerTick = cfg.getDouble("shield", "energyPerTick", shieldEnergyPerTick);
+        shieldConsoleRange = cfg.getInteger("shield", "consoleRange", shieldConsoleRange);
         chunkLoadingRange = cfg.getInteger("options", "chunkLoadingRange", chunkLoadingRange);
         logStargateEvents = cfg.getBoolean("options", "logStargateEvents", logStargateEvents);
         soundVolume = (float)cfg.getDouble("stargate", "soundVolume", soundVolume);
@@ -484,7 +510,17 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         GateShape shape = getShape();
         int x = pos.getX(), y = pos.getY(), z = pos.getZ(), r = Math.max(shape.halfWidth, shape.height - 1);
         int k = isFlat() ? (int) Math.ceil(Math.max(shape.kawooshDamageMax.z, shape.kawooshBlockMax.z)) + 1 : 1;
-        return new AxisAlignedBB(x - r, y - k, z - r, x + r + 1, y + Math.max(shape.height, k), z + r + 1);
+        // The Ori ring is drawn bigger than its blocks (see OriGate.outerScale)
+        double ori = getGateType() == GateType.ORI ? Math.ceil(shape.ringOuterRadius * (OriGate.outerScale - 1)) : 0;
+        return new AxisAlignedBB(x - r, y - k, z - r, x + r + 1, y + Math.max(shape.height, k), z + r + 1).grow(ori);
+    }
+
+    // A gate with a shield, or an Ori gate, is drawn again in Forge's second pass, after translucent blocks (water,
+    // glass, some leaves), which then show through its see-through shield or light instead of being drawn over it
+    // (see SGBaseTERenderer)
+    @Override
+    public boolean shouldRenderInPass(int pass) {
+        return pass == 0 || (pass == 1 && ((hasIrisUpgrade && hasShield) || getGateType() == GateType.ORI));
     }
 
     @Override
@@ -618,6 +654,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         } else {
             this.hasIrisUpgrade = cfg.getBoolean("stargate", "irisUpgrade", this.hasIrisUpgrade);
         }
+        this.hasShield = this.hasIrisUpgrade && nbt.getBoolean("hasShield");
 
         if (nbt.hasKey("hasChevronUpgrade") && !SGCraft.forceSGBaseTEUpdate) {
             this.hasChevronUpgrade = nbt.getBoolean("hasChevronUpgrade");
@@ -838,6 +875,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
         }
 
+        enforceOriRules();
+
         // Special Hotfix for forcing reset of isGenerated on a stargate IF the address is in the generators address registry
         if (!world.isRemote) {
             if (SGBaseTE.resetIsGenerated) {
@@ -880,6 +919,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
         // Configurator Options
         nbt.setBoolean("hasIrisUpgrade", this.hasIrisUpgrade);
+        nbt.setBoolean("hasShield", this.hasShield);
         nbt.setBoolean("hasChevronUpgrade", this.hasChevronUpgrade);
         nbt.setInteger("gateType", this.gateType);
         nbt.setInteger("secondsToStayOpen", this.secondsToStayOpen);
@@ -975,7 +1015,78 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     // Seven, or nine with the chevron upgrade, whatever the type of gate
     public int getNumChevrons() {
-        return hasChevronUpgrade ? 9 : 7;
+        return hasChevronUpgrade || getGateType() == GateType.ORI ? 9 : 7; // an Ori gate always reaches other worlds
+    }
+
+    // How many ZPMs a supergate (Ori or not) needs near its base to dial or be dialled, and which it runs on alone
+    public static final int supergateZpmsNeeded = 3;
+
+    // The ZPMs this gate runs on, with energy left: in its base's slots, if a supergate, and nearby (in ZPM consoles,
+    // and with IC2 carts and hubs)
+    public List<ISGEnergySource> zpmSources() {
+        List<ISGEnergySource> sources = new ArrayList<>();
+        if (isSupergate()) {
+            for (int i = 0; i < numZpmSlots; i++) {
+                ZpmSlotSource source = new ZpmSlotSource(this, firstZpmSlot + i);
+                if (!source.isEmpty()) {
+                    sources.add(source);
+                }
+            }
+        }
+        sources.addAll(ZpmAddon.findZpmSources(world, pos, SGCraft.zpmSearchRange));
+        return sources;
+    }
+
+    public int zpmCount() {
+        return zpmSources().size();
+    }
+
+    // The energy those ZPMs hold
+    public double zpmEnergy() {
+        double energy = 0;
+        for (ISGEnergySource source : zpmSources()) {
+            energy += source.availableEnergy();
+        }
+        return energy;
+    }
+
+    // What this gate takes to open a wormhole to a gate close by, and to hold it open a tick; further away, more
+    // (see distanceFactorForCoordDifference)
+    public double nearbyOpenCost() {
+        return requiresNoPower ? 0 : energyPerFuelItem / gateOpeningsPerFuelItem * sizeEnergyMultiplier();
+    }
+
+    public double nearbyTickCost() {
+        return requiresNoPower ? 0 : energyPerFuelItem / (minutesOpenPerFuelItem * 60 * 20) * sizeEnergyMultiplier();
+    }
+
+    // An Ori supergate has no iris, shield or chevron upgrade (it has all nine), never locks its chevrons as it's
+    // dialled, and runs on its ZPMs, not a DHD
+    public void applyOriRules() {
+        if (enforceOriRules() && world != null && !world.isRemote) {
+            updateIrisEntity();
+        }
+    }
+
+    // The same, without touching the world (as when loading); true if it's an Ori gate
+    public boolean enforceOriRules() {
+        if (getGateType() != GateType.ORI) {
+            return false;
+        }
+        hasIrisUpgrade = false;
+        hasShield = false;
+        hasChevronUpgrade = true;
+        chevronsLockOnDial = false;
+        useDHDFuelSource = false;
+        return true;
+    }
+
+    // How far (0 to 1) the gate has got through dialling the symbol it's on, if dialling one
+    public double symbolDialProgress(float partialTicks) {
+        if (state != SGState.Dialling || maxTimeout <= 0) {
+            return 0;
+        }
+        return Math.max(0, Math.min(1, (maxTimeout - timeout + partialTicks) / maxTimeout));
     }
 
     public boolean chevronIsEngaged(int i) {
@@ -1048,6 +1159,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             serverUpdate();
             checkForEntitiesInPortal();
             clearKawooshBlocks();
+            tickShieldEnergy();
         }
         irisUpdate();
         updateEventHorizonLight();
@@ -1473,6 +1585,17 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (targetGate.state != SGState.Idle) {
             return diallingFailure(player, "targetBusy", address);
         }
+        // An Ori supergate only links with another; no other gate can reach one
+        if ((getGateType() == GateType.ORI) != (targetGate.getGateType() == GateType.ORI)) {
+            return diallingFailure(player, "oriOnlyOri", address);
+        }
+        // A supergate needs its ZPMs, at either end
+        if (isSupergate() && !requiresNoPower && zpmCount() < supergateZpmsNeeded) {
+            return diallingFailure(player, "supergateNeedsZpms", supergateZpmsNeeded);
+        }
+        if (targetGate.isSupergate() && !targetGate.requiresNoPower && targetGate.zpmCount() < supergateZpmsNeeded) {
+            return diallingFailure(player, "targetSupergateNeedsZpms", supergateZpmsNeeded);
+        }
         distanceFactor = distanceFactorForCoordDifference(this, targetGate);
         if (debugEnergyUse) {
             System.out.printf("SGBaseTE: distanceFactor = %s\n", distanceFactor);
@@ -1557,6 +1680,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         // Note to Dockter: added a check in update the dialing status; which is now causing a double chunk ticket load; because for some reason
         // the Computer interface is causing the TE's to double load?  Makes no sense, I know....
         targetGate.startDiallingStargate(homeAddress, this, false, (this.chevronsLockOnDial && !ccInterface));
+        // This gate started dialling its first symbol before the one it's dialling was told of the connection, which has
+        // just reset it: an Ori gate being dialled takes up linking where this one has got to
+        if (state == SGState.Dialling) {
+            syncOriSymbol(timeout, maxTimeout);
+        }
 
         if (this.isInitiator) {
             checkForMalfunction = true;
@@ -2061,6 +2189,29 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return direction * Math.round(distance / ringSymbolAngle) * ringSymbolAngle;
     }
 
+    // An Ori supergate takes about this long (ticks) from starting to dial until it opens, as in The Ark of Truth: the
+    // symbols, the short pauses between them, then waiting for the far gate and establishing the connection
+    final static int oriDialTicks = 400, oriInterDiallingTime = 6, oriLockTicks = 25, oriEstablishTicks = 5;
+
+    // The Ori gate being dialled links its segments in step with the one dialling it: each symbol takes it as long
+    void syncOriSymbol(int delay) {
+        syncOriSymbol(delay, delay);
+    }
+
+    // Part way through: the symbol takes length ticks, with remaining left
+    void syncOriSymbol(int remaining, int length) {
+        SGBaseTE target = connectedLocation != null ? connectedLocation.getStargateTE() : null;
+        if (getGateType() == GateType.ORI && target != null && target.getGateType() == GateType.ORI && !target.isInitiator) {
+            target.enterState(SGState.Dialling, remaining);
+            target.maxTimeout = length;
+        }
+    }
+
+    int oriSymbolTicks() {
+        int length = Math.max(1, dialledAddress.length());
+        return Math.max(10, (oriDialTicks - oriLockTicks - (length - 1) * oriInterDiallingTime) / length);
+    }
+
     private void startDiallingSymbol(char c) {
         int i = SGAddressing.charToSymbol(c);
         if (debugState) {
@@ -2088,9 +2239,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
 
             int delay = (int)Math.abs(diff / ringRotationSpeed);
+            if (getGateType() == GateType.ORI) {
+                delay = oriSymbolTicks(); // it has no ring to turn; it takes its time linking up
+            }
             targetRingAngle = targetAngle;
             //System.out.println(homeAddress + " -> Delay: " + delay + " (From angle " + ringAngle + " to angle " + targetAngle + ")");
             enterState(SGState.Dialling, delay);
+            syncOriSymbol(delay);
             schedulePegasusFill(delay);
         } else {
             System.out.printf("SGCraft: Stargate jammed trying to dial symbol %s\n", c);
@@ -2118,7 +2273,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
         } else {
             if (changeState) {
-                enterState(SGState.InterDialling, getGateType().select(milkyWayInterDiallingTime, interDiallingTime));
+                enterState(SGState.InterDialling, getGateType() == GateType.ORI ? oriInterDiallingTime
+                    : getGateType().select(milkyWayInterDiallingTime, interDiallingTime));
             }
             if (!world.isRemote) {
                 playChevronSound(outgoing);
@@ -2128,7 +2284,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     private void attemptToLockStargate() {
         if (!isInitiator || useEnergy(energyToOpen * distanceFactor)) {
-            enterState(SGState.EstablishingConnection, diallingGateType().select(30, pegasusEstablishTicks));
+            // An Ori gate goes straight on to open once its ring has linked up (see OriGate)
+            enterState(SGState.EstablishingConnection, getGateType() == GateType.ORI ? oriEstablishTicks
+                : diallingGateType().select(30, pegasusEstablishTicks));
         } else {
             disconnect();
         }
@@ -2138,7 +2296,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (debugConnect) {
             System.out.printf("SGBaseTE: Connecting to '%s'\n", dialledAddress);
         }
-        enterState(SGState.Transient, transientDuration);
+        enterState(SGState.Transient, getGateType() == GateType.ORI ? oriFillTicks + transientDuration : transientDuration);
     }
 
     public boolean canTravelFromThisEnd() {
@@ -2161,6 +2319,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // *********************************************************************************************
     // Energy Sub System
     // *********************************************************************************************
+
+    // A supergate that loses its ZPMs while dialling or open shuts down
+    void checkSupergateZpms() {
+        if (isSupergate() && state != SGState.Idle && !requiresNoPower && world.getTotalWorldTime() % 20 == 0
+                && zpmCount() < supergateZpmsNeeded) {
+            disconnect();
+        }
+    }
 
     void tickEnergyUsage() {
         if (state == SGState.Connected && isInitiator) {
@@ -2268,6 +2434,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     private List<ISGEnergySource> findEnergySources(boolean requireZPM) {
+        if (isSupergate()) {
+            return zpmSources(); // a supergate runs on its ZPMs alone
+        }
 
         boolean ccLoaded = isModLoaded("computercraft");
         boolean ocLoaded = isModLoaded("opencomputers");
@@ -2378,16 +2547,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return energy;
     }
 
+    // In equal shares, so ZPMs (and other sources) run down together rather than one after another
     private double drawEnergyFrom(List<ISGEnergySource> sources, double amount) {
-        double total = 0;
-        for (ISGEnergySource source : sources) {
-            if (total >= amount)
-                break;
-            double e = source.drawEnergyDouble(amount - total);
-            if (debugEnergyUse) {
-                System.out.printf("SGBaseTe.drawEnergyFrom: %s supplied %s\n", source, e);
-            }
-            total += e;
+        double total = ZpmAddon.drawEvenly(sources, amount);
+        if (debugEnergyUse) {
+            System.out.printf("SGBaseTe.drawEnergyFrom: %s sources supplied %s\n", sources.size(), total);
         }
         if (total < amount) {
             if (debugEnergyUse) {
@@ -2518,6 +2682,24 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 return getStackInSlot(firstCamouflageSlot + i);
         }
         return null;
+    }
+
+    boolean isZpmSlot(int slot) {
+        return slot >= firstZpmSlot && slot < firstZpmSlot + numZpmSlots;
+    }
+
+    // A supergate's ZPM slots take only ZPMs, from players or hoppers alike, and other gates' nothing
+    @Override
+    public boolean isItemValidForSlot(int slot, ItemStack stack) {
+        if (isZpmSlot(slot)) {
+            return isSupergate() && stack.getItem() == SGCraft.zpm;
+        }
+        return super.isItemValidForSlot(slot, stack);
+    }
+
+    @Override
+    public boolean canInsertItem(int slot, ItemStack stack, EnumFacing side) {
+        return isItemValidForSlot(slot, stack) && super.canInsertItem(slot, stack, side);
     }
 
     boolean isCamouflageSlot(int slot) {
@@ -2790,6 +2972,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
             unleashEntity(entity);
             entity = teleportEntity(entity, t1, t2, dimension, destBlocked);
+            // A player going through has been at both gates, if they reached the far one (an iris there kills them)
+            if (entity instanceof EntityPlayer) {
+                ExplorerData.markVisited((EntityPlayer) entity, this.homeAddress);
+                SGBaseTE dte = getConnectedStargateTE();
+                if (!destBlocked && dte != null) {
+                    ExplorerData.markVisited((EntityPlayer) entity, dte.homeAddress);
+                }
+            }
 
             if (entity != null && !entity.isDead) {
                 for (Entity rider : riders) {
@@ -3201,6 +3391,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     void playChevronSound(boolean outgoing) {
         GateType type = getGateType();
+        if (type == GateType.ORI) {
+            return; // it crackles as its segments link instead (see updateOriLinkSound)
+        }
         if (outgoing) {
             playSGSoundEffect(type.select(m_chevronOutgoingSound, p_chevronOutgoingSound), 1F, 1F);
         } else {
@@ -3232,10 +3425,17 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 System.out.printf("SGBaseTE.serverUpdate at %s in dimension %d: state %s, timeout %s\n", pos, dimension, state, timeout);
             }
             tickEnergyUsage();
+            checkSupergateZpms();
             if (timeout > 0) {
                 switch (state) {
                     case Transient:
-                        if (!irisIsClosed()) {
+                        // An Ori gate's kawoosh comes once its horizon has filled in, its sound a little before
+                        int sinceOpening = maxTimeout - timeout;
+                        boolean ori = getGateType() == GateType.ORI;
+                        if (ori && sinceOpening == Math.max(0, oriFillTicks - 25)) {
+                            playSGSoundEffect(m_connectSound, 1F, 1F);
+                        }
+                        if (!irisIsClosed() && (!ori || sinceOpening >= oriFillTicks)) {
                             if (this.transientDamage) {
                                 performTransientDamage();
                             }
@@ -3248,7 +3448,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                         break;
 
                     case EstablishingConnection:
-                        if (timeout == diallingGateType().select(25, pegasusEstablishTicks)) {
+                        if (timeout == diallingGateType().select(25, pegasusEstablishTicks) && getGateType() != GateType.ORI) {
                             // Play sound before gate actually opens; a connection dialled by a
                             // Pegasus gate opens sooner, so plays it straight away.
                             playSGSoundEffect(getGateType().select(m_connectSound, p_connectSound), 1F, 1F);
@@ -3363,14 +3563,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (state != oldState) {
                 switch (state) {
                     case Transient:
-                        initiateOpeningTransient();
+                        startOpening();
                         break;
                     case Disconnecting:
                         initiateClosingTransient();
                         break;
                     case Dialling:
                         if (isInitiator) {
-                            if (timeout > 0) {
+                            if (timeout > 0 && getGateType() != GateType.ORI) { // an Ori gate has no ring to roll
                                 SGCraft.playSound(this, getGateType().select(m_gateRollSound, p_gateRollSound));
                             }
                         }
@@ -3383,13 +3583,62 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (irisState != oldIrisState) {
                 switch (irisState) {
                     case Opening:
-                        SGCraft.playSound(this, irisOpenSound);
+                        if (!hasShield) {
+                            SGCraft.playSound(this, irisOpenSound);
+                        } else if (oldIrisState == IrisState.Closed || oldIrisState == IrisState.Closing) {
+                            playShieldSound(shieldDeactivationSound);
+                        }
                         break;
                     case Closing:
-                        SGCraft.playSound(this, irisCloseSound);
+                        if (!hasShield) {
+                            SGCraft.playSound(this, irisCloseSound);
+                        } else if (oldIrisState == IrisState.Open || oldIrisState == IrisState.Opening) {
+                            playShieldSound(shieldActivationSound);
+                        }
                         break;
                 }
             }
+        }
+    }
+
+    // An Ori supergate crackles each time more of its segments link up while it dials, louder and higher the more of
+    // the ring is linked (see OriGate)
+    private int oriLinksSeen = 0;
+
+    private void updateOriLinkSound() {
+        if (getGateType() != GateType.ORI || isRemoteView || !isMerged) {
+            oriLinksSeen = 0;
+            return;
+        }
+        int n = OriGate.segmentCount(getShape());
+        int linked = OriGate.linkedSegments(this, n);
+        boolean dialling = state == SGState.Dialling || state == SGState.InterDialling || state == SGState.SyncAwait
+            || state == SGState.EstablishingConnection || state == SGState.Transient // the last link, as it opens
+            || (state == SGState.Idle && numEngagedChevrons > 0);
+        if (linked > oriLinksSeen && dialling) {
+            double f = (double) linked / n;
+            Vec3d c = getSoundOrigin();
+            world.playSound(c.x, c.y, c.z, oriLinkSound, SoundCategory.AMBIENT, (float) (soundVolume * soundRange() * (0.35 + 0.65 * f)),
+                (float) (0.75 + 0.5 * f), false);
+        }
+        oriLinksSeen = linked;
+    }
+
+    // The shield sound last started, and when (world time), so a shield only seen rising or falling again by a late
+    // update from the server doesn't start it over
+    private SoundEvent lastShieldSound;
+    private long lastShieldSoundTime = -1000;
+    private static final int shieldSoundTicks = 38; // the sounds' length
+
+    @SideOnly(Side.CLIENT)
+    private void playShieldSound(SoundEvent sound) {
+        long now = world.getTotalWorldTime();
+        if (sound != lastShieldSound || now - lastShieldSoundTime >= shieldSoundTicks) {
+            lastShieldSound = sound;
+            lastShieldSoundTime = now;
+            // A plain one-off sound, not the gate's tracked sounds (SGCraft.playSound), which kept this one looping
+            Vec3d c = getSoundOrigin();
+            world.playSound(c.x, c.y, c.z, sound, SoundCategory.AMBIENT, soundVolume * soundRange(), 1F, false);
         }
     }
 
@@ -3412,7 +3661,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         readFromNBT(nbt);
         if (isMerged && state != oldState) {
             if (state == SGState.Transient) {
-                initiateOpeningTransient();
+                startOpening();
             } else if (state == SGState.Disconnecting) {
                 initiateClosingTransient();
             }
@@ -3420,6 +3669,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     void clientUpdate() {
+        updateOriLinkSound();
+        updateOriFill();
         lastRingAngle = ringAngle;
         switch (state) {
             case Dialling:
@@ -3444,6 +3695,12 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // *********************************************************************************************
 
     public EnumActionResult applyChevronUpgrade(ItemStack stack, EntityPlayer player) {
+        if (getGateType() == GateType.ORI) {
+            if (!getWorld().isRemote) {
+                sendErrorMsg(player, "oriNoUpgrades");
+            }
+            return EnumActionResult.SUCCESS;
+        }
         if (!getWorld().isRemote && !hasChevronUpgrade && stack.getCount() > 0) {
             //System.out.printf("SGBaseTE.applyChevronUpgrade: Installing chevron upgrade\n");
             hasChevronUpgrade = true;
@@ -3454,9 +3711,35 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     public EnumActionResult applyIrisUpgrade(ItemStack stack, EntityPlayer player) {
-        if (!getWorld().isRemote && !hasIrisUpgrade && stack.getCount() > 0) {
-            //System.out.printf("SGBaseTE.applyIrisUpgrade: Installing iris upgrade\n");
+        return applyBarrierUpgrade(stack, player, false);
+    }
+
+    public EnumActionResult applyShieldUpgrade(ItemStack stack, EntityPlayer player) {
+        return applyBarrierUpgrade(stack, player, true);
+    }
+
+    // Fits an iris (shield false) or a shield. A gate has one or the other: fitting one in place of the other, while
+    // it's open, hands the player back the one taken out.
+    EnumActionResult applyBarrierUpgrade(ItemStack stack, EntityPlayer player, boolean shield) {
+        if (getGateType() == GateType.ORI) {
+            if (!getWorld().isRemote) {
+                sendErrorMsg(player, "oriNoUpgrades");
+            }
+            return EnumActionResult.SUCCESS;
+        }
+        if (!getWorld().isRemote && stack.getCount() > 0 && !(hasIrisUpgrade && hasShield == shield)) {
+            if (hasIrisUpgrade) {
+                if (irisState != IrisState.Open) {
+                    sendErrorMsg(player, "openBeforeReplacing");
+                    return EnumActionResult.SUCCESS;
+                }
+                ItemStack removed = new ItemStack(hasShield ? SGCraft.sgShieldUpgrade : SGCraft.sgIrisUpgrade);
+                if (!player.inventory.addItemStackToInventory(removed)) {
+                    player.dropItem(removed, false);
+                }
+            }
             hasIrisUpgrade = true;
+            hasShield = shield;
             stack.shrink(1);
             markChanged();
             updateIrisEntity();
@@ -3496,6 +3779,36 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
         }
         return ehGrid;
+    }
+
+    // On the client: when an Ori gate's horizon started filling in (world time), or -1 if it isn't
+    private long oriFillStart = -1;
+
+    // The event horizon opens: an Ori gate's first fills in from the ring, and the kawoosh follows (see clientUpdate)
+    void startOpening() {
+        if (getGateType() == GateType.ORI) {
+            oriFillStart = world.getTotalWorldTime();
+        } else {
+            initiateOpeningTransient();
+        }
+    }
+
+    // How far (0 to 1) an Ori gate's horizon has filled in from the ring towards the middle; any other gate's is full
+    public double horizonFill(float partialTicks) {
+        if (oriFillStart < 0 || world == null) {
+            return 1;
+        }
+        return Math.max(0, Math.min(1, (world.getTotalWorldTime() - oriFillStart + partialTicks) / oriFillTicks));
+    }
+
+    // Once an Ori gate's horizon has filled in, its kawoosh bursts out
+    void updateOriFill() {
+        if (oriFillStart >= 0 && (state != SGState.Transient || world.getTotalWorldTime() - oriFillStart >= oriFillTicks)) {
+            oriFillStart = -1;
+            if (state == SGState.Transient) {
+                initiateOpeningTransient();
+            }
+        }
     }
 
     void initiateOpeningTransient() {
@@ -3591,13 +3904,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         switch (irisState) {
             case Opening:
                 if (irisPhase < maxIrisPhase)
-                    ++irisPhase;
+                    irisPhase = min(irisPhase + irisStep(), maxIrisPhase);
                 else
                     enterIrisState(IrisState.Open);
                 break;
             case Closing:
                 if (irisPhase > 0)
-                    --irisPhase;
+                    irisPhase = max(irisPhase - irisStep(), 0);
                 else
                     enterIrisState(IrisState.Closed);
                 break;
@@ -3626,7 +3939,24 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
+    // How far the iris moves each tick: the blades take maxIrisPhase ticks, a shield only shieldRiseTicks
+    int irisStep() {
+        return hasShield ? Math.max(1, maxIrisPhase / shieldRiseTicks) : 1;
+    }
+
+    // A raised shield takes energy every tick, and falls when the gate has none left to give it
+    void tickShieldEnergy() {
+        if (hasIrisUpgrade && hasShield && isMerged && (irisState == IrisState.Closing || irisState == IrisState.Closed)) {
+            if (!useEnergy(shieldEnergyPerTick)) {
+                enterIrisState(IrisState.Opening);
+            }
+        }
+    }
+
     public void closeIris() {
+        if (hasShield && !world.isRemote && !requiresNoPower && !energyIsAvailable(shieldEnergyPerTick)) {
+            return; // no energy to raise the shield
+        }
         if (isMerged && hasIrisUpgrade && irisState != IrisState.Closed) {
             enterIrisState(IrisState.Closing);
         }

@@ -11,6 +11,7 @@ import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
 import gcewing.sg.util.GateUtil;
+import gcewing.sg.util.GateType;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -59,7 +60,8 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             boolean canPlayerBreakPlayerGate,
             boolean canPlayerBreakGeneratedGate,
             boolean displayGateAddress,
-            boolean isGenerated) {
+            boolean isGenerated,
+            boolean hasShield) {
 
         ChannelOutput data = configuratorChannel.openServer("ConfiguratorInput");
         writeCoords(data, te);
@@ -90,6 +92,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         data.writeBoolean(canPlayerBreakGeneratedGate);
         data.writeBoolean(displayGateAddress);
         data.writeBoolean(isGenerated);
+        data.writeBoolean(hasShield);
         data.close();
     }
 
@@ -125,6 +128,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean canPlayerBreakGeneratedGate = data.readBoolean();
         boolean displayGateAddress = data.readBoolean();
         boolean isGenerated = data.readBoolean();
+        boolean hasShield = data.readBoolean();
 
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
@@ -140,9 +144,14 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.distanceFactorMultiplier") || isPermissionsAdmin) te.distanceFactorMultiplier = distanceFromMultiplier;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.interDimensionalMultiplier") || isPermissionsAdmin) te.interDimensionMultiplier = interDimensionalMultiplier;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.oneWayTravel") || isPermissionsAdmin) te.oneWayTravel = oneWayTravel;
-            if (SGCraft.hasPermission(player, "sgcraft.configurator.hasIrisUpgrade") || isPermissionsAdmin) te.hasIrisUpgrade = hasIrisUpgrade;
+            if (SGCraft.hasPermission(player, "sgcraft.configurator.hasIrisUpgrade") || isPermissionsAdmin) {
+                // Iris Upgrade is the metal iris and Shield the shield; either one fits the upgrade
+                te.hasIrisUpgrade = hasIrisUpgrade || hasShield;
+                te.hasShield = hasShield;
+            }
             if (SGCraft.hasPermission(player, "sgcraft.configurator.hasChevronUpgrade") || isPermissionsAdmin) te.hasChevronUpgrade = hasChevronUpgrade;
-            if (SGCraft.hasPermission(player, "sgcraft.configurator.gateType") || isPermissionsAdmin) te.gateType = gateType;
+            if ((SGCraft.hasPermission(player, "sgcraft.configurator.gateType") || isPermissionsAdmin)
+                    && (gateType != GateType.ORI.id || te.getShape().isSupergate())) te.gateType = gateType; // only a supergate can be Ori
             if (SGCraft.hasPermission(player, "sgcraft.configurator.reverseWormholeKills") || isPermissionsAdmin) te.reverseWormholeKills = reverseWormholeKills;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.closeFromEitherEnd") || isPermissionsAdmin) te.closeFromEitherEnd = closeFromEitherEnd;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.preserveInventory") || isPermissionsAdmin) te.preserveInventory = preserveInventory;
@@ -162,6 +171,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGeneratedGate") || isPermissionsAdmin) te.canPlayerBreakGeneratedGate = canPlayerBreakGeneratedGate;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress") || isPermissionsAdmin) te.displayGateAddress = displayGateAddress;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated") || isPermissionsAdmin) te.isGenerated = isGenerated;
+            te.enforceOriRules(); // whatever was sent, an Ori gate keeps to its own
             sendBasicMsg(player, "changesSaved");
             te.updateIrisEntity();
             te.markChanged(); // saved with the world, not just sent to players nearby

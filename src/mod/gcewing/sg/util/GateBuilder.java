@@ -77,6 +77,7 @@ public class GateBuilder {
             return null;
         }
         te.gateType = type.id;
+        te.applyOriRules();
         if (type == GateType.PEGASUS) {
             te.ringRotationSpeed = 6.0D; // As the Pegasus upgrade sets it
         }

@@ -151,5 +151,8 @@ public class GuiNetworkHandler extends SGChannel {
         if (guiType == 3) {
             new PddScreen(player, player.world, pos, isAdmin).display();
         }
+        if (guiType == 4) {
+            new PddScreen(player, player.world, pos, isAdmin, true).display();
+        }
     }
 }

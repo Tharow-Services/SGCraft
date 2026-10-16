@@ -1,6 +1,6 @@
 [
   {
-    "modid": "${modid}",
+    "modid": "sgcraft",
     "name": "SG Craft",
     "description": "SG-1 Stargates and other stuff.",
     "version": "${version}",

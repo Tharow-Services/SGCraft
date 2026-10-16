@@ -12,6 +12,7 @@ import gcewing.sg.BaseBlockUtils;
 import gcewing.sg.BaseConfiguration;
 import gcewing.sg.BaseOrientation;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.tileentity.SGRingTE;
 import gcewing.sg.SGCraft;
 import gcewing.sg.util.GateShape;
 import gcewing.sg.util.GateType;
@@ -35,6 +36,7 @@ import net.minecraft.util.math.*;
 
 import gcewing.sg.BaseMod.*;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -210,7 +212,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             }
 
             if (te.isMerged && !world.isRemote)  {
-                if (player.getHeldItemMainhand().getItem() == SGCraft.pdd || player.getHeldItemMainhand().getItem() == SGCraft.configurator || player.getHeldItemMainhand().getItem() == SGCraft.gdo) {
+                if (player.getHeldItemMainhand().getItem() == SGCraft.pdd || player.getHeldItemMainhand().getItem() == SGCraft.edd || player.getHeldItemMainhand().getItem() == SGCraft.configurator || player.getHeldItemMainhand().getItem() == SGCraft.gdo) {
                     return false; // Return false here so the itemUse method fires
                 }
                 SGCraft.mod.openGui(player, SGGui.SGBase, world, pos);
@@ -218,7 +220,7 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
             }
 
             if (world.isRemote) {
-                if (player.getHeldItemMainhand().getItem() == SGCraft.pdd || player.getHeldItemMainhand().getItem() == SGCraft.configurator || player.getHeldItemMainhand().getItem() == SGCraft.gdo) {
+                if (player.getHeldItemMainhand().getItem() == SGCraft.pdd || player.getHeldItemMainhand().getItem() == SGCraft.edd || player.getHeldItemMainhand().getItem() == SGCraft.configurator || player.getHeldItemMainhand().getItem() == SGCraft.gdo) {
                     return false; // Return false here so the itemUse method fires
                 }
                 return true; //Client needs to be told too.
@@ -402,13 +404,46 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         super.breakBlock(world, pos, state);
     }
     
+    // In creative, breaking a gate's base takes the whole gate with it: every ring block merged into it goes too
+    @Override
+    public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+        if (!world.isRemote && player.capabilities.isCreativeMode) {
+            SGBaseTE te = getTileEntity(world, pos);
+            if (te != null && te.isMerged) {
+                List<BlockPos> ring = new ArrayList<>();
+                GateShape shape = te.getShape();
+                Trans3 t = new Trans3(Vector3.blockCenter(pos)).turn(te.facingDirectionOfBase);
+                for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
+                    for (int y = 0; y < shape.height; y++) {
+                        if (shape.cellAt(x, y) != GateShape.EMPTY && !(x == 0 && y == 0)) {
+                            addRingBlock(world, pos, t.p(x, y, 0).blockPos(), ring);
+                            addRingBlock(world, pos, t.p(x, 0, -y).blockPos(), ring);
+                        }
+                    }
+                }
+                for (BlockPos ringPos : ring) {
+                    world.setBlockToAir(ringPos);
+                }
+            }
+        }
+        super.onBlockHarvested(world, pos, state, player);
+    }
+
+    // A ring block merged into the gate whose base is at pos
+    private static void addRingBlock(World world, BlockPos pos, BlockPos ringPos, List<BlockPos> ring) {
+        TileEntity te = world.getTileEntity(ringPos);
+        if (te instanceof SGRingTE && ((SGRingTE) te).isMerged && pos.equals(((SGRingTE) te).basePos) && !ring.contains(ringPos)) {
+            ring.add(ringPos);
+        }
+    }
+
     void dropUpgrades(World world, BlockPos pos) {
         SGBaseTE te = getTileEntity(world, pos);
         if (te != null) {
             if (te.hasChevronUpgrade)
                 spawnAsEntity(world, pos, new ItemStack(SGCraft.sgChevronUpgrade));
             if (te.hasIrisUpgrade)
-                spawnAsEntity(world, pos, new ItemStack(SGCraft.sgIrisUpgrade));
+                spawnAsEntity(world, pos, new ItemStack(te.hasShield ? SGCraft.sgShieldUpgrade : SGCraft.sgIrisUpgrade));
         }
     }
     

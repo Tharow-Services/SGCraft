@@ -1,0 +1,8 @@
+{
+    "parent": "block/cube_bottom_top",
+    "textures": {
+        "top": "sgcraft:blocks/city_shield_generator_top",
+        "side": "sgcraft:blocks/city_shield_generator_side",
+        "bottom": "sgcraft:blocks/city_shield_generator_bottom"
+    }
+}

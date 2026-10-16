@@ -2,10 +2,12 @@ package gcewing.sg.features.pdd.network;
 
 import gcewing.sg.BaseDataChannel;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.edd.ExplorerData;
 import gcewing.sg.features.pdd.AddressData;
 import gcewing.sg.features.pdd.PddItem;
 import gcewing.sg.features.pdd.client.gui.PddEntryScreen;
 import gcewing.sg.features.pdd.client.gui.PddScreen;
+import gcewing.sg.generator.GeneratorAddressRegistry;
 import gcewing.sg.network.SGChannel;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.SGAddressing;
@@ -19,9 +21,14 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.DimensionManager;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class PddNetworkHandler extends SGChannel {
 
@@ -110,7 +117,7 @@ public class PddNetworkHandler extends SGChannel {
 
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
-        if (SGCraft.hasPermission(player, "sgcraft.gui.pdd") || isPermissionsAdmin) {
+        if (SGCraft.hasPermission(player, "sgcraft.gui.pdd") || SGCraft.hasPermission(player, "sgcraft.gui.edd") || isPermissionsAdmin) {
 
             if (setting == 1) { // Connect / Dial / Double Click
                 if (!localGate.isConnected()) {
@@ -258,7 +265,7 @@ public class PddNetworkHandler extends SGChannel {
 
     // The name of the world an address leads to, or null if it's not a valid address or that world doesn't exist.
     // A 7-symbol address has no dimension part, so leads to a gate in the dimension it's dialled from: the player's.
-    private static String worldNameFor(EntityPlayer player, String address) {
+    public static String worldNameFor(EntityPlayer player, String address) {
         String normalized = address.toUpperCase().replaceAll("-", "");
         try {
             SGAddressing.validateAddress(normalized);
@@ -281,6 +288,105 @@ public class PddNetworkHandler extends SGChannel {
             return world.getWorldInfo().getWorldName();
         }
         return DimensionManager.getProviderType(dimension).getName();
+    }
+
+    // ---- Explorer Dialer Device: the server's generated gates ----
+
+    // Asks for the generated gates, with this player's visits and names; the server replies only if they changed
+    // since the revision the client already has
+    // (null when the client has none yet, so needs it whatever the revision)
+    public static void requestExplorerListFromServer(Integer knownRevision) {
+        ChannelOutput data = pddChannel.openServer("EddListRequest");
+        data.writeBoolean(knownRevision != null);
+        data.writeInt(knownRevision == null ? 0 : knownRevision);
+        data.close();
+    }
+
+    @ServerMessageHandler("EddListRequest")
+    public void handleExplorerListRequestFromClient(EntityPlayer player, ChannelInput data) {
+        boolean hasRevision = data.readBoolean();
+        int knownRevision = data.readInt();
+        if (!SGCraft.hasPermission(player, "sgcraft.gui.edd")) {
+            return;
+        }
+        if (!hasRevision || knownRevision != ExplorerData.revisionFor(player)) {
+            sendExplorerList(player);
+        }
+    }
+
+    // Every generated gate, ordered by world and then address
+    private static void sendExplorerList(EntityPlayer player) {
+        List<String[]> entries = new ArrayList<>(); // address, name, world, visited
+        for (String address : GeneratorAddressRegistry.getAllAddresses()) {
+            try {
+                SGAddressing.validateAddress(address);
+            } catch (SGAddressing.AddressingError e) {
+                continue;
+            }
+            if (address.length() != SGAddressing.maxAddressLength) {
+                continue;
+            }
+            String world = worldNameFor(player, address);
+            entries.add(new String[] {SGAddressing.formatAddress(address, "-", "-"), ExplorerData.getName(player, address),
+                world == null ? "" : world, ExplorerData.isVisited(player, address) ? "1" : ""});
+        }
+        entries.sort(Comparator.<String[], String>comparing(e -> e[2].toLowerCase()).thenComparing(e -> e[0]));
+
+        ChannelOutput reply = pddChannel.openPlayer(player, "EddList");
+        reply.writeInt(ExplorerData.revisionFor(player));
+        reply.writeInt(entries.size());
+        for (String[] entry : entries) {
+            reply.writeUTF(entry[0]);
+            reply.writeUTF(entry[1]);
+            reply.writeUTF(entry[2]);
+            reply.writeBoolean(!entry[3].isEmpty());
+        }
+        reply.close();
+    }
+
+    @ClientMessageHandler("EddList")
+    public void handleExplorerListFromServer(EntityPlayer player, ChannelInput data) {
+        int revision = data.readInt();
+        int count = data.readInt();
+        List<AddressData> addresses = new ArrayList<>();
+        Map<String, String> worlds = new HashMap<>();
+        Set<String> visited = new HashSet<>();
+        for (int i = 0; i < count; i++) {
+            String address = data.readUTF();
+            String name = data.readUTF();
+            String world = data.readUTF();
+            boolean wasVisited = data.readBoolean();
+            // Kept in the order the server sent; the unid only has to tell the entries apart
+            addresses.add(new AddressData(name, address, false, i, i + 1, false));
+            if (!world.isEmpty()) {
+                worlds.put(address, world);
+            }
+            if (wasVisited) {
+                visited.add(address);
+            }
+        }
+        if (Minecraft.getMinecraft().currentScreen instanceof PddScreen) {
+            ((PddScreen) Minecraft.getMinecraft().currentScreen).setExplorerList(revision, addresses, worlds, visited);
+        }
+    }
+
+    // Names a generated gate's address for this player; a blank name clears it
+    public static void sendExplorerNameToServer(String address, String name) {
+        ChannelOutput data = pddChannel.openServer("EddName");
+        data.writeUTF(address);
+        data.writeUTF(name);
+        data.close();
+    }
+
+    @ServerMessageHandler("EddName")
+    public void handleExplorerNameFromClient(EntityPlayer player, ChannelInput data) {
+        String address = data.readUTF();
+        String name = data.readUTF();
+        if (!SGCraft.hasPermission(player, "sgcraft.gui.edd") || !GeneratorAddressRegistry.isGenerated(address)) {
+            return;
+        }
+        ExplorerData.setName(player, address, name);
+        sendExplorerList(player);
     }
 
     public static void sendEnterSymbolToServer(SGBaseTE te, String address, int digit) {
