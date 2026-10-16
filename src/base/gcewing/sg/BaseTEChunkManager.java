@@ -8,6 +8,7 @@ package gcewing.sg;
 
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.features.cityshield.CityShieldChunks;
 import gcewing.sg.tileentity.SGInterfaceTE;
 import gcewing.sg.tileentity.SGRingTE;
 import net.minecraft.nbt.NBTTagCompound;
@@ -60,6 +61,9 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
                             System.out.printf("%s: BaseTEChunkManager.ticketsLoaded: : Unable to reinstate ticket\n", base.modPackage);
                         ForgeChunkManager.releaseTicket(ticket);
                     }
+                }
+                else if (nbt.getString("type").equals(CityShieldChunks.TICKET_TYPE)) {
+                    CityShieldChunks.ticketLoaded(ticket, world);
                 }
         }
     }

@@ -27,6 +27,7 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import net.minecraftforge.common.ForgeChunkManager.Ticket;
 import net.minecraftforge.event.world.ExplosionEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
@@ -49,11 +50,14 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
     // The largest and smallest the shield can reach from the generator in each direction
     public static int maxRadius = 128;
     public static final int MIN_RADIUS = 3;
+    // Whether a raised shield keeps all the chunks it covers loaded, and loads them again with the world
+    public static boolean keepChunksLoaded = true;
 
     public static void configure(BaseConfiguration cfg) {
         energyPerMillionBlocksPerTick = cfg.getDouble("city-shield", "energyPerMillionBlocksPerTick", energyPerMillionBlocksPerTick);
         energyPerBlockPerTick = energyPerMillionBlocksPerTick / 1e6;
         maxRadius = Math.max(MIN_RADIUS, cfg.getInteger("city-shield", "maxRadius", maxRadius));
+        keepChunksLoaded = cfg.getBoolean("city-shield", "keepChunksLoaded", keepChunksLoaded);
     }
 
     // ---- State ----
@@ -132,6 +136,7 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
             fade = active ? Math.min(1, fade + fadeStep) : Math.max(0, fade - fadeStep);
             return;
         }
+        updateChunkLoading();
         if (!active) {
             return;
         }
@@ -140,6 +145,48 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
             return;
         }
         repelEntities();
+    }
+
+    // ---- Keeping its chunks loaded (see CityShieldChunks) ----
+
+    private List<Ticket> chunkTickets;
+    // The width the tickets cover, to force the chunks again when it changes
+    private int ticketsWidth = -1;
+    // Set as the generator's chunk unloads (with the world, say), when its tickets must be kept for Forge to save
+    private boolean unloading = false;
+
+    private void updateChunkLoading() {
+        if (chunkTickets == null) {
+            chunkTickets = CityShieldChunks.adopt(world, pos); // handed back as the world loaded
+            if (chunkTickets != null) {
+                ticketsWidth = width;
+            }
+        }
+        boolean wanted = active && keepChunksLoaded;
+        if (chunkTickets != null && (!wanted || ticketsWidth != width)) {
+            CityShieldChunks.release(chunkTickets);
+            chunkTickets = null;
+        }
+        if (wanted && chunkTickets == null) {
+            chunkTickets = CityShieldChunks.force(world, pos, width);
+            ticketsWidth = width;
+        }
+    }
+
+    @Override
+    public void onChunkUnload() {
+        unloading = true;
+        super.onChunkUnload();
+    }
+
+    // Broken: its chunks needn't stay loaded
+    @Override
+    public void invalidate() {
+        if (!unloading && world != null && !world.isRemote) {
+            CityShieldChunks.release(chunkTickets);
+            chunkTickets = null;
+        }
+        super.invalidate();
     }
 
     // Anything that crossed into the shield since last tick is sent back where it came from; projectiles are destroyed
