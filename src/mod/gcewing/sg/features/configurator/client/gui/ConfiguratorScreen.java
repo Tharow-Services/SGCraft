@@ -36,8 +36,10 @@ public class ConfiguratorScreen extends BasicScreen {
     private boolean isAdmin;
     private BasicForm form, numericOptionsArea, checkboxOptionsArea;
     private UILabel gateAddressLabel;
-    private UICheckBox oneWayTravelCheckbox, irisUpgradeCheckbox, chevronUpgradeCheckbox, reverseWormholeKillsCheckbox;
-    private UIRadioButton milkyWayGateTypeRadio, pegasusGateTypeRadio, universeGateTypeRadio;
+    private UICheckBox oneWayTravelCheckbox, chevronUpgradeCheckbox, reverseWormholeKillsCheckbox;
+    // What covers the gate's opening: nothing, a titanium iris, or a shield; only one at a time
+    private UIRadioButton noBarrierRadio, irisRadio, shieldRadio;
+    private UIRadioButton milkyWayGateTypeRadio, pegasusGateTypeRadio, universeGateTypeRadio, oriGateTypeRadio;
     private UICheckBox closeFromEitherEndCheckbox, preserveInventoryCheckbox, noPowerRequiredCheckbox, chevronsLockOnDialCheckbox, returnIrisToPreviousStateCheckbox;
     private UICheckBox transientDamageCheckbox, transparencyCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox;
     private UITextField secondsToStayOpen, gateRotationSpeed, energyBufferSize, energyPerNaquadah, gateOpeningsPerNaquadah, distanceMultiplier, dimensionalMultiplier;
@@ -282,7 +284,10 @@ public class ConfiguratorScreen extends BasicScreen {
         // ****************************************************************************************************************************
 
         // A gate is exactly one type, so the types are radio buttons, kept apart from the true/false options on the right
-        final UILabel gateStyleLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.gateStyle"));
+        // A supergate's section says so, and its type is just "Type"
+        final boolean supergate = localGate.isSupergate();
+        final UILabel gateStyleLabel = new UILabel(this, TextFormatting.WHITE + I18n.format(supergate
+            ? "sgcraft.gui.configurator.label.supergateType" : "sgcraft.gui.configurator.label.gateStyle"));
         gateStyleLabel.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(true).scale(1.1F).build());
         gateStyleLabel.setPosition(0, this.dimensionalMultiplier.getY() + 35, Anchor.CENTER | Anchor.TOP);
 
@@ -290,14 +295,17 @@ public class ConfiguratorScreen extends BasicScreen {
         gateStyleSeparator.setSize(this.numericOptionsArea.getWidth() - 15, 1);
         gateStyleSeparator.setPosition(0, gateStyleLabel.getY() + 10, Anchor.TOP | Anchor.CENTER);
 
-        final UILabel gateTypeLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.gateType") + ":");
+        final UILabel gateTypeLabel = new UILabel(this, TextFormatting.WHITE + I18n.format(supergate
+            ? "sgcraft.gui.configurator.label.type" : "sgcraft.gui.configurator.label.gateType") + ":");
         gateTypeLabel.setPosition(10, gateStyleLabel.getY() + 20, Anchor.LEFT | Anchor.TOP);
 
         final String gateTypeGroup = radioGroup("gateType");
         final int gateTypeY = gateTypeLabel.getY() + 14;
-        this.milkyWayGateTypeRadio = radio(gateTypeGroup, "milkyWayGateType", 20, gateTypeY);
-        this.pegasusGateTypeRadio = radio(gateTypeGroup, "pegasusGateType", 95, gateTypeY);
-        this.universeGateTypeRadio = radio(gateTypeGroup, "universeGateType", 165, gateTypeY);
+        this.milkyWayGateTypeRadio = radio(gateTypeGroup, "milkyWayGateType", 10, gateTypeY);
+        this.pegasusGateTypeRadio = radio(gateTypeGroup, "pegasusGateType", 75, gateTypeY);
+        this.universeGateTypeRadio = radio(gateTypeGroup, "universeGateType", 135, gateTypeY);
+        // Only a supergate can be an Ori gate (see refresh)
+        this.oriGateTypeRadio = radio(gateTypeGroup, "oriGateType", 198, gateTypeY);
 
         // ****************************************************************************************************************************
 
@@ -337,7 +345,7 @@ public class ConfiguratorScreen extends BasicScreen {
 
         this.numericOptionsArea.add(numericValuesLabel, valuesSeparator, secondsToStayOpenLabel, gateRotationSpeedLabel, energyBufferMaxSizeLabel, energyPerItemLabel, energyPerOpeningLabel, distanceFactorMultiplierLabel, interDimensionalMultiplierLabel);
         this.numericOptionsArea.add(this.secondsToStayOpen, this.gateRotationSpeed, this.energyBufferSize, this.energyPerNaquadah, this.gateOpeningsPerNaquadah, this.distanceMultiplier, this.dimensionalMultiplier);
-        this.numericOptionsArea.add(gateStyleLabel, gateStyleSeparator, gateTypeLabel, this.milkyWayGateTypeRadio, this.pegasusGateTypeRadio, this.universeGateTypeRadio);
+        this.numericOptionsArea.add(gateStyleLabel, gateStyleSeparator, gateTypeLabel, this.milkyWayGateTypeRadio, this.pegasusGateTypeRadio, this.universeGateTypeRadio, this.oriGateTypeRadio);
         this.numericOptionsArea.add(this.gateAddressAccessListButton, this.playerAccessListButton, accessControlSystemsLabel, accSeparator);
 
         // ****************************************************************************************************************************
@@ -370,15 +378,15 @@ public class ConfiguratorScreen extends BasicScreen {
         this.oneWayTravelCheckbox.setName("checkbox.onewaytravel");
         this.oneWayTravelCheckbox.register(this);
 
-        this.irisUpgradeCheckbox = new UICheckBox(this);
-        this.irisUpgradeCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.irisUpgrade"));
-        this.irisUpgradeCheckbox.setPosition(checkboxIndentPadding, this.oneWayTravelCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
-        this.irisUpgradeCheckbox.setName("checkbox.irisupgrade");
-        this.irisUpgradeCheckbox.register(this);
+        final String barrierGroup = radioGroup("barrier");
+        final int barrierY = this.oneWayTravelCheckbox.getY() + padding;
+        this.noBarrierRadio = radio(barrierGroup, "noBarrier", checkboxIndentPadding, barrierY);
+        this.irisRadio = radio(barrierGroup, "titaniumIris", checkboxIndentPadding + 45, barrierY);
+        this.shieldRadio = radio(barrierGroup, "shield", checkboxIndentPadding + 135, barrierY);
 
         this.chevronUpgradeCheckbox = new UICheckBox(this);
         this.chevronUpgradeCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.chevronUpgrade"));
-        this.chevronUpgradeCheckbox.setPosition(checkboxIndentPadding, this.irisUpgradeCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
+        this.chevronUpgradeCheckbox.setPosition(checkboxIndentPadding, barrierY + padding, Anchor.LEFT | Anchor.TOP);
         this.chevronUpgradeCheckbox.setName("checkbox.chevronupgrade");
         this.chevronUpgradeCheckbox.register(this);
 
@@ -483,7 +491,7 @@ public class ConfiguratorScreen extends BasicScreen {
         this.isGeneratedCheckbox.setName("checkbox.isgenerated");
         this.isGeneratedCheckbox.register(this);
 
-        this.checkboxOptionsArea.add(booleanValuesLabel, checkboxSeparator, this.oneWayTravelCheckbox, this.irisUpgradeCheckbox, this.chevronUpgradeCheckbox);
+        this.checkboxOptionsArea.add(booleanValuesLabel, checkboxSeparator, this.oneWayTravelCheckbox, this.noBarrierRadio, this.irisRadio, this.shieldRadio, this.chevronUpgradeCheckbox);
         this.checkboxOptionsArea.add(this.reverseWormholeKillsCheckbox, this.closeFromEitherEndCheckbox, this.preserveInventoryCheckbox, this.noPowerRequiredCheckbox);
         this.checkboxOptionsArea.add(this.chevronsLockOnDialCheckbox, this.returnIrisToPreviousStateCheckbox, this.transientDamageCheckbox, this.transparencyCheckbox, this.useDHDFuelSourceCheckbox);
         this.checkboxOptionsArea.add(this.allowRedstoneOutputCheckbox, this.allowRedstoneInputCheckbox, this.playerCanDestroyPlayerGateCheckbox, this.playerCanDestroyGeneratedGateCheckbox, this.displayGateAddressCheckbox, this.isGeneratedCheckbox);
@@ -503,7 +511,7 @@ public class ConfiguratorScreen extends BasicScreen {
                     this.distanceMultiplier.setText(String.valueOf(SGBaseTE.cfg.getDouble("stargate", "distanceFactorMultiplier", 1.0)));
                     this.dimensionalMultiplier.setText(String.valueOf(SGBaseTE.cfg.getDouble("stargate", "interDimensionMultiplier", 4.0)));
                     this.oneWayTravelCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "oneWayTravel", true));
-                    this.irisUpgradeCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "irisUpgrade", true));
+                    (SGBaseTE.cfg.getBoolean("stargate", "irisUpgrade", true) ? this.irisRadio : this.noBarrierRadio).setSelected();
                     this.chevronUpgradeCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "chevronUpgrade", true));
                     this.reverseWormholeKillsCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "reverseWormholeKills", false));
                     this.closeFromEitherEndCheckbox.setChecked(SGBaseTE.cfg.getBoolean("stargate", "requiresNoPower", true));
@@ -546,10 +554,10 @@ public class ConfiguratorScreen extends BasicScreen {
                     int orientation = localGate.gateOrientation;
                     ConfiguratorNetworkHandler.sendConfiguratorInputToServer(localGate, Integer.valueOf(this.secondsToStayOpen.getText()), Double.valueOf(this.gateRotationSpeed.getText()), Double.valueOf(this.energyBufferSize.getText()),
                             Double.valueOf(this.energyPerNaquadah.getText()), Integer.valueOf(this.gateOpeningsPerNaquadah.getText()), Double.valueOf(this.distanceMultiplier.getText()), Double.valueOf(this.dimensionalMultiplier.getText()),
-                            this.oneWayTravelCheckbox.isChecked(), this.irisUpgradeCheckbox.isChecked(), this.chevronUpgradeCheckbox.isChecked(), gateType, this.reverseWormholeKillsCheckbox.isChecked(), this.closeFromEitherEndCheckbox.isChecked(),
+                            this.oneWayTravelCheckbox.isChecked(), !this.noBarrierRadio.isSelected(), this.chevronUpgradeCheckbox.isChecked(), gateType, this.reverseWormholeKillsCheckbox.isChecked(), this.closeFromEitherEndCheckbox.isChecked(),
                             this.preserveInventoryCheckbox.isChecked(), this.noPowerRequiredCheckbox.isChecked(), this.chevronsLockOnDialCheckbox.isChecked(), this.returnIrisToPreviousStateCheckbox.isChecked(), this.transientDamageCheckbox.isChecked(),
                             this.transparencyCheckbox.isChecked(), orientation, this.useDHDFuelSourceCheckbox.isChecked(), this.allowRedstoneOutputCheckbox.isChecked(), this.allowRedstoneInputCheckbox.isChecked(), this.playerCanDestroyPlayerGateCheckbox.isChecked(),
-                            this.playerCanDestroyGeneratedGateCheckbox.isChecked(), this.displayGateAddressCheckbox.isChecked(), this.isGeneratedCheckbox.isChecked());
+                            this.playerCanDestroyGeneratedGateCheckbox.isChecked(), this.displayGateAddressCheckbox.isChecked(), this.isGeneratedCheckbox.isChecked(), this.shieldRadio.isSelected());
 
                     this.close();
                 })
@@ -573,12 +581,17 @@ public class ConfiguratorScreen extends BasicScreen {
     @Subscribe
     public void onGateTypeSelect(UIRadioButton.SelectEvent event) {
         final UIRadioButton clicked = event.getComponent();
+        if (clicked != this.milkyWayGateTypeRadio && clicked != this.pegasusGateTypeRadio && clicked != this.universeGateTypeRadio
+                && clicked != this.oriGateTypeRadio) {
+            return; // the iris and shield buttons are radio buttons too
+        }
         if (clicked == this.pegasusGateTypeRadio) {
             this.gateRotationSpeed.setText("3.0");
         } else if (this.pegasusGateTypeRadio.isSelected()) {
             // Leaving Pegasus: back to the default speed of the other gates
             this.gateRotationSpeed.setText("6.0");
         }
+        lockOriSettings(clicked == this.oriGateTypeRadio);
     }
 
     // MalisisCore groups radio buttons by name in a static map that is never cleared, so each screen
@@ -600,6 +613,9 @@ public class ConfiguratorScreen extends BasicScreen {
         }
         if (this.universeGateTypeRadio.isSelected()) {
             return GateType.UNIVERSE;
+        }
+        if (this.oriGateTypeRadio.isSelected()) {
+            return GateType.ORI;
         }
         return GateType.MILKY_WAY;
     }
@@ -667,8 +683,10 @@ public class ConfiguratorScreen extends BasicScreen {
             this.oneWayTravelCheckbox.setChecked(localGate.oneWayTravel);
             this.oneWayTravelCheckbox.setEnabled(this.oneWayTravelOnlyPerm);
 
-            this.irisUpgradeCheckbox.setChecked(localGate.hasIrisUpgrade);
-            this.irisUpgradeCheckbox.setEnabled(this.irisUpgradePerm);
+            (!localGate.hasIrisUpgrade ? this.noBarrierRadio : localGate.hasShield ? this.shieldRadio : this.irisRadio).setSelected();
+            this.noBarrierRadio.setEnabled(this.irisUpgradePerm);
+            this.irisRadio.setEnabled(this.irisUpgradePerm);
+            this.shieldRadio.setEnabled(this.irisUpgradePerm);
 
             this.chevronUpgradeCheckbox.setChecked(localGate.hasChevronUpgrade);
             this.chevronUpgradeCheckbox.setEnabled(this.chevronUpgradePerm);
@@ -680,6 +698,9 @@ public class ConfiguratorScreen extends BasicScreen {
                 case UNIVERSE:
                     this.universeGateTypeRadio.setSelected();
                     break;
+                case ORI:
+                    this.oriGateTypeRadio.setSelected();
+                    break;
                 default:
                     this.milkyWayGateTypeRadio.setSelected();
                     break;
@@ -687,6 +708,7 @@ public class ConfiguratorScreen extends BasicScreen {
             this.milkyWayGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
             this.pegasusGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
             this.universeGateTypeRadio.setEnabled(this.pegasusGateTypePerm);
+            this.oriGateTypeRadio.setEnabled(this.pegasusGateTypePerm && localGate.getShape().isSupergate());
 
             this.reverseWormholeKillsCheckbox.setChecked(localGate.reverseWormholeKills);
             this.reverseWormholeKillsCheckbox.setEnabled(this.reverseWormholeKillsPerm);
@@ -732,6 +754,26 @@ public class ConfiguratorScreen extends BasicScreen {
 
             this.isGeneratedCheckbox.setChecked(localGate.isGenerated);
             this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
+
+            lockOriSettings(selectedGateType() == GateType.ORI);
+        }
+    }
+
+    // An Ori supergate doesn't turn, has no iris, shield or chevron upgrade (it always has nine chevrons), never locks
+    // its chevrons as it's dialled, and runs on ZPMs rather than a DHD: none of those settings apply to one
+    private void lockOriSettings(boolean ori) {
+        this.gateRotationSpeed.setEnabled(this.gateRotationSpeedPerm && !ori);
+        this.noBarrierRadio.setEnabled(this.irisUpgradePerm && !ori);
+        this.irisRadio.setEnabled(this.irisUpgradePerm && !ori);
+        this.shieldRadio.setEnabled(this.irisUpgradePerm && !ori);
+        this.chevronUpgradeCheckbox.setEnabled(this.chevronUpgradePerm && !ori);
+        this.chevronsLockOnDialCheckbox.setEnabled(this.chevronsLockOnDialPerm && !ori);
+        this.useDHDFuelSourceCheckbox.setEnabled(this.dhdAsFuelSourcePerm && !ori);
+        if (ori) {
+            this.noBarrierRadio.setSelected();
+            this.chevronUpgradeCheckbox.setChecked(true);
+            this.chevronsLockOnDialCheckbox.setChecked(false);
+            this.useDHDFuelSourceCheckbox.setChecked(false);
         }
     }
 

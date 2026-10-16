@@ -34,6 +34,9 @@
 	"iris_open":  {"category": "ambient", "sounds": ["sgcraft:iris_open"]},
 	"iris_close": {"category": "ambient", "sounds": ["sgcraft:iris_close"]},
 	"iris_hit": {"category": "ambient", "sounds": ["sgcraft:iris_hit"]},
+	"shield_activation": {"category": "ambient", "sounds": ["sgcraft:shield_activation"]},
+	"shield_deactivation": {"category": "ambient", "sounds": ["sgcraft:shield_deactivation"]},
+	"ori_link": {"category": "ambient", "sounds": ["sgcraft:ori/link1", "sgcraft:ori/link2", "sgcraft:ori/link3", "sgcraft:ori/link4"]},
 	"m_dhd_press": {
 		"category": "ambient",
 		"sounds": [
@@ -46,7 +49,7 @@
 			"sgcraft:milkyway/dhd_usual7"
 		]
 	},
-	"p_dhd_press": {"category": "ambient", "sounds": ["sgcraft:pegasus/dhd_usual1"]},
+	"p_dhd_press": {"category": "ambient", "sounds": ["sgcraft:sga_dhd_button"]},
 	"m_dhd_dial": {"category": "ambient", "sounds": ["sgcraft:milkyway/dhd_usual_dial"]},
 	"p_dhd_dial": {"category": "ambient", "sounds": ["sgcraft:pegasus/dhd_usual1"]},
 	"m_gate_roll": {"category": "ambient", "sounds": ["sgcraft:milkyway/gate_roll"]},

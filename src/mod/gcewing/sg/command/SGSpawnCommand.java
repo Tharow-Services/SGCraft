@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import javax.annotation.Nullable;
 
-// /sgspawn <stargate|supergate> [milkyway|pegasus|universe] [size]
+// /sgspawn <stargate|supergate> [milkyway|pegasus|universe|ori] [size]
 //
 // Builds a finished gate a few blocks in front of the player, facing them. A supergate's size is
 // its width in blocks, an odd number; without one it gets the default size.
@@ -73,7 +73,11 @@ public class SGSpawnCommand extends CommandBase {
                 case "milkyway": type = GateType.MILKY_WAY; break;
                 case "pegasus": type = GateType.PEGASUS; break;
                 case "universe": type = GateType.UNIVERSE; break;
-                default: throw new CommandException("Unknown gate type '" + args[1] + "': use milkyway, pegasus or universe");
+                case "ori": type = GateType.ORI; break;
+                default: throw new CommandException("Unknown gate type '" + args[1] + "': use milkyway, pegasus, universe or ori");
+            }
+            if (type == GateType.ORI && !supergate) {
+                throw new CommandException("Only a supergate can be an Ori gate");
             }
         }
 
@@ -111,7 +115,7 @@ public class SGSpawnCommand extends CommandBase {
             case 1:
                 return getListOfStringsMatchingLastWord(args, "stargate", "supergate");
             case 2:
-                return getListOfStringsMatchingLastWord(args, "milkyway", "pegasus", "universe");
+                return getListOfStringsMatchingLastWord(args, "milkyway", "pegasus", "universe", "ori");
             case 3:
                 if (args[0].equalsIgnoreCase("supergate")) {
                     List<String> sizes = new ArrayList<>();

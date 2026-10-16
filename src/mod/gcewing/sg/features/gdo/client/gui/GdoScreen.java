@@ -255,13 +255,47 @@ public class GdoScreen extends BasicScreen {
     // Picture of a gate for the local or remote gate panel
     private GuiTexture gateImage(int gateType, boolean connected, boolean hasIrisUpgrade, boolean irisClosed) {
         String iris = !hasIrisUpgrade ? "no_iris" : irisClosed ? "iris_closed" : "iris_open";
-        // A Universe gate has no picture of its own, so shows as a Milky Way gate
+        // Universe and Ori gates have no pictures of their own, so show as Milky Way gates
         GateType type = GateType.fromId(gateType);
-        String name = (type == GateType.UNIVERSE ? GateType.MILKY_WAY : type).assetName + (connected ? "_connected_" : "_disconnected_") + iris;
+        String name = (type == GateType.PEGASUS ? type : GateType.MILKY_WAY).assetName + (connected ? "_connected_" : "_disconnected_") + iris;
         return new GuiTexture(SGCraft.mod.resourceLocation("textures/" + name + ".png"));
     }
 
+    // A gate with a shield in place of the iris has its buttons say so
+    private void updateIrisButtonLabels() {
+        boolean localShield = localGate != null && localGate.hasShield;
+        boolean remoteShield = remoteGateView != null && remoteGateView.hasShield;
+        setButtonLabel(this.localIrisOpenButton, localShield ? "sgcraft.gui.button.deactivateShield" : "sgcraft.gui.button.openIris");
+        setButtonLabel(this.localIrisCloseButton, localShield ? "sgcraft.gui.button.activateShield" : "sgcraft.gui.button.closeIris");
+        setButtonLabel(this.remoteIrisOpenButton, remoteShield ? "sgcraft.gui.button.deactivateShield" : "sgcraft.gui.button.openIris");
+        setButtonLabel(this.remoteIrisCloseButton, remoteShield ? "sgcraft.gui.button.activateShield" : "sgcraft.gui.button.closeIris");
+    }
+
+    private void setButtonLabel(UIButton button, String key) {
+        String text = TextFormatting.WHITE + I18n.format(key);
+        if (!text.equals(button.getText())) {
+            button.setText(text);
+            button.setSize(40, button.getHeight()); // grows to fit the text, and back down when it's shorter again
+        }
+    }
+
+    // The panels are 195 wide, or as wide as their three buttons need (the shield's labels are longer than the
+    // iris's), both the same width; the window holds one panel, or both side by side
+    private void fitControlPanels(boolean showRemote) {
+        int width = Math.max(195, Math.max(buttonRowWidth(localIrisOpenButton, localGateCloseButton, localIrisCloseButton),
+            showRemote ? buttonRowWidth(remoteIrisOpenButton, remoteGateCloseButton, remoteIrisCloseButton) : 0));
+        this.localGateControlArea.setWidth(width);
+        this.remoteGateControlArea.setWidth(width);
+        this.form.setWidth(showRemote ? 2 * width + 10 : width + 5);
+    }
+
+    // Room for a row of buttons at the left, middle and right, with gaps between and the panel's padding
+    private static int buttonRowWidth(UIButton left, UIButton middle, UIButton right) {
+        return Math.max(left.getWidth(), right.getWidth()) * 2 + middle.getWidth() + 2 * 6 + 6;
+    }
+
     private void refresh() {
+        updateIrisButtonLabels();
 
         if (localGate != null) {
             if (localGate.isMerged) {
@@ -300,11 +334,11 @@ public class GdoScreen extends BasicScreen {
                 this.remoteGateCloseButton.setEnabled(false);
                 this.remoteIrisOpenButton.setEnabled(false);
                 this.remoteIrisCloseButton.setEnabled(false);
-                this.form.setWidth(200);
+                fitControlPanels(false);
                 this.remoteGateControlArea.setVisible(false);
 
             } else if (isRemoteConnected) {
-                this.form.setWidth(400);
+                fitControlPanels(true);
                 this.remoteGateControlArea.setVisible(true);
                 this.remoteGateAddressLabel.setText(r_address);
 

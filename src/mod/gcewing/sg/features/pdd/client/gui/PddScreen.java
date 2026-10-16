@@ -76,12 +76,27 @@ public class PddScreen extends BasicScreen {
     private BasicList<AddressData> addressList;
     private long timer;
 
+    // The Explorer Dialer Device: lists the server's generated gates, sent by the server, instead of the addresses
+    // kept on the held PDD
+    private final boolean explorer;
+    private List<AddressData> explorerList; // latest from the server, null until it arrives
+    private final Set<String> visitedAddresses = new HashSet<>();
+    private int explorerRevision = 0;
+    private long lastExplorerRequest = 0;
+    // How often the open list checks with the server for newly generated gates
+    private static final long EXPLORER_REFRESH_MILLIS = 3000;
+
     public PddScreen(EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin) {
+        this(player, worldIn, gatePos, isAdmin, false);
+    }
+
+    public PddScreen(EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin, boolean explorer) {
         this.player = player;
         this.isAdmin = false;
         this.world = worldIn;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
         this.gatePos = gatePos;
+        this.explorer = explorer;
     }
 
     @Override
@@ -97,7 +112,8 @@ public class PddScreen extends BasicScreen {
         }
 
         // Master Panel
-        this.form = new BasicForm(this, BASE_FORM_WIDTH, 225, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.personalDialerDevice"));
+        this.form = new BasicForm(this, BASE_FORM_WIDTH, 225, TextFormatting.WHITE + I18n.format(this.explorer
+            ? "sgcraft.gui.edd.label.explorerDialerDevice" : "sgcraft.gui.pdd.label.personalDialerDevice"));
         this.form.setMovable(true);
         this.form.setBackgroundAlpha(255);
 
@@ -110,7 +126,8 @@ public class PddScreen extends BasicScreen {
         this.addressContainer.setPadding(0, 3);
         this.addressContainer.setBackgroundAlpha(0);
 
-        availableAddressesLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.availableAddresses")+":");
+        availableAddressesLabel = new UILabel(this, TextFormatting.WHITE + I18n.format(this.explorer
+            ? "sgcraft.gui.edd.label.generatedAddresses" : "sgcraft.gui.pdd.label.availableAddresses")+":");
         availableAddressesLabel.setPosition(5, 1, Anchor.LEFT | Anchor.TOP);
 
         localGateAddressLabel = new UILabel(this, "gateAddress");
@@ -167,16 +184,30 @@ public class PddScreen extends BasicScreen {
 
         this.editAddressButton = new UIButtonBuilder(this)
             .text(TextFormatting.YELLOW + "?")
-            .onClick(() -> new PddEntryScreen(this, player, addressList.getSelectedItem().getName(), addressList.getSelectedItem().getAddress(), addressList.getSelectedItem().getIndex(), addressList.getSelectedItem().getUnid(), addressList.getSelectedItem().isLocked(), addressList.getSelectedItem().isAutoClose(),false,2).display())
+            .onClick(() -> {
+                if (this.explorer) {
+                    // Only the name can be changed; the rest belongs to the generated gate
+                    final AddressData selected = addressList.getSelectedItem();
+                    if (selected != null) {
+                        new PddEntryScreen(this, player, selected.getName(), selected.getAddress(), selected.getIndex(), selected.getUnid(), false, false, false, 4).display();
+                    }
+                    return;
+                }
+                new PddEntryScreen(this, player, addressList.getSelectedItem().getName(), addressList.getSelectedItem().getAddress(), addressList.getSelectedItem().getIndex(), addressList.getSelectedItem().getUnid(), addressList.getSelectedItem().isLocked(), addressList.getSelectedItem().isAutoClose(),false,2).display();
+            })
             .anchor(Anchor.BOTTOM | Anchor.LEFT)
             .position(BasicScreen.getPaddedX(this.deleteAddressButton, 2), 0)
             //.visible(this.canModify)
             .build("button.details");
+        if (this.explorer) {
+            this.editAddressButton.setPosition(0, 0); // where the add and delete buttons, not shown here, would be
+        }
 
         this.autoCloseChk = new UICheckBox(this, TextFormatting.WHITE + "Auto Close");
         this.autoCloseChk.setAnchor(Anchor.BOTTOM | Anchor.LEFT);
         this.autoCloseChk.setPosition(BasicScreen.getPaddedX(this.editAddressButton, 2), -2);
-        this.autoCloseChk.setEnabled(false);
+        // The PDD shows each entry's own setting; generated gates have none, so there the player ticks it themselves
+        this.autoCloseChk.setEnabled(this.explorer);
         this.autoCloseChk.setChecked(false);
 
         buttonDial = new UIButtonBuilder(this)
@@ -406,11 +437,18 @@ public class PddScreen extends BasicScreen {
                 this.userFeedbackLabel.setVisible(!this.buttonDial.isVisible() && !this.buttonReset.isVisible() && !this.buttonDisconnect.isVisible() && !(localGate.state == SGState.Disconnecting));
                 this.gateStatusLabel.setVisible(!this.addressList.isVisible());
 
-                if (this.addressList.getSize() > 0 && this.addressList.getSelectedItem() != null) {
+                if (!this.explorer && this.addressList.getSize() > 0 && this.addressList.getSelectedItem() != null) {
                     this.autoCloseChk.setChecked(this.addressList.getSelectedItem().isAutoClose());
                     this.deleteAddressButton.setEnabled(!this.addressList.getSelectedItem().isLocked());
                 }
             }
+        }
+
+        if (this.explorer) {
+            // The server decides which gates are listed, so there's nothing to add or delete
+            this.addAddressButton.setVisible(false);
+            this.deleteAddressButton.setVisible(false);
+            this.editAddressButton.setEnabled(this.addressList.getSelectedItem() != null);
         }
     }
 
@@ -488,6 +526,18 @@ public class PddScreen extends BasicScreen {
     final static int cellSize = 24;
 
     private void detectChange() {
+        if (this.explorer) {
+            // The server only replies when something changed, so asking often costs little
+            if (System.currentTimeMillis() > this.lastExplorerRequest + EXPLORER_REFRESH_MILLIS) {
+                this.lastExplorerRequest = System.currentTimeMillis();
+                PddNetworkHandler.requestExplorerListFromServer(this.explorerList == null ? null : this.explorerRevision);
+            }
+            if (this.explorerList != null && !this.explorerList.equals(this.clonedList)) {
+                showAddresses(this.explorerList);
+            }
+            return;
+        }
+
         final ItemStack stack = player.getHeldItemMainhand();
         NBTTagCompound compound = stack.getTagCompound();
         if (compound != null) {
@@ -512,6 +562,49 @@ public class PddScreen extends BasicScreen {
                 }
             }
         }
+    }
+
+    // The generated gates from the server, with the world each is in and which this player has visited
+    public void setExplorerList(final int revision, final List<AddressData> addresses, final Map<String, String> worlds,
+            final Set<String> visited) {
+        if (!this.explorer) {
+            return;
+        }
+        this.explorerRevision = revision;
+        this.worldNames.putAll(worlds);
+        this.visitedAddresses.clear();
+        this.visitedAddresses.addAll(visited);
+        this.explorerList = addresses;
+        if (this.addressList == null) {
+            return; // not built yet; detectChange shows the list once it is
+        }
+        // Shown even if only the visits changed, which the entries alone don't tell apart
+        showAddresses(addresses);
+    }
+
+    // Shows the generated gates, keeping the selected one selected
+    private void showAddresses(final List<AddressData> addresses) {
+        final AddressData selected = this.addressList.getSelectedItem();
+        this.addressList.clearItems();
+        resetAddressLineWidth();
+        this.clonedList = new ArrayList<>(addresses);
+        this.addressList.addItems(new ArrayList<>(addresses));
+        if (selected != null) {
+            for (AddressData data : addresses) {
+                if (data.getAddress().equals(selected.getAddress())) {
+                    this.addressList.setSelectedItem(data);
+                    break;
+                }
+            }
+        }
+        int visitedCount = 0;
+        for (AddressData data : addresses) {
+            if (this.visitedAddresses.contains(data.getAddress())) {
+                visitedCount++;
+            }
+        }
+        this.availableAddressesLabel.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.edd.label.generatedAddresses")
+            + ": (" + addresses.size() + ")" + TextFormatting.GRAY + " - " + I18n.format("sgcraft.gui.edd.label.visitedCount", visitedCount));
     }
 
     public void setWorldNames(final Map<String, String> names) {
@@ -814,6 +907,20 @@ public class PddScreen extends BasicScreen {
             this.lockedStatusContainer = new BasicContainer(this.getGui(), 5, UIComponent.INHERITED);
             this.lockedStatusContainer.setPosition(0, 0, Anchor.MIDDLE | Anchor.RIGHT);
 
+            if (explorer) {
+                // Whether the player has been to this gate, where the PDD has its move arrows: generated gates keep
+                // the server's order
+                final boolean visited = visitedAddresses.contains(this.item.getAddress());
+                final UILabel visitedLabel = new UILabel(this.getGui(), (visited ? TextFormatting.GREEN : TextFormatting.DARK_GRAY)
+                    + I18n.format(visited ? "sgcraft.gui.edd.label.visited" : "sgcraft.gui.edd.label.notVisited"));
+                visitedLabel.setPosition(-8, 3, Anchor.TOP | Anchor.RIGHT);
+                // Room for a long name beside it, as for the address line (which keeps its reserve on the right)
+                fitAddressLine(this.nameLabel.getX() + this.nameLabel.getWidth() + 6 + visitedLabel.getWidth() + 8 - ENTRY_RIGHT_RESERVE);
+                this.update();
+                this.add(this.nameLabel, this.addressLabel, visitedLabel, this.lockedStatusContainer);
+                return;
+            }
+
             // Move this entry up or down the list; the server swaps its index with its neighbour's
             final List<AddressData> order = clonedList;
             final boolean first = order == null || order.isEmpty() || order.get(0).getUnid() == this.item.getUnid();
@@ -840,6 +947,10 @@ public class PddScreen extends BasicScreen {
         }
 
         public void update() {
+            if (explorer) {
+                this.lockedStatusContainer.setColor(visitedAddresses.contains(this.item.getAddress()) ? FontColors.GREEN : FontColors.GRAY);
+                return;
+            }
             this.lockedStatusContainer.setColor(this.item.isLocked() ? FontColors.GRAY : FontColors.GREEN);
         }
     }

@@ -16,6 +16,7 @@ import gcewing.sg.util.SGState;
 import gcewing.sg.Vector3;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraftforge.client.MinecraftForgeClient;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     final GateRenderer milkyWayGate = new MilkyWayGateRenderer();
     final GateRenderer pegasusGate = new PegasusGateRenderer();
     final GateRenderer universeGate = new UniverseGateRenderer();
+    final OriGateRenderer oriGate = new OriGateRenderer();
 
     @Override
     public void render(TileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
@@ -96,16 +98,30 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // The gate in its own frame, centred on the origin, its front towards +z, with whatever its
     // ring, chevrons, iris and event horizon are doing. Also draws the live gate on the GDO's screen.
     public void renderGate(SGBaseTE gate, GateShape shape, float partialTicks) {
+        // In the world, a shield is drawn in Forge's second pass, after translucent blocks, and the rest of the gate in the
+        // first; elsewhere (the GDO's screen, outside the world's passes) everything is drawn at once
+        int pass = MinecraftForgeClient.getRenderPass();
+        if (pass == 1) {
+            // An Ori gate's light too: its energy and lightning, drawn in front of what's behind them
+            if (gate.getGateType() == GateType.ORI)
+                oriGate.renderLight(gate, shape, partialTicks);
+            if (gate.hasIrisUpgrade && gate.hasShield)
+                renderShield(gate, gateRenderer(gate), partialTicks);
+            return;
+        }
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(gate) + "/stargate.png"));
 
         glNormal3f(0, 1, 0);
         GateRenderer renderer = gateRenderer(gate);
         renderer.render(gate, shape, partialTicks);
-        if (gate.hasIrisUpgrade)
+        if (gate.hasIrisUpgrade && !gate.hasShield)
             renderIris(gate, renderer, partialTicks);
         if (gate.isConnected() && gate.state != SGState.SyncAwait) {
             renderEventHorizon(gate, renderer, partialTicks);
         }
+        // See-through, so drawn over the event horizon behind it
+        if (gate.hasIrisUpgrade && gate.hasShield && pass != 0)
+            renderShield(gate, renderer, partialTicks);
     }
 
     // A Milky Way or Pegasus gate is drawn from its model, or as SGCraft always has without it
@@ -113,6 +129,8 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         switch (gate.getGateType()) {
             case UNIVERSE:
                 return universeGate;
+            case ORI:
+                return oriGate;
             case MILKY_WAY:
                 return MilkyWayGateRenderer.available() ? milkyWayGate : classicGate;
             case PEGASUS:
@@ -138,9 +156,16 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         // outside the gap they leave, and its ripples kept behind the blades everywhere, so none show through them.
         // (Cut back only once the iris was half closed, the horizon came through the blades for the rest of each swing.)
         double aperture = te.hasIrisUpgrade ? te.getIrisAperture(partialTicks) : 1.0;
-        double rclip = shape.ehClipRadius * aperture;
+        // A shield covers the whole opening as it rises, so the horizon only has to stay behind it
+        double rclip = te.hasShield ? shape.ehClipRadius : shape.ehClipRadius * aperture;
         double zmax = aperture < 1 ? renderer.irisDepth(shape) - 2 * irisBladeTilt : Double.POSITIVE_INFINITY;
-        for (int i = 1; i < shape.ehGridRadialSize; i++) {
+        // An Ori gate's horizon fills in from the ring to the middle before its kawoosh: until it has, the whole horizon is
+        // squeezed into a ring round the edge, with a hole in the middle that closes up
+        double fill = te.horizonFill(partialTicks);
+        double radius = shape.ehGridRadialSize * shape.ehBandWidth;
+        ehHole = radius * (1 - fill);
+        ehSqueeze = fill;
+        for (int i = fill < 1 ? 0 : 1; i < shape.ehGridRadialSize; i++) {
             glBegin(GL_QUAD_STRIP);
             for (int j = 0; j <= shape.ehGridPolarSize; j++) {
                 ehVertex(shape, grid, i, j, rclip, zmax);
@@ -148,22 +173,31 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             }
             glEnd();
         }
-        glBegin(GL_TRIANGLE_FAN);
-        glTexCoord2d(0, 0);
-        glVertex3d(0, 0, ehClip(grid[1][0] * shape.depthScale(), 0, rclip, zmax));
-        for (int j = 0; j <= shape.ehGridPolarSize; j++)
-            ehVertex(shape, grid, 1, j, rclip, zmax);
-        glEnd();
+        if (fill >= 1) { // the middle, once there's no hole there
+            glBegin(GL_TRIANGLE_FAN);
+            glTexCoord2d(0, 0);
+            glVertex3d(0, 0, ehClip(grid[1][0] * shape.depthScale(), 0, rclip, zmax));
+            for (int j = 0; j <= shape.ehGridPolarSize; j++)
+                ehVertex(shape, grid, 1, j, rclip, zmax);
+            glEnd();
+        }
+        ehHole = 0;
+        ehSqueeze = 1;
         glDepthMask(true);
         glEnable(GL_CULL_FACE);
         GL11.glEnable(GL_LIGHTING);
         setLightingDisabled(false);
     }
     
+    // How far the horizon is drawn squeezed out from the middle (see renderEventHorizon): a hole this wide, and the
+    // rest of it this much of its size
+    private double ehHole = 0, ehSqueeze = 1;
+
     void ehVertex(GateShape shape, double[][] grid, int i, int j, double rclip, double zmax) {
         double r = i * shape.ehBandWidth;
-        double x = r * shape.ehCos[j];
-        double y = r * shape.ehSin[j];
+        double drawn = ehHole + r * ehSqueeze;
+        double x = drawn * shape.ehCos[j];
+        double y = drawn * shape.ehSin[j];
         double z = ehClip(grid[j+1][i] * shape.depthScale(), r, rclip, zmax); // ripples scale with the ring's thickness
         glTexCoord2d(x, y);
         glVertex3d(x, y, z);
@@ -175,6 +209,74 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         return min(z, zmax);
     }       
     
+    // ---- The energy shield, an iris upgrade's alternative to the blades (as on Atlantis) ----
+
+    // Its rings and spokes; fine enough for the shimmer to run smoothly across it
+    final static int shieldRings = 12, shieldSpokes = 48;
+    // Its colour at the middle and at the rim, where it's brighter, and how opaque it is when fully up
+    final static float[] shieldColour = {0.35F, 0.65F, 1.0F}, shieldRimColour = {0.75F, 0.92F, 1.0F};
+    final static float shieldAlpha = 0.45F, shieldRimAlpha = 0.75F;
+
+    // A glowing, see-through disc across the opening where the iris blades would be, fading in as the shield
+    // rises (the iris closes) and out as it falls, with a slow shimmer running across it
+    void renderShield(SGBaseTE te, GateRenderer renderer, float partialTicks) {
+        float fade = (float) (1 - te.getIrisAperture(partialTicks));
+        if (fade <= 0) {
+            return;
+        }
+        GateShape shape = te.getShape();
+        double radius = Math.min(renderer.irisClipRadius(shape), shape.ringInnerRadius + 0.05);
+        double z = renderer.irisDepth(shape);
+        double time = (te.getWorld() != null ? te.getWorld().getTotalWorldTime() : 0) + partialTicks;
+
+        float lastX = OpenGlHelper.lastBrightnessX, lastY = OpenGlHelper.lastBrightnessY;
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240); // glows whatever the light
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_LIGHTING);
+        glDisable(GL_CULL_FACE); // seen from either side
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glDepthMask(false);
+        glShadeModel(GL_SMOOTH);
+        glNormal3f(0, 0, 1);
+
+        for (int i = 0; i < shieldRings; i++) {
+            glBegin(GL_QUAD_STRIP);
+            for (int j = 0; j <= shieldSpokes; j++) {
+                shieldVertex(i, j, radius, z, time, fade);
+                shieldVertex(i + 1, j, radius, z, time, fade);
+            }
+            glEnd();
+        }
+
+        glShadeModel(GL_FLAT);
+        glDepthMask(true);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        if (!te.transparency) {
+            glDisable(GL_BLEND);
+        }
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
+        glColor4f(1, 1, 1, 1);
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, lastX, lastY);
+    }
+
+    void shieldVertex(int ring, int spoke, double radius, double z, double time, float fade) {
+        double f = (double) ring / shieldRings; // 0 at the middle, 1 at the rim
+        double angle = 2 * Math.PI * spoke / shieldSpokes;
+        // Brighter towards the rim, where the shield meets the ring
+        double rim = f * f * f * f;
+        // Two slow waves crossing it, one rippling out from the middle and one turning round it
+        double shimmer = 0.5 + 0.25 * Math.sin(time * 0.12 - f * 9) + 0.25 * Math.sin(time * 0.07 + angle * 3 + f * 4);
+        float r = (float) (shieldColour[0] + (shieldRimColour[0] - shieldColour[0]) * rim);
+        float g = (float) (shieldColour[1] + (shieldRimColour[1] - shieldColour[1]) * rim);
+        float b = (float) (shieldColour[2] + (shieldRimColour[2] - shieldColour[2]) * rim);
+        float a = (float) ((shieldAlpha + (shieldRimAlpha - shieldAlpha) * rim) * (0.75 + 0.25 * shimmer)) * fade;
+        glColor4f(r, g, b, a);
+        glVertex3d(radius * f * Math.cos(angle), radius * f * Math.sin(angle), z);
+    }
+
     // Draws the iris at the depth the gate's renderer gives, cut off where its ring hides it
     void renderIris(SGBaseTE te, GateRenderer renderer, double t) {
         bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/iris.png"));

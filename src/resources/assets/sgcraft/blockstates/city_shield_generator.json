@@ -1,0 +1,7 @@
+{
+    "variants": {
+        "normal": {
+            "model": "sgcraft:city_shield_generator"
+        }
+    }
+}

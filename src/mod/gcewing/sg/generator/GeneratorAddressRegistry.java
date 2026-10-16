@@ -29,6 +29,8 @@ public final class GeneratorAddressRegistry {
 
     private static final Map<String, Set<String>> addresses = new HashMap<>();
     private static final String WORLDS_NODE = "worlds";
+    // Goes up whenever the list of addresses changes, so anything showing it can tell when to fetch it again
+    private static int revision = 0;
 
     public static ConfigurationNode createRootNode(final Path path) throws IOException {
         final YAMLConfigurationLoader loader = YAMLConfigurationLoader.builder().setPath(path).setFlowStyle(DumperOptions.FlowStyle.BLOCK).build();
@@ -48,6 +50,7 @@ public final class GeneratorAddressRegistry {
         checkNotNull(root);
 
         addresses.clear();
+        revision++;
 
         final ConfigurationNode worldsRoot = root.getNode(WORLDS_NODE);
         for (final Map.Entry<Object, ? extends ConfigurationNode> worldEntry : worldsRoot.getChildrenMap().entrySet()) {
@@ -70,6 +73,7 @@ public final class GeneratorAddressRegistry {
         checkNotNull(address);
 
         addresses.computeIfAbsent(world.getWorldInfo().getWorldName().toLowerCase(), k -> new HashSet<>()).add(address.toUpperCase());
+        revision++;
 
         GeneratorAddressRegistry.writeAddresses();
     }
@@ -79,6 +83,7 @@ public final class GeneratorAddressRegistry {
 
         final Set<String> worldAddresses = addresses.getOrDefault(world.getWorldInfo().getWorldName().toLowerCase(), new HashSet<>());
         boolean removed = worldAddresses.removeIf(s -> s.equalsIgnoreCase(homeAddress));
+        revision++;
 
         GeneratorAddressRegistry.writeAddresses();
 
@@ -94,6 +99,36 @@ public final class GeneratorAddressRegistry {
         return exists;
     }
 
+
+    // Whether any world's generated gates include this address, whatever its dashes or case
+    public static boolean isGenerated(final String address) {
+        checkNotNull(address);
+
+        final String normalized = address.replace("-", "").toUpperCase();
+        for (final Set<String> worldAddresses : addresses.values()) {
+            for (final String a : worldAddresses) {
+                if (a.equalsIgnoreCase(normalized)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Every generated gate's address, across all worlds, without dashes and in upper case
+    public static Set<String> getAllAddresses() {
+        final Set<String> all = new HashSet<>();
+        for (final Set<String> worldAddresses : addresses.values()) {
+            for (final String a : worldAddresses) {
+                all.add(a.replace("-", "").toUpperCase());
+            }
+        }
+        return all;
+    }
+
+    public static int getRevision() {
+        return revision;
+    }
 
     public static void writeAddresses() {
         final Path path = Paths.get(".", "config", "SGCraft", "generator.yml");

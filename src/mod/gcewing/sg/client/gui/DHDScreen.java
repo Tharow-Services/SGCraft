@@ -260,7 +260,7 @@ public class DHDScreen extends SGScreen {
         SGBaseTE te = getStargateTE();
         boolean connected = te != null && te.isActive();
         GateType type = te.getGateType();
-        bindTexture(SGCraft.mod.resourceLocation("textures/gui/" + type.assetName + "_dhd_centre.png"), 128, 64);
+        bindTexture(SGCraft.mod.resourceLocation("textures/gui/" + type.dhdType().assetName + "_dhd_centre.png"), 128, 64);
         if (te == null || !te.isMerged)
             setColor(0.2, 0.2, 0.2); // grey
         else if (connected)

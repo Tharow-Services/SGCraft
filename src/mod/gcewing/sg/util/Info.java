@@ -5,6 +5,6 @@ package gcewing.sg.util;
 public class Info {
 	public static final String modName = "SG Craft";
 	public static final String modID = "sgcraft";
-	public static final String versionNumber = "2.0.3";
-	public static final String versionBounds = "2.0.3";
+	public static final String versionNumber = "2.2.0";
+	public static final String versionBounds = "2.2.0";
 }
