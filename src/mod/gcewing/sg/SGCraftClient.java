@@ -7,6 +7,11 @@
 package gcewing.sg;
 
 import gcewing.sg.features.cityshield.CityShieldTE;
+import gcewing.sg.features.obelisk.client.ObeliskBeamEffects;
+import gcewing.sg.features.zat.client.ZatBolts;
+import gcewing.sg.features.obelisk.AsgardObeliskTE;
+import gcewing.sg.features.obelisk.client.AsgardObeliskRenderer;
+import net.minecraftforge.common.MinecraftForge;
 import gcewing.sg.features.cityshield.client.CityShieldRenderer;
 
 // import gcewing.sg.ic2.*; //[IC2]
@@ -36,6 +41,10 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     
     @Override
     protected void registerScreens() {
+        // The white-out and sound of an Asgard obelisk beaming the player
+        MinecraftForge.EVENT_BUS.register(ObeliskBeamEffects.class);
+        // The zat's bolts of lightning
+        MinecraftForge.EVENT_BUS.register(ZatBolts.class);
         //System.out.printf("SGCraft: ProxyClient.registerScreens\n");
         addScreen(SGGui.SGBase, SGBaseScreen.class);
         addScreen(SGGui.SGController, DHDScreen.class);
@@ -50,6 +59,7 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     protected void registerTileEntityRenderers() {
         addTileEntityRenderer(SGBaseTE.class, new SGBaseTERenderer());
         addTileEntityRenderer(DHDTE.class, new DHDTERenderer());
+        addTileEntityRenderer(AsgardObeliskTE.class, new AsgardObeliskRenderer());
         if (BaseMod.isModLoaded("malisiscore")) {
             addTileEntityRenderer(CityShieldTE.class, new CityShieldRenderer());
         }

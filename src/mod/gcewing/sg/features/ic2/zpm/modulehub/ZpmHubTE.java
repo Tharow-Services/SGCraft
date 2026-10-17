@@ -49,7 +49,6 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
     public int zpmSlot2Energy = 0;
     public int zpmSlotsloaded = 0;
 
-    private double energyPerSGEnergyUnit = 80;
     private int update = 0;
 
     // Same per-call cap as the ZPM console and cart.
@@ -210,8 +209,14 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
 
     /* Energy */
 
+    // In SGCraft energy units, as every ISGEnergySource gives it, not the ZPM energy it holds
     @Override
     public double availableEnergy() {
+        return this.hubSource.getEnergyStored() / SGCraft.ZPMEnergyPerSGEnergyUnit;
+    }
+
+    // The ZPM energy it holds, for its screen
+    public double storedZpmEnergy() {
         return this.hubSource.getEnergyStored();
     }
 
@@ -222,9 +227,9 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
 
     @Override
     public double drawEnergyDouble(double amount) {
-        double available = this.hubSource.getEnergyStored();
+        double available = availableEnergy();
         double supply = min(amount, available);
-        this.hubSource.drawEnergy(supply * energyPerSGEnergyUnit);
+        this.hubSource.drawEnergy(supply * SGCraft.ZPMEnergyPerSGEnergyUnit);
 
         if (isTainted(this.getStackInSlot(0))) {
             world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);

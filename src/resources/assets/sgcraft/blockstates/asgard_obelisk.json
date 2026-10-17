@@ -1,0 +1,25 @@
+{
+    "forge_marker": 1,
+    "variants": {
+        "upper": {
+            "true": {"model": "sgcraft:asgard_obelisk_upper.obj"},
+            "false": {"model": "sgcraft:asgard_obelisk_lower.obj"}
+        },
+        "facing": {
+            "north": {},
+            "east": {"y": 90},
+            "south": {"y": 180},
+            "west": {"y": 270}
+        },
+        "inventory": [{
+            "model": "sgcraft:asgard_obelisk_item.obj",
+            "transform": {
+                "gui": {"translation": [0, -0.3, 0], "rotation": [{"x": 30}, {"y": 225}], "scale": 0.42},
+                "ground": {"translation": [0, 0.05, 0], "scale": 0.25},
+                "fixed": {"translation": [0, -0.3, 0], "scale": 0.45},
+                "thirdperson_righthand": {"translation": [0, 0.05, 0], "rotation": [{"x": 75}, {"y": 45}], "scale": 0.3},
+                "firstperson_righthand": {"translation": [0, 0, 0], "rotation": [{"y": 45}], "scale": 0.3}
+            }
+        }]
+    }
+}

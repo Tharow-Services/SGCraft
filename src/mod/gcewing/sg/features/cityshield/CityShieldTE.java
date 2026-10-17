@@ -13,7 +13,6 @@ import net.malisis.core.inventory.MalisisInventory;
 import net.malisis.core.inventory.MalisisInventoryContainer;
 import net.minecraft.client.Minecraft;
 import gcewing.sg.interfaces.ISGEnergySource;
-import gcewing.sg.tileentity.SGBaseTE;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.IProjectile;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -52,6 +51,14 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
     public static final int MIN_RADIUS = 3;
     // Whether a raised shield keeps all the chunks it covers loaded, and loads them again with the world
     public static boolean keepChunksLoaded = true;
+
+    // Its own sounds as it rises and falls
+    public static SoundEvent raiseSound, lowerSound;
+
+    public static void registerSounds(SGCraft mod) {
+        raiseSound = mod.newSound("city_shield_on");
+        lowerSound = mod.newSound("city_shield_off");
+    }
 
     public static void configure(BaseConfiguration cfg) {
         energyPerMillionBlocksPerTick = cfg.getDouble("city-shield", "energyPerMillionBlocksPerTick", energyPerMillionBlocksPerTick);
@@ -324,7 +331,7 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
     public void setActive(boolean on) {
         if (active != on) {
             active = on;
-            SoundEvent sound = on ? SGBaseTE.shieldActivationSound : SGBaseTE.shieldDeactivationSound;
+            SoundEvent sound = on ? raiseSound : lowerSound;
             world.playSound(null, pos, sound, SoundCategory.BLOCKS, 4F, 1F); // heard 64 blocks away
             markChanged();
         }

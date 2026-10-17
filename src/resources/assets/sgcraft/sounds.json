@@ -34,9 +34,13 @@
 	"iris_open":  {"category": "ambient", "sounds": ["sgcraft:iris_open"]},
 	"iris_close": {"category": "ambient", "sounds": ["sgcraft:iris_close"]},
 	"iris_hit": {"category": "ambient", "sounds": ["sgcraft:iris_hit"]},
-	"shield_activation": {"category": "ambient", "sounds": ["sgcraft:shield_activation"]},
+	"shield_activation_atlantis": {"category": "ambient", "sounds": ["sgcraft:shield_activation_atlantis"]},
 	"shield_deactivation": {"category": "ambient", "sounds": ["sgcraft:shield_deactivation"]},
-	"ori_link": {"category": "ambient", "sounds": ["sgcraft:ori/link1", "sgcraft:ori/link2", "sgcraft:ori/link3", "sgcraft:ori/link4"]},
+	"city_shield_on": {"category": "block", "sounds": ["sgcraft:city_shield_on"]},
+	"city_shield_off": {"category": "block", "sounds": ["sgcraft:city_shield_off"]},
+	"ori_open": {"category": "ambient", "sounds": ["sgcraft:supergate"]},
+	"asgard_beam": {"category": "block", "sounds": ["sgcraft:obelisk_sound"]},
+	"zat_fire": {"category": "player", "sounds": ["sgcraft:zat_fire"]},
 	"m_dhd_press": {
 		"category": "ambient",
 		"sounds": [

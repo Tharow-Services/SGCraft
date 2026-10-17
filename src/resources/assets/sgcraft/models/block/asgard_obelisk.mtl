@@ -1,0 +1,25 @@
+# SGCraft Asgard obelisk materials
+newmtl stone
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_obelisk_stone
+newmtl sandstone
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_obelisk_sandstone
+newmtl hammer
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_obelisk_hammer
+newmtl ring
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_obelisk_ring
+newmtl gem
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_obelisk_crystal
+newmtl celtic_stone
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_celtic_stone
+newmtl celtic_knot
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_celtic_knot
+newmtl celtic_front
+Kd 1 1 1
+map_Kd sgcraft:blocks/asgard_celtic_front
