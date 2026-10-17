@@ -31,8 +31,24 @@ public final class AsgardObelisks {
 
     public static SoundEvent beamSound;
 
-    // The obelisk each player has started linking from (sneak-clicked), to link with the next one they sneak-click
-    private static final Map<UUID, AsgardObeliskTE> linking = new HashMap<>();
+    // Where the obelisk each player has started linking from (sneak-clicked) is, to link with the next one they
+    // sneak-click. Kept by place, not the obelisk itself: the player may go far, even to another world, before the next
+    // click, and its chunk may be unloaded and loaded again by then, leaving a stale copy that's no longer saved
+    private static final class LinkStart {
+        final int dimension;
+        final BlockPos pos;
+
+        LinkStart(AsgardObeliskTE obelisk) {
+            this.dimension = obelisk.getWorld().provider.getDimension();
+            this.pos = obelisk.getPos();
+        }
+
+        boolean is(AsgardObeliskTE obelisk) {
+            return dimension == obelisk.getWorld().provider.getDimension() && pos.equals(obelisk.getPos());
+        }
+    }
+
+    private static final Map<UUID, LinkStart> linking = new HashMap<>();
     // When each player last beamed, so arriving next to an obelisk with the button still held doesn't send them back
     private static final Map<UUID, Long> lastBeam = new HashMap<>();
     private static final long cooldownMillis = 1500;
@@ -50,20 +66,24 @@ public final class AsgardObelisks {
             sendErrorMsg(player, "obeliskNoAccess");
             return;
         }
-        AsgardObeliskTE first = linking.remove(player.getUniqueID());
-        if (first == obelisk) {
+        LinkStart start = linking.remove(player.getUniqueID());
+        if (start != null && start.is(obelisk)) {
             sendBasicMsg(player, "obeliskLinkCancelled");
-        } else if (first != null && !first.isInvalid() && first.getWorld() != null && first.getBlockType() != obelisk.getBlockType()) {
-            linking.put(player.getUniqueID(), first); // still linking from the first
+            return;
+        }
+        // The first obelisk as it is now, its chunk (and world) loaded again if need be; null if it's gone
+        AsgardObeliskTE first = start != null ? obeliskAt(start.dimension, start.pos) : null;
+        if (first != null && first.getBlockType() != obelisk.getBlockType()) {
+            linking.put(player.getUniqueID(), start); // still linking from the first
             sendErrorMsg(player, "obeliskWrongType");
-        } else if (first != null && !first.isInvalid() && first.getWorld() != null) {
+        } else if (first != null) {
             unlinkPartner(first);
             unlinkPartner(obelisk);
             first.linkTo(obelisk.getWorld().provider.getDimension(), obelisk.getPos());
             obelisk.linkTo(first.getWorld().provider.getDimension(), first.getPos());
             sendBasicMsg(player, "obeliskLinked");
         } else {
-            linking.put(player.getUniqueID(), obelisk);
+            linking.put(player.getUniqueID(), new LinkStart(obelisk));
             sendBasicMsg(player, "obeliskLinkStart");
         }
     }
@@ -80,18 +100,21 @@ public final class AsgardObelisks {
 
     // The obelisk this one is linked to, loading its world if need be, or null if it isn't there any more
     private static AsgardObeliskTE partnerOf(AsgardObeliskTE obelisk) {
-        if (!obelisk.linked) {
-            return null;
-        }
-        WorldServer world = DimensionManager.getWorld(obelisk.linkDimension);
-        if (world == null && DimensionManager.isDimensionRegistered(obelisk.linkDimension)) {
-            DimensionManager.initDimension(obelisk.linkDimension);
-            world = DimensionManager.getWorld(obelisk.linkDimension);
+        return obelisk.linked ? obeliskAt(obelisk.linkDimension, obelisk.linkPos) : null;
+    }
+
+    // The obelisk at pos in a world, loading the world if need be (and its chunk, which reading the block does on a
+    // server), or null if there isn't one there
+    private static AsgardObeliskTE obeliskAt(int dimension, BlockPos pos) {
+        WorldServer world = DimensionManager.getWorld(dimension);
+        if (world == null && DimensionManager.isDimensionRegistered(dimension)) {
+            DimensionManager.initDimension(dimension);
+            world = DimensionManager.getWorld(dimension);
         }
         if (world == null) {
             return null;
         }
-        TileEntity te = world.getTileEntity(obelisk.linkPos);
+        TileEntity te = world.getTileEntity(pos);
         return te instanceof AsgardObeliskTE ? (AsgardObeliskTE) te : null;
     }
 
