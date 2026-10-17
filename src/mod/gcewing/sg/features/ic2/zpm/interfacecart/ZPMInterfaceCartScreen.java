@@ -46,6 +46,6 @@ public class ZPMInterfaceCartScreen extends SGScreen {
         setTextColor(0x004c66);
         drawCenteredString(screenTitle, cx, 8);
         drawString("ZPM", 120, 45);
-        drawString(I18n.format("sgcraft.gui.zpmConsole.label.availablePower")+": " + dFormat.format(te.availableEnergy()), 60, 100);
+        drawString(I18n.format("sgcraft.gui.zpmConsole.label.availablePower")+": " + dFormat.format(te.storedZpmEnergy()), 60, 100);
     }
 }

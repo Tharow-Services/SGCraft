@@ -37,6 +37,13 @@ import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartContainer;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCart;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartTE;
 import gcewing.sg.features.edd.EddItem;
+import gcewing.sg.features.obelisk.AsgardObeliskBlock;
+import gcewing.sg.features.obelisk.AsgardObeliskTE;
+import gcewing.sg.features.obelisk.AsgardObelisks;
+import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
+import gcewing.sg.features.zat.Zat;
+import gcewing.sg.features.zat.ZatItem;
+import gcewing.sg.features.zat.ZatNetworkHandler;
 import gcewing.sg.features.cityshield.CityShieldBlock;
 import gcewing.sg.features.cityshield.CityShieldTE;
 import gcewing.sg.features.cityshield.network.CityShieldNetworkHandler;
@@ -168,6 +175,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static DHDBlock sgControllerBlock;
     public static Block naquadahBlock, naquadahOre;
     public static Block shieldConsole;
+    public static Block asgardObelisk;
+    public static Block asgardObeliskCeltic;
     public static Block cityShieldGenerator;
     public static SGPowerBlock sgPowerUnit;
 
@@ -185,7 +194,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static OCIntegration ocIntegration; //[OC]
 
     public static Block zpm_interface_cart, zpm_console, zpm_hub;
-    public static Item zpm, gdo, pdd, edd, configurator;
+    public static Item zpm, gdo, pdd, edd, configurator, zat;
 
     public static CreativeTabs creativeTabs;
 
@@ -285,6 +294,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
 
         GameRegistry.registerTileEntity(ZpmConsoleTE.class, new ResourceLocation(this.modID + ":" + "tile_zpmconsole"));
+        GameRegistry.registerTileEntity(AsgardObeliskTE.class, new ResourceLocation(this.modID + ":" + "tile_asgard_obelisk"));
         // The City Shield Generator holds its ZPMs in a MalisisCore inventory, so needs MalisisCore
         if (isModLoaded("malisiscore")) {
             GameRegistry.registerTileEntity(CityShieldTE.class, new ResourceLocation(this.modID + ":" + "tile_cityshield"));
@@ -293,6 +303,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
         MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
+        MinecraftForge.EVENT_BUS.register(AsgardObelisks.class); // beams players a moment after they touch the crystal
+        MinecraftForge.EVENT_BUS.register(Zat.class); // fires zats once they've charged
 
         super.preInit(e);
     }
@@ -305,6 +317,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         configure();
         channel = new SGChannel(Info.modID);
         new SupergatePowerNetworkHandler(Info.modID + "-power");
+        new ObeliskNetworkHandler(Info.modID + "-obelisk");
+        new ZatNetworkHandler(Info.modID + "-zat");
         chunkManager = new BaseTEChunkManager(this);
     }
 
@@ -340,6 +354,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         NaquadahOreWorldGen.configure(config);
         SGBaseBlock.configure(config);
         SGBaseTE.configure(config);
+        Zat.configure(config);
         if (isModLoaded("malisiscore")) {
             CityShieldTE.configure(config);
         }
@@ -424,6 +439,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             zpm_hub = newBlock("zpm_hub", ZpmHub.class);
         }
         zpm_console = newBlock("zpm_console", ZpmConsole.class);
+        asgardObelisk = newBlock("asgard_obelisk", AsgardObeliskBlock.class);
+        asgardObeliskCeltic = addBlock(new AsgardObeliskBlock(AsgardObeliskBlock.Type.CELTIC), "asgard_obelisk_celtic");
 
         this.setOptions();
     }
@@ -443,6 +460,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
 
         zpm = addItem(new ZPMItem(), "zpm");
+        zat = addItem(new ZatItem(), "zat");
         tollan_phase_shift_device = newItem("tollan_phase_shift_device");
 
         pegasus_upgrade = addItem(new SGPegasusUpgradeItem(), "pegasus_upgrade");
@@ -545,6 +563,22 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         if (config.getBoolean("recipes", "naquadahBlock", true)) {
             newRecipe("naquadahblock", naquadahBlock, 1, "NNN", "NNN", "NNN", 'N', "ingotNaquadahAlloy");
+        }
+
+        // Thor's hammer in sandstone on a stone pillar, an ender pearl for its crystal
+        if (config.getBoolean("recipes", "asgardObelisk", true)) {
+            newRecipe("asgard_obelisk", asgardObelisk, 1, " C ", "SES", "SNS", 'C', chiselledSandstone, 'S', Blocks.STONEBRICK,
+                'E', Items.ENDER_PEARL, 'N', "ingotNaquadahAlloy");
+        }
+        // The zat: naquadah alloy round a core crystal, with a purple grip
+        if (config.getBoolean("recipes", "zat", true)) {
+            newRecipe("zat", zat, 1, " NC", "NRN", "PN ", 'N', "ingotNaquadahAlloy", 'C', sgCoreCrystal, 'R', Blocks.REDSTONE_BLOCK,
+                'P', new ItemStack(Items.DYE, 1, 5));
+        }
+        // The knotwork obelisk, all in sandstone
+        if (config.getBoolean("recipes", "asgardObeliskCeltic", true)) {
+            newRecipe("asgard_obelisk_celtic", asgardObeliskCeltic, 1, " C ", "SES", "SNS", 'C', chiselledSandstone, 'S', smoothSandstone,
+                'E', Items.ENDER_PEARL, 'N', "ingotNaquadahAlloy");
         }
 
         if (config.getBoolean("recipes", "sgRingBlock", true)) {
@@ -705,6 +739,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerSounds() {
         SGBaseTE.registerSounds(this);
+        CityShieldTE.registerSounds(this);
+        AsgardObelisks.beamSound = newSound("asgard_beam");
+        Zat.fireSound = newSound("zat_fire");
     }
 
     @SubscribeEvent

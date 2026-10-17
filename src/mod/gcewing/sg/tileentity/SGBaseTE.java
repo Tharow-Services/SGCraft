@@ -125,7 +125,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             irisHitSound,
             shieldActivationSound,
             shieldDeactivationSound,
-            oriLinkSound,
+            oriOpenSound,
             m_dhdPressSound,
             p_dhdPressSound,
             m_dhdDialSound,
@@ -151,9 +151,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         irisOpenSound = mod.newSound("iris_open");
         irisCloseSound = mod.newSound("iris_close");
         irisHitSound = mod.newSound("iris_hit");
-        shieldActivationSound = mod.newSound("shield_activation");
+        shieldActivationSound = mod.newSound("shield_activation_atlantis");
         shieldDeactivationSound = mod.newSound("shield_deactivation");
-        oriLinkSound = mod.newSound("ori_link");
+        oriOpenSound = mod.newSound("ori_open");
         m_dhdPressSound = mod.newSound("m_dhd_press");
         p_dhdPressSound = mod.newSound("p_dhd_press");
         m_dhdDialSound = mod.newSound("m_dhd_dial");
@@ -2191,7 +2191,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     // An Ori supergate takes about this long (ticks) from starting to dial until it opens, as in The Ark of Truth: the
     // symbols, the short pauses between them, then waiting for the far gate and establishing the connection
-    final static int oriDialTicks = 400, oriInterDiallingTime = 6, oriLockTicks = 25, oriEstablishTicks = 5;
+    final static int oriInterDiallingTime = 6, oriEstablishTicks = 5;
+    // Its dialling sound (ori_open, 22.7 seconds) plays once from the first symbol, swelling as the whoosh of its opening
+    // starts, a little way into the opening, and running on half a second past it: so the dial to the whoosh takes this long
+    static final int oriDialTicks = 444, oriWhooshTicks = 5;
 
     // The Ori gate being dialled links its segments in step with the one dialling it: each symbol takes it as long
     void syncOriSymbol(int delay) {
@@ -2207,9 +2210,15 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
+    // How long (ticks) the symbol being dialled takes: the dial, from its first symbol to the whoosh, takes exactly
+    // oriDialTicks, whatever the address (each state lasts a tick more than its timeout)
     int oriSymbolTicks() {
         int length = Math.max(1, dialledAddress.length());
-        return Math.max(10, (oriDialTicks - oriLockTicks - (length - 1) * oriInterDiallingTime) / length);
+        int budget = oriDialTicks - (length - 1) * (oriInterDiallingTime + 1) - (syncAwaitTime + 1)
+            - (oriEstablishTicks + 1) - oriWhooshTicks;
+        int each = budget / length;
+        int spare = numEngagedChevrons == 0 ? budget - each * length : 0; // what doesn't divide evenly, on the first
+        return Math.max(10, each - 1 + spare);
     }
 
     private void startDiallingSymbol(char c) {
@@ -2241,6 +2250,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             int delay = (int)Math.abs(diff / ringRotationSpeed);
             if (getGateType() == GateType.ORI) {
                 delay = oriSymbolTicks(); // it has no ring to turn; it takes its time linking up
+                if (numEngagedChevrons == 0 && !world.isRemote) {
+                    startOriDialSound();
+                }
             }
             targetRingAngle = targetAngle;
             //System.out.println(homeAddress + " -> Delay: " + delay + " (From angle " + ringAngle + " to angle " + targetAngle + ")");
@@ -2319,6 +2331,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // *********************************************************************************************
     // Energy Sub System
     // *********************************************************************************************
+
+    // An Ori gate dialling out plays its dialling sound (ori_open) at both ends from its first symbol: the dial is timed so
+    // it swells as the whoosh starts (see oriSymbolTicks)
+    void startOriDialSound() {
+        if (getGateType() != GateType.ORI || !isInitiator) {
+            return;
+        }
+        playSGSoundEffect(oriOpenSound, 1F, 1F);
+        SGBaseTE target = connectedLocation != null ? connectedLocation.getStargateTE() : null;
+        if (target != null && target.getGateType() == GateType.ORI) {
+            target.playSGSoundEffect(oriOpenSound, 1F, 1F);
+        }
+    }
 
     // A supergate that loses its ZPMs while dialling or open shuts down
     void checkSupergateZpms() {
@@ -3392,7 +3417,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     void playChevronSound(boolean outgoing) {
         GateType type = getGateType();
         if (type == GateType.ORI) {
-            return; // it crackles as its segments link instead (see updateOriLinkSound)
+            return; // its dialling sound plays throughout instead (see startOriDialSound)
         }
         if (outgoing) {
             playSGSoundEffect(type.select(m_chevronOutgoingSound, p_chevronOutgoingSound), 1F, 1F);
@@ -3429,10 +3454,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             if (timeout > 0) {
                 switch (state) {
                     case Transient:
-                        // An Ori gate's kawoosh comes once its horizon has filled in, its sound a little before
+                        // An Ori gate's kawoosh comes once its horizon has filled in; its whoosh starts just after the opening does
                         int sinceOpening = maxTimeout - timeout;
                         boolean ori = getGateType() == GateType.ORI;
-                        if (ori && sinceOpening == Math.max(0, oriFillTicks - 25)) {
+                        if (ori && sinceOpening == oriWhooshTicks) {
                             playSGSoundEffect(m_connectSound, 1F, 1F);
                         }
                         if (!irisIsClosed() && (!ori || sinceOpening >= oriFillTicks)) {
@@ -3601,39 +3626,17 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
-    // An Ori supergate crackles each time more of its segments link up while it dials, louder and higher the more of
-    // the ring is linked (see OriGate)
-    private int oriLinksSeen = 0;
-
-    private void updateOriLinkSound() {
-        if (getGateType() != GateType.ORI || isRemoteView || !isMerged) {
-            oriLinksSeen = 0;
-            return;
-        }
-        int n = OriGate.segmentCount(getShape());
-        int linked = OriGate.linkedSegments(this, n);
-        boolean dialling = state == SGState.Dialling || state == SGState.InterDialling || state == SGState.SyncAwait
-            || state == SGState.EstablishingConnection || state == SGState.Transient // the last link, as it opens
-            || (state == SGState.Idle && numEngagedChevrons > 0);
-        if (linked > oriLinksSeen && dialling) {
-            double f = (double) linked / n;
-            Vec3d c = getSoundOrigin();
-            world.playSound(c.x, c.y, c.z, oriLinkSound, SoundCategory.AMBIENT, (float) (soundVolume * soundRange() * (0.35 + 0.65 * f)),
-                (float) (0.75 + 0.5 * f), false);
-        }
-        oriLinksSeen = linked;
-    }
-
     // The shield sound last started, and when (world time), so a shield only seen rising or falling again by a late
     // update from the server doesn't start it over
     private SoundEvent lastShieldSound;
     private long lastShieldSoundTime = -1000;
-    private static final int shieldSoundTicks = 38; // the sounds' length
+    private static final int shieldSoundTicks = 38, shieldActivationTicks = 82; // the sounds' lengths
 
     @SideOnly(Side.CLIENT)
     private void playShieldSound(SoundEvent sound) {
         long now = world.getTotalWorldTime();
-        if (sound != lastShieldSound || now - lastShieldSoundTime >= shieldSoundTicks) {
+        int length = sound == shieldActivationSound ? shieldActivationTicks : shieldSoundTicks;
+        if (sound != lastShieldSound || now - lastShieldSoundTime >= length) {
             lastShieldSound = sound;
             lastShieldSoundTime = now;
             // A plain one-off sound, not the gate's tracked sounds (SGCraft.playSound), which kept this one looping
@@ -3669,7 +3672,6 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     void clientUpdate() {
-        updateOriLinkSound();
         updateOriFill();
         lastRingAngle = ringAngle;
         switch (state) {

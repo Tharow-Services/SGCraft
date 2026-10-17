@@ -46,7 +46,6 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
     public static final int numZpmSlots = 1;
     public static final int numSlots = numZpmSlots; // future usage > 1
 
-    private double energyPerSGEnergyUnit = 80;
     private int update = 0;
 
     // Same per-call cap as the ZPM console.
@@ -198,8 +197,14 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     /* Energy */
 
+    // In SGCraft energy units, as every ISGEnergySource gives it, not the ZPM energy it holds
     @Override
     public double availableEnergy() {
+        return this.source.getEnergyStored() / SGCraft.ZPMEnergyPerSGEnergyUnit;
+    }
+
+    // The ZPM energy it holds, for its screen
+    public double storedZpmEnergy() {
         return this.source.getEnergyStored();
     }
 
@@ -210,9 +215,9 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     @Override
     public double drawEnergyDouble(double amount) {
-        double available = this.source.getEnergyStored();
+        double available = availableEnergy();
         double supply = min(amount, available);
-        this.source.drawEnergy(supply * energyPerSGEnergyUnit);
+        this.source.drawEnergy(supply * SGCraft.ZPMEnergyPerSGEnergyUnit);
 
         if (isTainted(this.getStackInSlot(0))) {
             world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
