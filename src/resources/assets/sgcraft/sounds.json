@@ -41,6 +41,7 @@
 	"ori_open": {"category": "ambient", "sounds": ["sgcraft:supergate"]},
 	"asgard_beam": {"category": "block", "sounds": ["sgcraft:obelisk_sound"]},
 	"zat_fire": {"category": "player", "sounds": ["sgcraft:zat_fire"]},
+	"naquadah_generator_hum": {"category": "block", "sounds": ["sgcraft:naquadah_generator_hum"]},
 	"m_dhd_press": {
 		"category": "ambient",
 		"sounds": [

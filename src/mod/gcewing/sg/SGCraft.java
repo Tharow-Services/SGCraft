@@ -47,6 +47,10 @@ import gcewing.sg.features.zat.ZatNetworkHandler;
 import gcewing.sg.features.cityshield.CityShieldBlock;
 import gcewing.sg.features.cityshield.CityShieldTE;
 import gcewing.sg.features.cityshield.network.CityShieldNetworkHandler;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorBlock;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
+import gcewing.sg.features.naquadahgenerator.NaquadahGenerators;
+import gcewing.sg.features.naquadahgenerator.network.NaquadahGeneratorNetworkHandler;
 import gcewing.sg.features.shield.ShieldConsoleBlock;
 import gcewing.sg.features.shield.network.ShieldConsoleNetworkHandler;
 import gcewing.sg.features.pdd.PddItem;
@@ -179,6 +183,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static Block asgardObelisk;
     public static Block asgardObeliskCeltic;
     public static Block cityShieldGenerator;
+    public static Block naquadahGeneratorMk1, naquadahGeneratorMk2;
     public static SGPowerBlock sgPowerUnit;
 
     public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgShieldUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
@@ -300,6 +305,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         if (isModLoaded("malisiscore")) {
             GameRegistry.registerTileEntity(CityShieldTE.class, new ResourceLocation(this.modID + ":" + "tile_cityshield"));
             MinecraftForge.EVENT_BUS.register(CityShieldTE.class); // keeps explosions outside the shield from reaching in
+            GameRegistry.registerTileEntity(NaquadahGeneratorTE.class, new ResourceLocation(this.modID + ":" + "tile_naquadah_generator"));
         }
 
         LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
@@ -358,6 +364,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         Zat.configure(config);
         if (isModLoaded("malisiscore")) {
             CityShieldTE.configure(config);
+            NaquadahGenerators.configure(config);
         }
         FeatureGeneration.configure(config);
 
@@ -482,6 +489,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
             cityShieldGenerator = newBlock("city_shield_generator", CityShieldBlock.class);
             new CityShieldNetworkHandler(Info.modID+"-cityshield");
+
+            naquadahGeneratorMk1 = addBlock(new NaquadahGeneratorBlock(NaquadahGenerators.Mark.I), "naquadah_generator_mk1");
+            naquadahGeneratorMk2 = addBlock(new NaquadahGeneratorBlock(NaquadahGenerators.Mark.II), "naquadah_generator_mk2");
+            new NaquadahGeneratorNetworkHandler(Info.modID + "-naqgen");
 
             // PDD default address loader
             final ConfigurationNode rootNode;
@@ -673,6 +684,14 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             if (config.getBoolean("recipes", "cityShieldGenerator", true)) {
                 newRecipe("city_shield_generator", cityShieldGenerator, 1, "NSN", "CXC", "NSN", 'N', naquadahBlock, 'S', sgShieldUpgrade, 'C', sgCoreCrystal, 'X', Items.NETHER_STAR);
             }
+            // The Mark I: naquadah alloy round a core crystal, in an iron case; the Mark II: a Mark I with a diamond and a
+            // naquadah block
+            if (config.getBoolean("recipes", "naquadahGeneratorMk1", true)) {
+                newRecipe("naquadah_generator_mk1", naquadahGeneratorMk1, 1, "INI", "NCN", "INI", 'I', Items.IRON_INGOT, 'N', "ingotNaquadahAlloy", 'C', sgCoreCrystal);
+            }
+            if (config.getBoolean("recipes", "naquadahGeneratorMk2", true)) {
+                newRecipe("naquadah_generator_mk2", naquadahGeneratorMk2, 1, "NDN", "NMN", "NBN", 'N', "ingotNaquadahAlloy", 'D', Items.DIAMOND, 'M', naquadahGeneratorMk1, 'B', naquadahBlock);
+            }
             if (config.getBoolean("recipes", "gdo", true)) {
                 newRecipe("gdo", gdo, 1, "rCr", "xLz", "nbn", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'C', Items.CLOCK, 'L', Blocks.LEVER);
             }
@@ -740,7 +759,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerSounds() {
         SGBaseTE.registerSounds(this);
-        CityShieldTE.registerSounds(this);
+        if (isModLoaded("malisiscore")) {
+            CityShieldTE.registerSounds(this); // (it needs MalisisCore, so only with it)
+        }
+        NaquadahGenerators.registerSounds(this);
         AsgardObelisks.beamSound = newSound("asgard_beam");
         Zat.fireSound = newSound("zat_fire");
     }

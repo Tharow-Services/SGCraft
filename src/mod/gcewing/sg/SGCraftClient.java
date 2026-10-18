@@ -13,6 +13,8 @@ import gcewing.sg.features.obelisk.AsgardObeliskTE;
 import gcewing.sg.features.obelisk.client.AsgardObeliskRenderer;
 import net.minecraftforge.common.MinecraftForge;
 import gcewing.sg.features.cityshield.client.CityShieldRenderer;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
+import gcewing.sg.features.naquadahgenerator.client.NaquadahGeneratorRenderer;
 
 // import gcewing.sg.ic2.*; //[IC2]
 
@@ -62,6 +64,7 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
         addTileEntityRenderer(AsgardObeliskTE.class, new AsgardObeliskRenderer());
         if (BaseMod.isModLoaded("malisiscore")) {
             addTileEntityRenderer(CityShieldTE.class, new CityShieldRenderer());
+            addTileEntityRenderer(NaquadahGeneratorTE.class, new NaquadahGeneratorRenderer());
         }
     }
     
