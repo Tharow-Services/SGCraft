@@ -12,11 +12,10 @@ import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.generator.FeatureStargate;
 import gcewing.sg.generator.GeneratorAddressRegistry;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.ChunkPos;
 import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.SGAddressing;
 import gcewing.sg.util.SGState;
-import net.malisis.core.util.raytrace.Raytrace;
-import net.malisis.core.util.raytrace.RaytraceBlock;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.command.*;
@@ -26,33 +25,38 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
+
+import static gcewing.sg.features.commands.SGCommands.sendMessage;
 
 public class StargateCommands extends CommandBase {
+    private static final String PREFIX = "sgcraft.command.gate:Info";
 
     @Override
+    @NonNull
     public String getName() {
         return "stargate";
     }
 
     @Override
+    @NonNull
     public List<String> getAliases() {
         return Arrays.asList("Gate", "SGGate");
     }
 
     @Override
-    public String getUsage(ICommandSender sender) {
-        return "stargate commands: gen, debug, address, disconnect, reset, status, dial, place, type";
+    @NonNull
+    public String getUsage(@NonNull ICommandSender sender) {
+        return "Gate Commands: gen, debug, address, disconnect, reset, status, dial, place, type, info";
     }
 
     private static final List<String> subcommands = new ArrayList<>();
@@ -67,6 +71,7 @@ public class StargateCommands extends CommandBase {
         subcommands.add("dial");
         subcommands.add("place");
         subcommands.add("type");
+        subcommands.add("info");
     }
 
     @Override
@@ -90,13 +95,37 @@ public class StargateCommands extends CommandBase {
             case "dial": dial(sender, args[1]); break;
             case "place": placeStargate(sender); break;
             case "type": switchType(sender); break;
+            case "info": info(sender); break;
             default: sender.sendMessage(new TextComponentString(getUsage(sender)));
         }
 
     }
 
+    private void info(ICommandSender s) throws CommandException {
+        SGBaseTE gate = getStargate(s);
+        if (gate==null) {
+            throw new CommandException("sgcraft.command.gate:NoGateFound");
+        }
+        info(gate, s);
+        SGBaseTE conn = gate.getConnectedStargateTE();
+        info(conn, s);
+    }
+    private void info(@NonNull SGBaseTE gate, ICommandSender s) {
+        ChunkPos pos = new ChunkPos(gate.getPos(), gate.getWorld().provider.getDimension());
+        sendMessage(s,PREFIX);
+        sendMessage(s,PREFIX+"Pos", pos.d, pos.x, pos.z);
+        sendMessage(s,PREFIX+"HomeAddress", gate.HomeAddress());
+        sendMessage(s,PREFIX+"State", gate.sgStateDescription());
+        if (gate.hasIrisUpgrade) {
+            sendMessage(s,PREFIX+"IrisState", gate.irisStateDescription());
+        } else {
+            sendMessage(s,PREFIX+"Iris");
+        }
+        sendMessage(s,PREFIX+"ChevronUpgrade", gate.getNumChevrons());
+    }
 
-    public SGBaseTE getStargate(ICommandSender sender) {
+
+    public static SGBaseTE getStargate(@NonNull ICommandSender sender) {
         TileEntity gate = null;
         BlockPos pos;
         pos=Minecraft.getMinecraft().objectMouseOver.getBlockPos();
@@ -143,16 +172,24 @@ public class StargateCommands extends CommandBase {
         sender.sendMessage(new TextComponentString("Stargate Was Reset"));
     }
 
-    public void dial(ICommandSender sender, String address) {
+    public void dial(ICommandSender sender, String address) throws CommandException {
         SGBaseTE gate= getStargate(sender); if (gate==null) {return;}
-        sender.sendMessage(new TextComponentTranslation("sgcraft.gui.pdd.label.dialing"));
+
         String destination = SGAddressing.normalizeAddress(address);
         try {
             SGAddressing.validateAddress(destination);
         } catch (SGAddressing.AddressingError e) {
             sender.sendMessage(new TextComponentString("Address Invalid"));
         }
-        gate.connect(destination, null, false, false);
+
+
+        try {
+            gate.connect(destination, getCommandSenderAsPlayer(sender), false, false);
+        } catch (PlayerNotFoundException ex) {
+            gate.connect(destination, null, false, false);
+        }
+
+        sender.sendMessage(new TextComponentTranslation("sgcraft.gui.pdd.label.dialing"));
 
     }
     public void adminOptions(ICommandSender sender) {

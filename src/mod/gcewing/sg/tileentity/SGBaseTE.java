@@ -19,10 +19,7 @@ import gcewing.sg.features.zpm.console.ZpmConsoleTE;
 import gcewing.sg.generator.GeneratorAddressRegistry;
 import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
-import gcewing.sg.util.GeneralAddressRegistry;
-import gcewing.sg.util.SGAddressing;
-import gcewing.sg.util.SGLocation;
-import gcewing.sg.util.SGState;
+import gcewing.sg.util.*;
 import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.client.renderer.SGBaseTERenderer;
 import gcewing.sg.entity.EntityStargateIris;
@@ -34,13 +31,10 @@ import gcewing.sg.features.oc.OCInterfaceTE;
 import gcewing.sg.features.oc.OCWirelessEndpoint;
 import gcewing.sg.interfaces.IComputerInterface;
 import gcewing.sg.interfaces.ISGEnergySource;
-import gcewing.sg.util.IrisState;
 import gcewing.sg.interfaces.LoopingSoundSource;
-import gcewing.sg.util.FakeTeleporter;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockSlab;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
@@ -74,9 +68,9 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.valkyrienskies.mod.common.util.ValkyrienUtils;
 import valkyrienwarfare.api.IPhysicsEntityManager;
-import valkyrienwarfare.api.TransformType;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -425,7 +419,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     @Override
-    protected void setWorldCreate(World world) {
+    protected void setWorldCreate(@NonNull World world) {
         this.world = world;
     }
 
@@ -3108,5 +3102,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public double getBaseMaxEnergyBuffer() {
         return this.maxEnergyBuffer;
+    }
+    public ChunkPos getChunkPos() {
+        return new ChunkPos(getPos(), getWorld().provider.getDimension());
     }
 }

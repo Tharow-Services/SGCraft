@@ -73,6 +73,11 @@ public class SGAddressMap extends WorldSavedData {
         markDirty();
     }
 
+
+    public static void clearAddressTable() {
+        get().addressMap.clear();
+    }
+
     public static void RemoveAddress(ChunkPos addr) {get().removeAddress(addr);}
 
     protected void removeAddress(ChunkPos addr) {

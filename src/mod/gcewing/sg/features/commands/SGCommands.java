@@ -1,5 +1,6 @@
 package gcewing.sg.features.commands;
 
+import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.*;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
@@ -9,8 +10,8 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -24,18 +25,21 @@ public final class SGCommands extends CommandBase {
         this.Stargate=new StargateCommands();
     }
     @Override
+    @NonNull
     public String getName() {
         return "SG";
     }
 
     @Override
-    public String getUsage(ICommandSender sender) {
+    @NonNull
+    public String getUsage(@NonNull ICommandSender sender) {
         return "Sub Commands" + String.join(", ", subcommands);
     }
 
     private static final List<String> subcommands = new ArrayList<>();
 
     static {
+        subcommands.add("clear");
         subcommands.add("gate");
         subcommands.add("link");
         subcommands.add("unlink");
@@ -57,56 +61,64 @@ public final class SGCommands extends CommandBase {
         }
         return super.getTabCompletions(server, sender, args, targetPos);
     }
-    private static void sendMessage(ICommandSender sender, String key, Object ... args) {sender.sendMessage(new TextComponentTranslation(key, args));}
-    private static void sendMessage(ICommandSender sender, String key) {sender.sendMessage(new TextComponentTranslation(key));}
+    public static void sendMessage(ICommandSender sender, String key, Object ... args) {sender.sendMessage(new TextComponentTranslation(key, args));}
+    public static void sendMessage(ICommandSender sender, String key) {sender.sendMessage(new TextComponentTranslation(key));}
     private boolean HelpArgs(ICommandSender sender, String[] args, String message) {
         if (args.length<=1) {sendMessage(sender, message); return false;}
         if (args[1].equalsIgnoreCase("?")) {sendMessage(sender, message); return false;}
         if (args[1].equalsIgnoreCase("help")) {sendMessage(sender, message); return false;}
         return true;
     }
-    private int getDimFromSender(ICommandSender s) {
-        return s.getEntityWorld().provider.getDimension();
-    }
 
     @Override
-    public void execute(MinecraftServer server, ICommandSender s, String[] args) throws CommandException {
+    public void execute(@NonNull MinecraftServer server, @NonNull ICommandSender s, String @NonNull [] args) throws CommandException {
+        final int dim = s.getEntityWorld().provider.getDimension();
+        final SGBaseTE gate = StargateCommands.getStargate(s);
+        final ChunkPos chunkPos = gate==null?new ChunkPos(s.getPosition(), dim):gate.getChunkPos();
+        if (args.length==0) {
+            sendMessage(s, getUsage(s));
+        }
         switch (args[0].toLowerCase()) {
+            case "clear": {
+                SGAddressMap.clearAddressTable();
+                sendMessage(s, "sgcraft.command:Clear");
+                break;
+            }
             case "link": {
-                if (args.length == 3) {
-                    try {
-                        ChunkPos AddressOne = SGAddressing.locationForAddress(args[1], getDimFromSender(s));
-                        ChunkPos AddressTwo = SGAddressing.locationForAddress(args[2], getDimFromSender(s));
-                        SGAddressMap.AddAddress(AddressOne, AddressTwo);
-                        sendMessage(s, "sgcraft.command.link:Complete"); break;
-                    } catch (SGAddressing.AddressingError e) {
-                        sendMessage(s, "message.sgcraft:AddressingError",e);
-                        throw new CommandException("message.sgcraft:AddressingError",e);
+                try {
+                    switch (args.length-1) {
+                        case 1: SGAddressMap.AddAddress(chunkPos, SGAddressing.locationForAddress(args[1], dim)); break;
+                        case 2: {
+                            ChunkPos AddressOne = SGAddressing.locationForAddress(args[1], dim);
+                            ChunkPos AddressTwo = SGAddressing.locationForAddress(args[2], dim);
+                            SGAddressMap.AddAddress(AddressOne, AddressTwo);break;
+                        }
+                        case 3: {
+                            ChunkPos AddressOne = new ChunkPos(parseInt(args[1]), parseInt(args[2]), parseInt(args[3]));
+                            SGAddressMap.AddAddress(AddressOne, chunkPos); break;
+                        }
+                        case 6: {
+                            ChunkPos AddressOne = new ChunkPos(parseInt(args[1]), parseInt(args[2]), parseInt(args[3]));
+                            ChunkPos AddressTwo = new ChunkPos(parseInt(args[4]), parseInt(args[5]), parseInt(args[6]));
+                            SGAddressMap.AddAddress(AddressOne, AddressTwo); break;
+                        }
+                        default:
+                            throw new CommandException("message.sgcraft:AddressingError", "No Address Given");
                     }
+                    sendMessage(s, "sgcraft.command.link:Complete");break;
+                } catch (NumberInvalidException | SGAddressing.AddressingError e) {
+                    sendMessage(s, "message.sgcraft:AddressingError",e.getMessage());
+                    throw new CommandException("message.sgcraft:AddressingError", String.valueOf(e));
                 }
-                if (args.length==7) {
-                    try {
-                        ChunkPos AddressOne = new ChunkPos(parseInt(args[1]), parseInt(args[2]), parseInt(args[3]));
-                        ChunkPos AddressTwo = new ChunkPos(parseInt(args[4]), parseInt(args[5]), parseInt(args[6]));
-                        SGAddressMap.AddAddress(AddressOne, AddressTwo);
-                        sendMessage(s, "sgcraft.command.link:Complete");
-                        break;
-
-                    } catch (NumberInvalidException e) {
-                        sendMessage(s, "sgcraft.command.link:Error", e);
-                        throw new CommandException("sgcraft.command.link:Error", e);
-                    }
-                }
-                sendMessage(s, "sgcraft.command.link:Usage");break;
             }
             case "unlink": {
                 if (args.length==2) {
                     try {
-                        SGAddressMap.RemoveAddress(SGAddressing.locationForAddress(args[1], getDimFromSender(s)));
+                        SGAddressMap.RemoveAddress(SGAddressing.locationForAddress(args[1], dim));
                         sendMessage(s, "sgcraft.command.unlink:Complete"); break;
                     } catch (SGAddressing.AddressingError e) {
                         sendMessage(s, "message.sgcraft:AddressingError",e);
-                        throw new CommandException("message.sgcraft:AddressingError",e);
+                        throw new CommandException("message.sgcraft:AddressingError",e.getMessage());
                     }
                 }
                 if (args.length==4) {
@@ -121,7 +133,7 @@ public final class SGCommands extends CommandBase {
                 if (args.length==2) {
                     try {
                         SGAddressing.validateAddress(args[1]);
-                        ChunkPos pos = SGAddressMap.getAddress(SGAddressing.locationForAddress(args[1], getDimFromSender(s)));
+                        ChunkPos pos = SGAddressMap.getAddress(SGAddressing.locationForAddress(args[1], dim));
                         sendMessage(s, "sgcraft.command.check:Addresses", args[1], SGAddressing.addressForLocation(pos.toLocation()));
                         break;
                     } catch (SGAddressing.AddressingError e) {
@@ -149,7 +161,7 @@ public final class SGCommands extends CommandBase {
                 }
                 if (args.length==3) {
                     try {
-                        sendMessage(s,"sgcraft.command.address:Complete", SGAddressing.addressForLocation(new ChunkPos(getDimFromSender(s), parseInt(args[1]), parseInt(args[2])).toLocation()));
+                        sendMessage(s,"sgcraft.command.address:Complete", SGAddressing.addressForLocation(new ChunkPos(dim, parseInt(args[1]), parseInt(args[2])).toLocation()));
                         break;
                     } catch (SGAddressing.AddressingError e) {
                         sendMessage(s, "message.sgcraft:AddressingError",e);
@@ -162,7 +174,7 @@ public final class SGCommands extends CommandBase {
             case "location": {
                 if (args.length==2 || args.length==3) {
                     try {
-                        ChunkPos pos = SGAddressing.locationForAddress(args[1], args.length==2 ? getDimFromSender(s) : parseInt(args[2]));
+                        ChunkPos pos = SGAddressing.locationForAddress(args[1], args.length==2 ? dim : parseInt(args[2]));
                         sendMessage(s, "sgcraft.command.location:Complete", pos.d, pos.x, pos.z);
                         break;
                     } catch (SGAddressing.AddressingError e) {
@@ -174,16 +186,15 @@ public final class SGCommands extends CommandBase {
             }
             case "ca":
             case "currentaddress": try {
-                    sendMessage(s, "sgcraft.command:CurrentLocation",SGAddressing.addressForLocation(new SGLocation(getDimFromSender(s),s.getPosition())));
+                    sendMessage(s, "sgcraft.command:CurrentLocation",SGAddressing.addressForLocation(new SGLocation(dim,s.getPosition())));
                     break;
                 } catch (SGAddressing.AddressingError e) {
-                    sendMessage(s, "message.sgcraft:AddressingError",e);
                     throw new CommandException("message.sgcraft:AddressingError",e);
             }
             case "locate": {
                 if (args.length==2 || args.length==3) {
                     try {
-                        TileEntity tile = SGAddressing.findAddressedStargate(args[1], server.getWorld(args.length==2 ? getDimFromSender(s) : parseInt(args[2])), false);
+                        TileEntity tile = SGAddressing.findAddressedStargate(args[1], server.getWorld(args.length==2 ? dim : parseInt(args[2])), false);
                         if (tile!=null) {
                             SGLocation loc = new SGLocation(tile);
                             sendMessage(s, "sgcraft.command.locate:Complete", loc.dimension, loc.pos.getX(), loc.pos.getY(), loc.pos.getZ());
@@ -201,7 +212,7 @@ public final class SGCommands extends CommandBase {
             case "teleport": {
                 if (args.length==2 || args.length==3) {
                     try {
-                        TileEntity tile = SGAddressing.findAddressedStargate(args[1], server.getWorld(args.length==3 ? getDimFromSender(s) : parseInt(args[2])), false);
+                        TileEntity tile = SGAddressing.findAddressedStargate(args[1], server.getWorld(args.length==3 ? dim : parseInt(args[1])), false);
                         if (tile!=null) {
                             SGLocation loc = new SGLocation(tile);
                             EntityPlayerMP player = getCommandSenderAsPlayer(s);

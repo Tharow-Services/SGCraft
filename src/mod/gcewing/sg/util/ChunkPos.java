@@ -9,6 +9,10 @@ public class ChunkPos extends net.minecraft.util.math.ChunkPos {
         super(pos.x, pos.z);
         this.d=dim;
     }
+    public ChunkPos(BlockPos pos, int dim) {
+        super(pos);
+        d = dim;
+    }
 
     public ChunkPos(int d, int x, int z) {
         super(x,z);

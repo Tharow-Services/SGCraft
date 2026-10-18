@@ -62,6 +62,8 @@ message.sgcraft:AddressingError=Addressing Error %s
 
 sgcraft.command:Usage=Invalid Sub Command Check Usage
 
+sgcraft.command:Clear=Addressing Database cleared
+
 sgcraft.command.link:Args=SG Link  <Dim ChunkX ChunkZ | Address> <Dim ChunkX ChunkZ | Address>
 sgcraft.command.link:Error=Linking Failed %s
 sgcraft.command.link:Complete=Successfully Linked Addresses
@@ -90,6 +92,16 @@ sgcraft.command.teleport:Error=Unable To Teleport Player To Stargate For Unknown
 
 
 sgcraft.command.gate:NoGateFound=Unable to find gate near you or where you were looking
+
+sgcraft.command.gate:Info=Current Stargate Info
+sgcraft.command.gate:InfoPos=Chunk Pos: Dim: %s X: %s Z:%s
+sgcraft.command.gate:InfoHomeAddress=Home: %s
+sgcraft.command.gate:InfoState="State: %s
+sgcraft.command.gate:InfoIrisState="Iris State: %s"
+sgcraft.command.gate:InfoIris="No Iris Upgrade"
+sgcraft.command.gate:InfoChevronUpgrade="Num Chevrons: %s"
+
+
 
 tile.sgcraft:zpm_interface_cart.name=ZPM Interface Cart
 tile.sgcraft:zpm_console.name=ZPM Console
