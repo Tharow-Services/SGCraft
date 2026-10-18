@@ -46,6 +46,7 @@ import gcewing.sg.features.oc.OCInterfaceTE;
 import gcewing.sg.features.oc.OCWirelessEndpoint;
 import gcewing.sg.interfaces.IComputerInterface;
 import gcewing.sg.interfaces.ISGEnergySource;
+import gcewing.sg.interfaces.IGatePowerSource;
 import gcewing.sg.util.IrisState;
 import gcewing.sg.util.OriGate;
 import gcewing.sg.interfaces.LoopingSoundSource;
@@ -2521,6 +2522,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                     result.add((ISGEnergySource) nte);
                     if (debugEnergyUse) {
                         System.out.println("Found SGPowerTE at: " + nte.getPos());
+                    }
+                }
+
+                // Anything else made to power gates, such as a Naquadah generator
+                if (nte instanceof IGatePowerSource) {
+                    result.add((ISGEnergySource) nte);
+                    if (debugEnergyUse) {
+                        System.out.println("Found a gate power source at: " + nte.getPos());
                     }
                 }
 

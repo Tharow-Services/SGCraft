@@ -1,0 +1,25 @@
+{
+    "forge_marker": 1,
+    "variants": {
+        "running": {
+            "true": {"model": "sgcraft:naquadah_generator_mk1_on.obj"},
+            "false": {"model": "sgcraft:naquadah_generator_mk1_off.obj"}
+        },
+        "facing": {
+            "north": {},
+            "east": {"y": 90},
+            "south": {"y": 180},
+            "west": {"y": 270}
+        },
+        "inventory": [{
+            "model": "sgcraft:naquadah_generator_mk1_on.obj",
+            "transform": {
+                "gui": {"translation": [0, 0.1, 0], "rotation": [{"x": 30}, {"y": 225}], "scale": 0.85},
+                "ground": {"translation": [0, 0.1, 0], "scale": 0.5},
+                "fixed": {"translation": [0, 0.1, 0], "scale": 0.85},
+                "thirdperson_righthand": {"translation": [0, 0.15, 0], "rotation": [{"x": 75}, {"y": 45}], "scale": 0.45},
+                "firstperson_righthand": {"translation": [0, 0.1, 0], "rotation": [{"y": 45}], "scale": 0.45}
+            }
+        }]
+    }
+}
