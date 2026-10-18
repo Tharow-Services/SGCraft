@@ -12,6 +12,7 @@ import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
 import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.GateType;
+import gcewing.sg.util.PlayerNames;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -101,7 +102,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     @ServerMessageHandler("ConfiguratorInput")
     public void handleConfiguratorInputFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE te = SGBaseTE.at(player.world, pos);
+        SGBaseTE te = loadedGateAt(player, pos);
 
         int secondsToStayOpen = data.readInt();
         double ringRotationSpeed = data.readDouble();
@@ -134,6 +135,16 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean invulnerable = data.readBoolean();
 
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
+
+        // Only what the Configurator's screen allows (see ConfiguratorScreen): a client can send any number, and a ring
+        // speed of 0 left both gates dialling forever, a negative distance factor made each dial add energy
+        secondsToStayOpen = clamp(secondsToStayOpen, 0, 50000);
+        ringRotationSpeed = clamp(ringRotationSpeed, 1, 10);
+        maxEnergyBuffer = clamp(maxEnergyBuffer, 0, 5000000);
+        energyPerFuelItem = clamp(energyPerFuelItem, 0, 250000);
+        gateOpeningsPerFuelItem = clamp(gateOpeningsPerFuelItem, 1, 50000);
+        distanceFromMultiplier = clamp(distanceFromMultiplier, 0, 1000);
+        interDimensionalMultiplier = clamp(interDimensionalMultiplier, 0, 1000);
 
         if (canConfigure(player, te)) {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.secondsToStayOpen") || isPermissionsAdmin) {
@@ -187,8 +198,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     // permissions system's sgcraft.admin).
     private static boolean canConfigure(EntityPlayer player, SGBaseTE te) {
         if (te == null) {
-            System.err.println("SGCraft - Configurator Exception - SGBaseTE disappeared");
-            return false;
+            return false; // gone, or not loaded
         }
         boolean holdingConfigurator = player.getHeldItemMainhand().getItem() == SGCraft.configurator
             || player.getHeldItemOffhand().getItem() == SGCraft.configurator;
@@ -199,6 +209,14 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         }
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin");
         return SGCraft.hasPermission(player, "sgcraft.gui.configurator") && te.allowAdminAccess(player) || isPermissionsAdmin;
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Double.isNaN(value) ? min : Math.max(min, Math.min(max, value));
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     // After an access setting changes: save it, tell everyone who can see the gate what they may now do there, and
@@ -251,21 +269,17 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         }
     }
 
-    // The UUID of the player with this name: one online now, or else as the server's profile cache (or Mojang) knows it.
-    // Null for a name nobody has; the entry is then tied to whoever first uses the gate under that name.
+    // The UUID of the player with this name: one online now, or who has been on the server (see PlayerNames; Mojang
+    // isn't asked, which held up the server). Null for a name nobody here has had; the entry is then tied to whoever
+    // first uses the gate under that name.
     @Nullable
     private static UUID uuidForName(EntityPlayer editor, String name) {
-        MinecraftServer server = editor.getServer();
-        if (server == null) {
-            return null;
-        }
-        EntityPlayerMP online = server.getPlayerList().getPlayerByUsername(name);
-        if (online != null) {
-            return online.getUniqueID();
-        }
-        GameProfile profile = server.getPlayerProfileCache().getGameProfileForUsername(name);
+        GameProfile profile = new PlayerNames(editor.getServer()).find(name);
         return profile != null ? profile.getId() : null;
     }
+
+    // How many entries each of a gate's access lists may have
+    private static final int maxAccessEntries = 256;
 
     public static void sendGateAddressAccessInputToServer(SGBaseTE te, String address, boolean defaultAllowIncoming, boolean defaultAllowOutgoing, boolean allowIncoming, boolean allowOutgoing) {
         ChannelOutput data = configuratorChannel.openServer("GateAddressAccessInput");
@@ -281,7 +295,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     @ServerMessageHandler("GateAddressAccessInput")
     public void handleGateAddressAccessInputFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE te = SGBaseTE.at(player.world, pos);
+        SGBaseTE te = loadedGateAt(player, pos);
 
         String address = data.readUTF();
         boolean defaultAllowIncoming = data.readBoolean();
@@ -320,7 +334,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     @ServerMessageHandler("PlayerAccessInput")
     public void handlePlayerAccessInputFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE te = SGBaseTE.at(player.world, pos);
+        SGBaseTE te = loadedGateAt(player, pos);
 
         String playerName = data.readUTF();
         boolean defaultAllowAccess = data.readBoolean();
@@ -357,7 +371,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     @ServerMessageHandler("GAAInputEntry")
     public void handleGAAEntryUpdateFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
+        SGBaseTE localGate = loadedGateAt(player, pos);
         String oldAddress = data.readUTF();
         String newAddress = data.readUTF();
         int function = data.readInt();
@@ -382,6 +396,9 @@ public class ConfiguratorNetworkHandler extends SGChannel {
                 return;
             }
             if (function == 1 && oldAddress.isEmpty()) {
+                if (list.size() >= maxAccessEntries) {
+                    return;
+                }
                 list.add(new GateAccessData(address, true, true));
             } else if (function == 2 && existing != null) {
                 existing.setAddress(address);
@@ -405,7 +422,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
     @ServerMessageHandler("PAInputEntry")
     public void handlePAEntryUpdateFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
+        SGBaseTE localGate = loadedGateAt(player, pos);
         String oldName = data.readUTF();
         String newName = data.readUTF();
         int function = data.readInt();
@@ -432,6 +449,9 @@ public class ConfiguratorNetworkHandler extends SGChannel {
                 }
             }
             if (function == 1 && oldName.isEmpty()) {
+                if (list.size() >= maxAccessEntries) {
+                    return;
+                }
                 // Adding yourself makes you an admin, so you can't lock yourself out of the gate's settings
                 list.add(new PlayerAccessData(name, uuid, true, true, player.getUniqueID().equals(uuid)));
             } else if (function == 2 && existing != null) {

@@ -60,10 +60,13 @@ public final class AsgardObelisks {
 
     // ---- Linking ----
 
-    // The first obelisk a player sneak-clicks is remembered; sneak-clicking a second links the two, each to the other
+    // The first obelisk a player sneak-clicks is remembered; sneak-clicking a second links the two, each to the other.
+    // Linking sends everyone who uses either obelisk somewhere new, so it's for those who may configure both, their
+    // owners and admins: with only use asked of them, anyone could link a public obelisk to one of their own (in a
+    // trap, say) and everyone using it would end up there.
     public static void link(EntityPlayer player, AsgardObeliskTE obelisk) {
-        if (!obelisk.mayUse(player)) {
-            sendErrorMsg(player, "obeliskNoAccess");
+        if (!obelisk.mayConfigure(player)) {
+            sendErrorMsg(player, "obeliskNoConfigure");
             return;
         }
         LinkStart start = linking.remove(player.getUniqueID());
@@ -76,6 +79,8 @@ public final class AsgardObelisks {
         if (first != null && first.getBlockType() != obelisk.getBlockType()) {
             linking.put(player.getUniqueID(), start); // still linking from the first
             sendErrorMsg(player, "obeliskWrongType");
+        } else if (first != null && !first.mayConfigure(player)) {
+            sendErrorMsg(player, "obeliskNoConfigure"); // no longer theirs to link
         } else if (first != null) {
             unlinkPartner(first);
             unlinkPartner(obelisk);
@@ -98,9 +103,12 @@ public final class AsgardObelisks {
         obelisk.unlink();
     }
 
-    // The obelisk this one is linked to, loading its world if need be, or null if it isn't there any more
+    // The obelisk this one is linked to, loading its world if need be, or null if it isn't there any more, or is no
+    // longer linked back (another obelisk put where the old one was, say)
     private static AsgardObeliskTE partnerOf(AsgardObeliskTE obelisk) {
-        return obelisk.linked ? obeliskAt(obelisk.linkDimension, obelisk.linkPos) : null;
+        AsgardObeliskTE partner = obelisk.linked ? obeliskAt(obelisk.linkDimension, obelisk.linkPos) : null;
+        return partner != null && partner.linked && partner.linkPos.equals(obelisk.getPos())
+            && partner.linkDimension == obelisk.getWorld().provider.getDimension() ? partner : null;
     }
 
     // The obelisk at pos in a world, loading the world if need be (and its chunk, which reading the block does on a
@@ -254,6 +262,11 @@ public final class AsgardObelisks {
                     entity.motionX = entity.motionY = entity.motionZ = 0;
                 }
             });
+            if (mp.world != destination) {
+                // The move was refused (by a plugin, say): they stay where they were, not at the far obelisk's place in
+                // the world they're still in
+                return;
+            }
             mp.connection.setPlayerLocation(x, y, z, yaw, player.rotationPitch);
         }
         player.fallDistance = 0;

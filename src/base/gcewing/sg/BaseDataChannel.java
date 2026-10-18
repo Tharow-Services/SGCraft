@@ -96,11 +96,16 @@ public class BaseDataChannel {
         String message = data.readUTF();
         for (Object h : handlers)
             if (serverDispatch(h, message, player, data)) return;
-        System.out.printf("No ServerMessageHandler for '%s' found in registered handlers of %s\n", message, this);
+        System.out.printf("No ServerMessageHandler for '%s' found in registered handlers of %s\n", shortened(message), this);
     }
 
     public static void doServerDispatch(Object handler, String message, EntityPlayer player, ChannelInput data) {
-        if (!serverDispatch(handler, message, player, data)) System.out.printf("No ServerMessageHandler for '%s' found in %s\n", message, handler.getClass().getName());
+        if (!serverDispatch(handler, message, player, data)) System.out.printf("No ServerMessageHandler for '%s' found in %s\n", shortened(message), handler.getClass().getName());
+    }
+
+    // A client's message name as logged: any client can send one tens of thousands of characters long
+    static String shortened(String message) {
+        return message.length() > 64 ? message.substring(0, 64) + "..." : message;
     }
 
     public static boolean serverDispatch(Object handler, String message, EntityPlayer player, ChannelInput data) {

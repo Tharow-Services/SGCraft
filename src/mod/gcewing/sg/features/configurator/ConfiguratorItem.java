@@ -22,13 +22,20 @@ import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import javax.annotation.Nullable;
 
 public class ConfiguratorItem extends Item {
 
-    private SGBaseTE toLinkTE = null;
+    // The gate each player last sneak-clicked, for the next DHD they sneak-click to be linked to: by player (an item is
+    // one object for every Configurator on the server, so a field on it was one gate for everyone), and by place, the gate
+    // itself perhaps unloaded and loaded again in between
+    private static final Map<UUID, BlockPos> toLink = new HashMap<>();
+    private static final Map<UUID, Integer> toLinkDimension = new HashMap<>();
 
   public ConfiguratorItem() {}
 
@@ -42,15 +49,28 @@ public class ConfiguratorItem extends Item {
     public EnumActionResult onItemUse(EntityPlayer player, World world, BlockPos pos, EnumHand hand, EnumFacing side, float hitX, float hitY, float hitZ) {
       if (!world.isRemote && player.isSneaking()) {
             TileEntity te = world.getTileEntity(pos);
+            UUID id = player.getUniqueID();
             if (te instanceof DHDTE) {
-                if (toLinkTE != null) {
-                    ((DHDTE) te).linkToStargate(toLinkTE);
+                BlockPos gatePos = toLink.remove(id);
+                Integer dimension = toLinkDimension.remove(id);
+                // A gate in this DHD's world, still there, that the player is still an admin of
+                SGBaseTE gate = gatePos != null && dimension != null && dimension == world.provider.getDimension()
+                    && world.isBlockLoaded(gatePos) ? SGBaseTE.at(world, gatePos) : null;
+                if (gate != null && gate.allowAdminAccess(player)) {
+                    ((DHDTE) te).linkToStargate(gate);
                     sendBasicMsg(player, "configuratorLink");
-                    toLinkTE = null;
+                } else if (gatePos != null) {
+                    sendErrorMsg(player, "cantFindStargate");
                 }
             }
             if (te instanceof SGBaseTE) {
-                toLinkTE = (SGBaseTE)te;
+                // Its admins only: a DHD linked to it works it
+                if (!((SGBaseTE) te).allowAdminAccess(player)) {
+                    sendErrorMsg(player, "insufficientPlayerAdminAccessPermission");
+                    return EnumActionResult.PASS;
+                }
+                toLink.put(id, pos.toImmutable());
+                toLinkDimension.put(id, world.provider.getDimension());
                 sendBasicMsg(player, "gateLocationSaved");
             }
         }

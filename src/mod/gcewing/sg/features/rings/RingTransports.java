@@ -77,9 +77,12 @@ public final class RingTransports {
     private static final Map<UUID, BlockPos> linking = new HashMap<>();
     private static final Map<UUID, Integer> linkingWorld = new HashMap<>();
 
+    // Linking sends everyone who uses either platform somewhere new, so it's for those who may configure both, their
+    // owners and admins: with only use asked of them, anyone could link a public platform to one of their own (in a
+    // trap, say), then start their own end and pull everyone standing in the public rings into it
     public static void link(EntityPlayer player, RingPlatformTE platform) {
-        if (!platform.mayUse(player)) {
-            sendErrorMsg(player, "ringNoAccess");
+        if (!platform.mayConfigure(player)) {
+            sendErrorMsg(player, "ringNoConfigure");
             return;
         }
         UUID id = player.getUniqueID();
@@ -98,6 +101,15 @@ public final class RingTransports {
             linking.put(id, platform.getPos().toImmutable());
             linkingWorld.put(id, dimension);
             sendBasicMsg(player, "ringLinkStart");
+            return;
+        }
+        if (!first.mayConfigure(player)) {
+            sendErrorMsg(player, "ringNoConfigure"); // no longer theirs to link
+            return;
+        }
+        // Not in the middle of a run: the far end would be swapped mid-way for one whose rings never rose
+        if (first.isActive() || platform.isActive()) {
+            sendErrorMsg(player, "ringPartnerBusy");
             return;
         }
         if (maxDistance > 0 && first.getPos().distanceSq(platform.getPos()) > (double) maxDistance * maxDistance) {

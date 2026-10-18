@@ -51,25 +51,16 @@ public class ZpmConsole extends BlockContainer {
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
         if (!world.isRemote) {
             ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
-        }
-        ZpmConsoleTE zpmConsole = ZpmConsoleTE.at(world, pos);
-        ItemStack zpm = zpmConsole.getStackInSlot(0);
-        NBTTagCompound tag = zpm.getTagCompound();
-
-        if (zpmConsole != null) {
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                zpm.setTagCompound(tag);
+            // Taken out of its slot, with its energy, before it's dropped: left in, a screen still open on the console
+            // could take it a second time
+            ZpmConsoleTE zpmConsole = ZpmConsoleTE.at(world, pos);
+            if (zpmConsole != null) {
+                ItemStack zpm = zpmConsole.removeStackFromSlot(0);
+                if (!zpm.isEmpty()) {
+                    Block.spawnAsEntity(world, pos, zpm);
+                }
             }
-
-            if (tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, zpmConsole.getEnergyStored());
-                tag.setBoolean(ZPMItem.LOADED, false);
-                zpmConsole.drawEnergyDouble(zpmConsole.getEnergyStored());
-            }
-
         }
-        Block.spawnAsEntity(world, pos, zpm);
         super.breakBlock(world, pos, state);
     }
 
@@ -142,7 +133,11 @@ public class ZpmConsole extends BlockContainer {
     public boolean onBlockActivated(World world, BlockPos pos, IBlockState state, EntityPlayer player, EnumHand hand, EnumFacing side, float hx, float hy, float hz)  {
         world.notifyBlockUpdate(pos, state, state, 3);
         world.scheduleBlockUpdate(pos, state.getBlock(),0,0);
-        ZpmConsoleTE.at(world, pos).markDirty();
+        ZpmConsoleTE console = ZpmConsoleTE.at(world, pos);
+        if (console == null) {
+            return false;
+        }
+        console.markDirty();
 
         if (!world.isRemote) {
             SGCraft.mod.openGui(player, ZPMConsole, world, pos);

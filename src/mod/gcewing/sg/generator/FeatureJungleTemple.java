@@ -35,12 +35,12 @@ public class FeatureJungleTemple extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.jungleAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.jungleChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.jungleZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.jungleAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.jungleChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.jungleZpmChestChance;
         generateTokra = FeatureGeneration.jungleSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureJungleTemple with GenerateStructure: " + generateStructure);

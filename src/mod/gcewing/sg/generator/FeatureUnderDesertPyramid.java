@@ -34,12 +34,12 @@ public class FeatureUnderDesertPyramid extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.pyramidAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.pyramidChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.pyramidZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.pyramidAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.pyramidChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.pyramidZpmChestChance;
         generateTokra = FeatureGeneration.pyramidSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureUnderDesertPyramid with GenerateStructure: " + generateStructure);

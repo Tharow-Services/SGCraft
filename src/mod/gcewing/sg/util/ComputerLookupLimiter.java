@@ -55,7 +55,7 @@ public final class ComputerLookupLimiter {
         }
     }
 
-    // A gate's recent lookups, lockout, and last energyToDial answer
+    // A gate's recent lookups, lockout, last energyToDial answer, and the last address found to have no gate
     private static final class Record {
         final Deque<Long> lookups = new ArrayDeque<>();
         long lockedUntil;
@@ -64,6 +64,8 @@ public final class ComputerLookupLimiter {
         String cachedAddress;
         double cachedEnergy;
         long cachedAt;
+        String missingAddress;
+        long missingAt;
     }
 
     private static final Map<GateKey, Record> records = new HashMap<>();
@@ -87,6 +89,20 @@ public final class ComputerLookupLimiter {
         r.cachedAt = System.currentTimeMillis();
     }
 
+    // Whether this gate recently found no gate at this address: asked again (by energyToDial or dial), the answer is the
+    // same, without looking again. Looking up an address with no gate isn't remembered otherwise, so a script asking
+    // about one over and over looked every time.
+    public static synchronized boolean knownMissing(SGBaseTE gate, String address) {
+        Record r = records.get(new GateKey(gate));
+        return r != null && address.equals(r.missingAddress) && System.currentTimeMillis() - r.missingAt <= cacheSeconds * 1000L;
+    }
+
+    public static synchronized void cacheMissing(SGBaseTE gate, String address) {
+        Record r = records.computeIfAbsent(new GateKey(gate), k -> new Record());
+        r.missingAddress = address;
+        r.missingAt = System.currentTimeMillis();
+    }
+
     // Counts a lookup of address from this gate, or refuses it (IllegalArgumentException, which computers see as an
     // error) if the gate is locked out, or looked up a different address too recently
     public static synchronized void checkLookup(SGBaseTE gate, String address) {
@@ -97,16 +113,18 @@ public final class ComputerLookupLimiter {
         if (now < r.lockedUntil) {
             throw new IllegalArgumentException("addressLookupLocked");
         }
-        // Dialling what was just looked up (energyToDial, then dial) is one use, not a second lookup
+        // Dialling what was just looked up (energyToDial, then dial) is one use, not a second lookup: for a while after
+        // that lookup was counted, not for ever. (The time used to move on with each repeat, so a script asking about one
+        // address over and over was never counted at all.)
         boolean sameAsLast = address.equals(r.lastAddress) && now - r.lastAt <= cacheSeconds * 1000L;
-        if (!sameAsLast && now - r.lastAt < cooldownMillis) {
+        if (sameAsLast) {
+            return;
+        }
+        if (now - r.lastAt < cooldownMillis) {
             throw new IllegalArgumentException("addressLookupCooldown");
         }
         r.lastAddress = address;
         r.lastAt = now;
-        if (sameAsLast) {
-            return;
-        }
         r.lookups.addLast(now);
         while (!r.lookups.isEmpty() && now - r.lookups.peekFirst() > windowSeconds * 1000L) {
             r.lookups.removeFirst();
@@ -126,7 +144,7 @@ public final class ComputerLookupLimiter {
         long idle = Math.max(windowSeconds, cacheSeconds) * 1000L + cooldownMillis;
         for (Iterator<Record> it = records.values().iterator(); it.hasNext(); ) {
             Record r = it.next();
-            if (now >= r.lockedUntil && now - r.lastAt > idle && now - r.cachedAt > idle) {
+            if (now >= r.lockedUntil && now - r.lastAt > idle && now - r.cachedAt > idle && now - r.missingAt > idle) {
                 it.remove();
             }
         }

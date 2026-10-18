@@ -17,7 +17,10 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.IProjectile;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.projectile.EntityFireball;
+import net.minecraft.inventory.ISidedInventory;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ITickable;
 import net.minecraft.util.SoundCategory;
@@ -33,11 +36,13 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 // The City Shield Generator: raises an energy shield in the shape of an ellipsoid round itself, as over Atlantis.
 // Nothing gets in while it's up (things already inside can leave), and it runs on ZPMs, taking more the bigger it is.
-public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectInventoryProvider {
+public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectInventoryProvider, ISidedInventory {
 
     // ---- Settings (sgcraft.cfg, "city-shield") ----
 
@@ -145,6 +150,7 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
         }
         updateChunkLoading();
         if (!active) {
+            lastSeen.clear(); // whoever is inside when it rises may stay there
             return;
         }
         if (!useEnergy(energyPerTick())) {
@@ -196,29 +202,43 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
         super.invalidate();
     }
 
+    // Where each entity in and around the shield was at its last tick (its feet), by entity id: where one crossing into it
+    // came from. An entity's own last-tick position is no use for that: a player's moves, and those of whatever they're
+    // steering, arrive before the tick, and the world sets their last-tick position to where they then are before the
+    // shield gets to look, so players walked (or rode) straight through.
+    private final Map<Integer, Vec3d> lastSeen = new HashMap<>();
+
     // Anything that crossed into the shield since last tick is sent back where it came from; projectiles are destroyed
     private void repelEntities() {
-        for (Entity entity : world.getEntitiesWithinAABB(Entity.class, bounds().grow(2))) {
+        Map<Integer, Vec3d> seen = new HashMap<>();
+        for (Entity entity : world.getEntitiesWithinAABB(Entity.class, bounds().grow(4))) {
             if (entity.isRiding() || entity.isDead) {
                 continue; // a rider goes with its mount
             }
             double half = entity.height / 2;
-            Vec3d now = new Vec3d(entity.posX, entity.posY + half, entity.posZ);
-            Vec3d before = new Vec3d(entity.lastTickPosX, entity.lastTickPosY + half, entity.lastTickPosZ);
+            Vec3d feet = new Vec3d(entity.posX, entity.posY, entity.posZ);
+            // One not seen last tick (as the shield rose, or come from further off) by its own last-tick position
+            Vec3d from = lastSeen.getOrDefault(entity.getEntityId(), new Vec3d(entity.lastTickPosX, entity.lastTickPosY, entity.lastTickPosZ));
+            Vec3d now = feet.add(0, half, 0);
+            Vec3d before = from.add(0, half, 0);
+            seen.put(entity.getEntityId(), feet);
             if (!contains(now) || contains(before) || now.squareDistanceTo(before) > maxStepSq) {
                 continue;
             }
             if (entity instanceof IProjectile || entity instanceof EntityFireball) {
                 entity.setDead();
-            } else if (entity instanceof EntityPlayerMP) {
-                ((EntityPlayerMP) entity).connection.setPlayerLocation(entity.lastTickPosX, entity.lastTickPosY, entity.lastTickPosZ,
-                    entity.rotationYaw, entity.rotationPitch);
-                bounce(entity);
-            } else {
-                entity.setPositionAndUpdate(entity.lastTickPosX, entity.lastTickPosY, entity.lastTickPosZ);
-                bounce(entity);
+                continue;
             }
+            if (entity instanceof EntityPlayerMP) {
+                ((EntityPlayerMP) entity).connection.setPlayerLocation(from.x, from.y, from.z, entity.rotationYaw, entity.rotationPitch);
+            } else {
+                entity.setPositionAndUpdate(from.x, from.y, from.z);
+            }
+            bounce(entity);
+            seen.put(entity.getEntityId(), from);
         }
+        lastSeen.clear();
+        lastSeen.putAll(seen);
     }
 
     private static void bounce(Entity entity) {
@@ -281,6 +301,25 @@ public class CityShieldTE extends BaseTileEntity implements ITickable, IDirectIn
     @Override
     public MalisisInventory getInventory() {
         return inventory;
+    }
+
+    // Hoppers may put ZPMs in, but not take them out: the way out is its screen, for those allowed to work the shield. As
+    // a plain inventory, a hopper under it could empty it.
+    private static final int[] zpmSlots = {0, 1, 2};
+
+    @Override
+    public int[] getSlotsForFace(EnumFacing side) {
+        return zpmSlots;
+    }
+
+    @Override
+    public boolean canInsertItem(int index, ItemStack stack, EnumFacing direction) {
+        return isItemValidForSlot(index, stack);
+    }
+
+    @Override
+    public boolean canExtractItem(int index, ItemStack stack, EnumFacing direction) {
+        return false;
     }
 
     // Its screen, opened with its ZPM slots (see CityShieldNetworkHandler.openScreen). The server sends its power once

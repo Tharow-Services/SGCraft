@@ -12,6 +12,7 @@ import gcewing.sg.tileentity.SGBaseTE;
 import net.minecraft.entity.player.*;
 import net.minecraft.inventory.*;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.*;
 import net.minecraft.world.*;
 
@@ -63,6 +64,17 @@ public class SGBaseContainer extends BaseContainer {
     void addCamouflageSlots() {
         addSlots(te, 0, te.numCamouflageSlots, 48, 104, 1, CamouflageSlot.class);
         gateSlots = te.numCamouflageSlots;
+    }
+
+    @Override
+    protected TileEntity tileEntity() {
+        return te;
+    }
+
+    // The screen opens from anywhere on a supergate's ring, which can be far from its base
+    @Override
+    protected double maxDistance() {
+        return super.maxDistance() + 2 * te.getShape().ringOuterRadius;
     }
 
     // Shift-clicking moves a gate slot's item to the player, and the player's ZPMs to a supergate's ZPM slots, anything

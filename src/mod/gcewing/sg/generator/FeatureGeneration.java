@@ -180,9 +180,9 @@ class SGStructureMap extends Long2ObjectOpenHashMap {
                 newComp = new FeatureIgloo((StructureComponent)comp);
             } else if (comp instanceof ComponentScatteredFeaturePieces.JunglePyramid && FeatureGeneration.jungleAddon) {
                 newComp = new FeatureJungleTemple((StructureComponent)comp);
-            } else if (comp instanceof StructureNetherBridgePieces.Start) {
+            } else if (comp instanceof StructureNetherBridgePieces.Start && FeatureGeneration.netherAddon) {
                 newComp = new FeatureNetherFortress((StructureComponent)comp);
-            } else if (comp instanceof StructureOceanMonumentPieces.MonumentBuilding) {
+            } else if (comp instanceof StructureOceanMonumentPieces.MonumentBuilding && FeatureGeneration.oceanmonumentAddon) {
                 newComp = new FeatureOceanMonument((StructureComponent)comp);
             }
 

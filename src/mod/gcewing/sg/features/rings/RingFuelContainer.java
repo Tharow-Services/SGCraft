@@ -41,6 +41,11 @@ public class RingFuelContainer extends BaseContainer {
         return range;
     }
 
+    @Override
+    protected net.minecraft.tileentity.TileEntity tileEntity() {
+        return te;
+    }
+
     static class FuelSlot extends Slot {
         FuelSlot(IInventory inventory, int index, int x, int y) {
             super(inventory, index, x, y);

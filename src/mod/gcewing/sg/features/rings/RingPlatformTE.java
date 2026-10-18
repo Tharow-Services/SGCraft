@@ -345,9 +345,11 @@ public class RingPlatformTE extends BaseTileEntity implements ITickable, ISidedI
         return allowEveryone ? entry == null || entry.use : entry != null && entry.use;
     }
 
+    // One with no owner (placed before they were kept, or pasted in from a schematic) only by server admins: anyone could
+    // otherwise take it over, lock everyone else out of it, or link it elsewhere
     @Override
     public boolean mayConfigure(EntityPlayer player) {
-        if (owner == null || isOwner(player) || AsgardObeliskTE.isServerAdmin(player)) {
+        if (isOwner(player) || AsgardObeliskTE.isServerAdmin(player)) {
             return true;
         }
         ObeliskAccess entry = accessFor(player);

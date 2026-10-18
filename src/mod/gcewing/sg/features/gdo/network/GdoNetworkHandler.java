@@ -34,7 +34,7 @@ public class GdoNetworkHandler extends SGChannel {
     @ServerMessageHandler("RemoteGateRequest")
     public void handleRemoteGateRequestFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
+        SGBaseTE localGate = loadedGateAt(player, pos);
         // Only for a player at a connected gate, as when using the GDO there
         if (localGate == null || !localGate.isConnected() || !SGCraft.hasPermission(player, "sgcraft.gui.gdo")
                 || GateUtil.distanceToGate(localGate, player.getPositionEyes(1)) > 2 * Math.max(SGCraft.toolSearchRange, GateUtil.reach(player))) {
@@ -83,10 +83,15 @@ public class GdoNetworkHandler extends SGChannel {
     public void handleGdoInputFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
         int setting = data.readInt();
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
 
         if (!SGCraft.hasPermission(player, "sgcraft.gui.gdo")) {
             System.err.println("SGCraft - Hacked Client detected!");
+            return;
+        }
+        // The GDO works the gate its player is at, and the one at the far end of its wormhole; a client could otherwise
+        // open or close the iris of any gate in its world from anywhere, killing whoever came through
+        SGBaseTE localGate = loadedGateAt(player, pos);
+        if (localGate == null || !playerAtGate(player, localGate)) {
             return;
         }
 
@@ -109,7 +114,7 @@ public class GdoNetworkHandler extends SGChannel {
                         }
                     }
 
-                if (setting == 3) localGate.disconnect(player);
+                if (setting == 3 && (localGate.allowGateAccess(player) || isPermissionsAdmin)) localGate.disconnect(player);
 
                 if (setting == 4 || setting == 5 || setting == 6) {
                     if (localGate.isConnected()) {

@@ -125,7 +125,8 @@ public class ZpmLinkNetworkHandler extends SGChannel {
                 || !(gate.allowAdminAccess(player) || admin)) {
             return;
         }
-        TileEntity te = player.world.getTileEntity(devicePos);
+        // The device may be anywhere (a link reaches across the world), but its chunk isn't loaded just to look
+        TileEntity te = player.world.isBlockLoaded(devicePos) ? player.world.getTileEntity(devicePos) : null;
         if (te instanceof ILinkableZpm && ((ILinkableZpm) te).getZpmLink().isLinkedTo(gatePos)) {
             ZpmLinks.unlink(player.world, devicePos);
         } else {

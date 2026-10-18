@@ -71,9 +71,16 @@ public final class AddressData implements Comparable<AddressData> {
 
             final int compoundEntryUnid = addressCompound.getInteger(UNID);
             if (compoundEntryUnid == unid) {
-                addressCompound.setString(NAME, newName);
-                addressCompound.setString(ADDRESS, newAddress);
-                addressCompound.setInteger(INDEX, newIndex);
+                // A locked entry (one the server gives every PDD) keeps its name and address and can't be deleted, as its
+                // screen shows; only its place in the list and closing on connect can change
+                final boolean entryLocked = addressCompound.getBoolean(LOCKED);
+                if (!entryLocked) {
+                    addressCompound.setString(NAME, newName);
+                    addressCompound.setString(ADDRESS, newAddress);
+                }
+                if (!entryLocked || newIndex != -1) {
+                    addressCompound.setInteger(INDEX, newIndex);
+                }
                 addressCompound.setBoolean(AUTOCLOSE, autoClose);
             }
 

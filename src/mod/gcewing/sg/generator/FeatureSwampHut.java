@@ -37,12 +37,12 @@ public class FeatureSwampHut extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.swampAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.swampChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.swampZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.swampAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.swampChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.swampZpmChestChance;
         generateTokra = FeatureGeneration.swampSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureSwampHut with GenerateStructure: " + generateStructure);

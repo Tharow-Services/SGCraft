@@ -6,6 +6,7 @@ import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
 import gcewing.sg.features.naquadahgenerator.client.gui.NaquadahGeneratorScreen;
 import gcewing.sg.network.SGChannel;
 import net.malisis.core.inventory.MalisisInventory;
+import net.malisis.core.inventory.MalisisInventoryContainer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -96,9 +97,24 @@ public class NaquadahGeneratorNetworkHandler extends SGChannel {
     public void handleSwitchFromClient(EntityPlayer player, ChannelInput data) {
         NaquadahGeneratorTE te = generatorFor(player, BaseBlockUtils.readBlockPos(data));
         boolean on = data.readBoolean();
-        if (te != null) {
+        if (te != null && screenOpen(player, te)) {
             te.setSwitchedOn(on);
             sendStatus(player, te);
         }
+    }
+
+    // Whether the player has the generator's screen open. It's switched only from there, where it was opened with a click
+    // on the generator, which claims and the like see: a client could otherwise switch any generator in reach, through
+    // walls, without that.
+    private static boolean screenOpen(EntityPlayer player, NaquadahGeneratorTE te) {
+        if (!(player.openContainer instanceof MalisisInventoryContainer)) {
+            return false;
+        }
+        for (MalisisInventory inventory : ((MalisisInventoryContainer) player.openContainer).getInventories()) {
+            if (inventory.getProvider() == te) {
+                return true;
+            }
+        }
+        return false;
     }
 }

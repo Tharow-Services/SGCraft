@@ -46,8 +46,9 @@ public class Zat {
         secondShotKills = cfg.getBoolean("zat", "secondShotKills", secondShotKills);
     }
 
-    // When the entity was last stunned by a zat (world time), kept with the entity
-    private static final String stunnedAtKey = "sgcraft:zatStunnedAt";
+    // When the entity was last stunned by a zat, kept with the entity: in real time (milliseconds), not world time, which
+    // under Sponge each world keeps for itself, so one stunned in an older world stayed stunned for weeks in a younger
+    private static final String stunnedAtKey = "sgcraft:zatStunnedAtMillis";
 
     // ---- Firing (server) ----
 
@@ -145,9 +146,10 @@ public class Zat {
 
     // A first shot stuns, a second while still stunned kills
     static void hit(EntityPlayer shooter, EntityLivingBase target) {
-        long now = target.world.getTotalWorldTime();
+        long now = System.currentTimeMillis();
         NBTTagCompound data = target.getEntityData();
-        boolean stunned = data.hasKey(stunnedAtKey) && now - data.getLong(stunnedAtKey) <= stunTicks;
+        long since = now - data.getLong(stunnedAtKey);
+        boolean stunned = data.hasKey(stunnedAtKey) && since >= 0 && since <= stunTicks * 50L;
         DamageSource source = new EntityDamageSource("sgcraft:zat", shooter).setDamageBypassesArmor();
         if (stunned && secondShotKills) {
             if (target.attackEntityFrom(source, Math.max(1000F, target.getMaxHealth() * 10))) {

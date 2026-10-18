@@ -460,6 +460,8 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
                 bang = new Trans3(Vector3.blockCenter(pos)).turn(te.facingDirectionOfBase).p(te.ringCentre());
             }
             te.disconnect();
+            // Its state was set to idle by hand above, so going idle didn't let its chunks go: they stayed loaded for good
+            te.updateChunkLoadingStatus();
             te.unlinkFromController();
             te.setMerged(false);
             BaseBlockUtils.markBlockForUpdate(world, pos);

@@ -19,9 +19,17 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.InventoryBasic;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ITickable;
 import net.minecraft.util.text.ITextComponent;
+import net.minecraftforge.fml.common.FMLCommonHandler;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
 
 public class OCInterfaceTE extends SGInterfaceTE
     implements IComputerInterface, Environment, IInventory, ITickable
@@ -60,20 +68,51 @@ public class OCInterfaceTE extends SGInterfaceTE
     void forwardNetworkPacket(Packet packet) {
         if (packet.ttl() > 0) {
             SGBaseTE te = getBaseTE();
-            if (te != null)
+            if (te != null && throughGate(te, packet))
                 te.forwardNetworkPacket(packet.hop());
         }
     }
 
-    @Override   
+    @Override
     public void rebroadcastNetworkPacket(Object packet) {
         if (packet instanceof Packet && hasNetworkCard()) {
-            if (node != null) {
+            if (node != null && node.network() != null && firstThisTick(node.network(), ((Packet) packet).data())) {
                 if (debugNetworking)
                     System.out.print("OCInterfaceTE.rebroadcastNetworkPacket\n");
                 node.sendToReachable("network.message", packet);
             }
         }
+    }
+
+    // ---- Packets through gates ----
+
+    // What has gone through gates this tick: each packet's data (which every hop of one packet shares), by the gate it
+    // went through or the network it was sent on at the far end. A packet goes through a gate, and onto a network, once a
+    // tick at most, and not back through the gate it came out of: every carded interface at both ends of a connection
+    // used to send each packet back through again, multiplying it at every hop until the server froze.
+    private static final Map<Object, Set<Object>> sentThisTick = new HashMap<>();
+    private static int sentTick = -1;
+
+    static boolean firstThisTick(Object via, Object data) {
+        MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+        int tick = server != null ? server.getTickCounter() : 0;
+        if (tick != sentTick) {
+            sentThisTick.clear();
+            sentTick = tick;
+        }
+        return sentThisTick.computeIfAbsent(via, k -> Collections.newSetFromMap(new IdentityHashMap<>())).add(data);
+    }
+
+    // Whether the packet may go through the gate now; if so, it's counted as having come through the far one as well
+    static boolean throughGate(SGBaseTE gate, Packet packet) {
+        if (!firstThisTick(gate, packet.data())) {
+            return false;
+        }
+        SGBaseTE far = gate.getConnectedStargateTE();
+        if (far != null) {
+            firstThisTick(far, packet.data());
+        }
+        return true;
     }
 
     // -------------------------- Methods --------------------------

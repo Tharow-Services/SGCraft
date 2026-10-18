@@ -41,8 +41,9 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
     World world;
     Chunk chunk;
     int x0, z0;
+    // Adding ore to a chunk made before (see regenerate), which players may have built in since
+    boolean retrogen;
 
-    Block stone = Blocks.STONE;
     Block lava = Blocks.LAVA;
     IBlockState naquadah = SGCraft.naquadahOre.getDefaultState();
     
@@ -130,6 +131,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
         chunk = world.getChunk(chunkX, chunkZ);
+        retrogen = false;
         if (generatesIn(world)) {
             generateChunk();
         }
@@ -147,6 +149,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         random.setSeed((xSeed * chunkX + zSeed * chunkZ) ^ worldSeed);
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
+        retrogen = true;
         if (!generatesIn(world)) {
             return;
         }
@@ -154,9 +157,10 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         // different worlds once shared one), and it shouldn't get a second lot
         if (hasNaquadah(chunk)) {
             SGChunkData.forChunk(chunk).oresGenerated = true;
-            return;
+        } else {
+            generateChunk();
         }
-        generateChunk();
+        chunk.markDirty(); // so that it's saved as done, even with no ore placed
     }
 
     // Whether there's naquadah ore anywhere it generates (below y 64)
@@ -175,27 +179,37 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         return false;
     }
 
+    // Where (x, z) within the chunk is in the world. The chunk passes the position it's given on to the block it replaces
+    // (breakBlock) and the one it places, so it must be the real one, not the place within the chunk: a chest replaced at
+    // (5, 20, 7) in any chunk would otherwise empty and remove whatever is at (5, 20, 7) in the world.
+    BlockPos at(int x, int y, int z) {
+        return new BlockPos(x0 + x, y, z0 + z);
+    }
+
     Block getBlock(int x, int y, int z) {
-        return getBlock(new BlockPos(x, y, z));
+        return chunk.getBlockState(at(x, y, z)).getBlock();
     }
-    
-    Block getBlock(BlockPos pos) {
-        return chunk.getBlockState(pos).getBlock();
-    }
-    
-    boolean isSolidBlock(int x, int y, int z) {
-        return isSolidBlock(new BlockPos(x, y, z));
-    }
-    
-    boolean isSolidBlock(BlockPos pos) {
-        IBlockState state = chunk.getBlockState(pos);
+
+    // Whether ore may take the place of the block at (x, y, z) within the chunk: never one holding something (a dungeon's
+    // chest or spawner, or anything a player has put there); in a chunk being made, any solid block; in one made before,
+    // only natural stone, as players may have built there since
+    boolean mayReplace(int x, int y, int z) {
+        IBlockState state = chunk.getBlockState(at(x, y, z));
+        Block block = state.getBlock();
+        if (block.hasTileEntity(state)) {
+            return false;
+        }
+        if (retrogen) {
+            if (block != Blocks.STONE) {
+                return false;
+            }
+            BlockStone.EnumType type = state.getValue(BlockStone.VARIANT);
+            return type == BlockStone.EnumType.STONE || type == BlockStone.EnumType.GRANITE
+                || type == BlockStone.EnumType.DIORITE || type == BlockStone.EnumType.ANDESITE;
+        }
         return state.getMaterial().isSolid();
     }
-    
-    void setBlockState(BlockPos pos, IBlockState state) {
-        chunk.setBlockState(pos, state);
-    }
-    
+
     void generateNode(IBlockState id, int x, int y, int z, int sx, int sy, int sz) {
         int dx = random.nextInt(sx);
         int dy = random.nextInt(sy);
@@ -208,12 +222,11 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
             for (int j = y; j <= y + dy; j++)
                 for (int k = z; k <= z + dz; k++)
                     if (i < 16 && j < h && k < 16) {
-                        BlockPos pos = new BlockPos(i, j, k);
-                        if (isSolidBlock(pos)) {
+                        if (mayReplace(i, j, k)) {
                             if (debugRandom && debugLevel >= 2)
                                 System.out.printf("NaquadahOreWorldGen: block at (%d, %d, %d)\n",
                                     x0 + i, j, z0 + k);
-                            setBlockState(pos, id);
+                            chunk.setBlockState(at(i, j, k), id);
                         }
                     }
     }
@@ -231,7 +244,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
                 int x = random.nextInt(16);
                 int z = random.nextInt(16);
                 for (int y = 1; y < 64; y++)
-                    if (isSolidBlock(x, y, z) && getBlock(x, y+1, z) == lava) {
+                    if (mayReplace(x, y, z) && getBlock(x, y+1, z) == lava) {
                         if (debugLava)
                             System.out.printf("NaquadahOreWorldGen: generating under lava at (%d, %d, %d)\n", x0+x, y, z0+z);
                         generateNode(naquadah, x, y, z, 3, 1, 3);
@@ -244,7 +257,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
                 int x = random.nextInt(16);
                 int y = random.nextInt(16) + 16;
                 int z = random.nextInt(16);
-                if (isSolidBlock(x, y, z)) {
+                if (mayReplace(x, y, z)) {
                     if (debugRandom)
                         System.out.printf("NaquadahOreWorldGen: generating randomly at (%d, %d, %d)\n", x0+x, y, z0+z);
                     generateNode(naquadah, x, y, z, 2, 2, 2);

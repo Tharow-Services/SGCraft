@@ -26,6 +26,7 @@ import java.util.Random;
 
 public class FeatureVillageStargate extends Village {
     FeatureStargate Stargate;
+    boolean generateGate;
     int pass = 0;
     Biome biome;
 
@@ -55,8 +56,11 @@ public class FeatureVillageStargate extends Village {
 
         // Set up the options
         Random rand = new Random();
-        this.Stargate.generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.villageChevronUpgradeChance;
-        this.Stargate.generateZpmChest = rand.nextInt(100) <= FeatureGeneration.villageZpmChestChance;
+        // Whether this village gets its gate: decided once, here. It was rolled again each time a chunk the gate stands in
+        // was filled in, so most villages that got a gate got only part of one.
+        this.generateGate = rand.nextInt(100) < FeatureGeneration.villageAddonChance;
+        this.Stargate.generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.villageChevronUpgradeChance;
+        this.Stargate.generateZpmChest = rand.nextInt(100) < FeatureGeneration.villageZpmChestChance;
         this.Stargate.generateTokra = FeatureGeneration.villageSpawnTokra;
 
         ItemStack camoBlock = new ItemStack(FeatureStargate.getBiomeCamoblock (this.biome), 1, 0);
@@ -84,7 +88,7 @@ public class FeatureVillageStargate extends Village {
         Stargate.updateBoundingBox (boundingBox);
 
         if (FeatureGeneration.villageAddon) {
-            if (rand.nextInt(100) <= FeatureGeneration.villageAddonChance) {
+            if (generateGate) {
                 Stargate.GenerateSimpleStargatePlatform(world, clip, stairs, platformBlock, randBlockHigh, randBlockLow);
             }
         } else {

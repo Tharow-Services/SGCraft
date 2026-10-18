@@ -51,37 +51,19 @@ public class ZpmHub extends BlockContainer {
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
         if (!world.isRemote) {
             ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
-        }
-        ZpmHubTE zpmHub = ZpmHubTE.at(world, pos);
-        for (int slot = 0; slot <=2;slot++) { // 3
-            ItemStack zpm = zpmHub.getStackInSlot(slot);
-            NBTTagCompound tag = zpm.getTagCompound();
-
+            // Taken out of their slots, with their energy, before they're dropped: left in, a screen still open on the hub
+            // could take them a second time
+            ZpmHubTE zpmHub = ZpmHubTE.at(world, pos);
             if (zpmHub != null) {
-                if (tag == null) {
-                    tag = new NBTTagCompound();
-                    zpm.setTagCompound(tag);
-                }
-
-                if (tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                    if (slot == 0) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot0Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot0Energy);
-                    } else if (slot == 1) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot1Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot1Energy);
-                    } else if (slot == 2) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot2Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot2Energy);
+                for (int slot = 0; slot < ZpmHubTE.numZpmSlots; slot++) {
+                    ItemStack zpm = zpmHub.removeStackFromSlot(slot);
+                    if (!zpm.isEmpty()) {
+                        Block.spawnAsEntity(world, pos, zpm);
                     }
                 }
             }
-            Block.spawnAsEntity(world, pos, zpm);
-            super.breakBlock(world, pos, state);
         }
+        super.breakBlock(world, pos, state);
     }
 
     @Nullable
