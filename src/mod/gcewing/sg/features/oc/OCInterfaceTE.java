@@ -99,6 +99,20 @@ public class OCInterfaceTE extends SGInterfaceTE
         catch (Exception e) {return failure(e);}
     }
     
+    // The ZPM energy the gate can draw on (ZPM units) and how many ZPMs hold it
+    @Callback(doc = "function():number, number -- ZPM energy the gate can draw on, and how many ZPMs hold it")
+    public Object[] zpmEnergy(Context ctx, Arguments args) {
+        try {return ciZpmEnergy();}
+        catch (Exception e) {return failure(e);}
+    }
+
+    // Each ZPM device the gate can draw on: type, x, y, z, energy (ZPM units), zpms, linked
+    @Callback(doc = "function():table -- each ZPM device the gate can draw on: type, x, y, z, energy, zpms, linked")
+    public Object[] zpmDevices(Context ctx, Arguments args) {
+        try {return new Object[]{ciZpmDevices()};}
+        catch (Exception e) {return failure(e);}
+    }
+
     @Callback
     public Object[] energyToDial(Context ctx, Arguments args) {
         try {return new Object[]{ciEnergyToDial(args.checkString(0), true)};}

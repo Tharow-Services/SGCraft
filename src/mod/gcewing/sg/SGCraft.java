@@ -77,6 +77,7 @@ import gcewing.sg.interfaces.SoundSource;
 import gcewing.sg.item.SGChevronUpgradeItem;
 import gcewing.sg.item.SGIrisUpgradeItem;
 import gcewing.sg.item.SGShieldUpgradeItem;
+import gcewing.sg.item.SGInvulnerabilityItem;
 import gcewing.sg.item.SGPegasusUpgradeItem;
 import gcewing.sg.item.SGUniverseUpgradeItem;
 import gcewing.sg.item.SGRingItem;
@@ -88,6 +89,7 @@ import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateType;
 import gcewing.sg.util.GateUtil;
+import gcewing.sg.util.ComputerLookupLimiter;
 import gcewing.sg.util.GeneralAddressRegistry;
 import gcewing.sg.generator.GateAddressBookFunction;
 import gcewing.sg.util.LootTableConfig;
@@ -188,6 +190,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static Block naquadahGeneratorMk1, naquadahGeneratorMk2;
     public static SGPowerBlock sgPowerUnit;
 
+    public static Item invulnerabilityUpgrade;
     public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgShieldUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
@@ -365,6 +368,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         NaquadahOreWorldGen.configure(config);
         SGBaseBlock.configure(config);
         SGBaseTE.configure(config);
+        ComputerLookupLimiter.configure(config);
         Zat.configure(config);
         if (isModLoaded("malisiscore")) {
             CityShieldTE.configure(config);
@@ -465,6 +469,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         sgChevronUpgrade = addItem(new SGChevronUpgradeItem(), "sgChevronUpgrade");
         sgIrisUpgrade = addItem(new SGIrisUpgradeItem(), "sgIrisUpgrade");
         sgShieldUpgrade = addItem(new SGShieldUpgradeItem(), "sgShieldUpgrade");
+        invulnerabilityUpgrade = addItem(new SGInvulnerabilityItem(), "invulnerability_upgrade"); // creative only: no recipe
         sgIrisBlade = newItem("sgIrisBlade");
         if (isModLoaded("ic2")) {
             ic2Capacitor = newItem("ic2Capacitor");

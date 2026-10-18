@@ -34,6 +34,19 @@ public class CCSGPeripheral implements IPeripheral {
             }
         },
         
+        // The ZPM energy the gate can draw on (ZPM units) and how many ZPMs hold it, and each ZPM device in a table
+        new SGMethod("zpmEnergy") {
+            Object[] call(SGInterfaceTE te, Object[] args) {
+                return te.ciZpmEnergy();
+            }
+        },
+
+        new SGMethod("zpmDevices") {
+            Object[] call(SGInterfaceTE te, Object[] args) {
+                return new Object[] {te.ciZpmDevices()};
+            }
+        },
+
         new SGMethod("energyToDial", 1) {
             Object[] call(SGInterfaceTE te, Object[] args) {
                 return new Object[] {te.ciEnergyToDial((String)args[0], false)};

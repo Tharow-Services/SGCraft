@@ -61,7 +61,8 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             boolean canPlayerBreakGeneratedGate,
             boolean displayGateAddress,
             boolean isGenerated,
-            boolean hasShield) {
+            boolean hasShield,
+            boolean invulnerable) {
 
         ChannelOutput data = configuratorChannel.openServer("ConfiguratorInput");
         writeCoords(data, te);
@@ -93,6 +94,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         data.writeBoolean(displayGateAddress);
         data.writeBoolean(isGenerated);
         data.writeBoolean(hasShield);
+        data.writeBoolean(invulnerable);
         data.close();
     }
 
@@ -129,6 +131,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean displayGateAddress = data.readBoolean();
         boolean isGenerated = data.readBoolean();
         boolean hasShield = data.readBoolean();
+        boolean invulnerable = data.readBoolean();
 
         boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
@@ -171,6 +174,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             if (SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGeneratedGate") || isPermissionsAdmin) te.canPlayerBreakGeneratedGate = canPlayerBreakGeneratedGate;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress") || isPermissionsAdmin) te.displayGateAddress = displayGateAddress;
             if (SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated") || isPermissionsAdmin) te.isGenerated = isGenerated;
+            if (SGCraft.hasPermission(player, "sgcraft.configurator.invulnerable") || isPermissionsAdmin) te.invulnerable = invulnerable;
             te.enforceOriRules(); // whatever was sent, an Ori gate keeps to its own
             sendBasicMsg(player, "changesSaved");
             te.updateIrisEntity();
@@ -472,7 +476,8 @@ public class ConfiguratorNetworkHandler extends SGChannel {
             boolean canPlayerBreakPlayerGatePerm,
             boolean canPlayerBreakGeneratedGatePerm,
             boolean displayGateAddressPerm,
-            boolean isGeneratedPerm) {
+            boolean isGeneratedPerm,
+            boolean invulnerablePerm) {
 
         ChannelOutput data = configuratorChannel.openPlayer(player,"OpenConfiguratorGUI");
         // Type is always 1 here. *for now*
@@ -507,6 +512,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         data.writeBoolean(canPlayerBreakGeneratedGatePerm);
         data.writeBoolean(displayGateAddressPerm);
         data.writeBoolean(isGeneratedPerm);
+        data.writeBoolean(invulnerablePerm);
         data.close();
     }
 
@@ -544,6 +550,7 @@ public class ConfiguratorNetworkHandler extends SGChannel {
         boolean canPlayerBreakGeneratedGatePerm = data.readBoolean();
         boolean displayGateAddressPerm = data.readBoolean();
         boolean isGeneratedPerm = data.readBoolean();
+        boolean invulnerablePerm = data.readBoolean();
 
         if (guiType == 1) {
             new ConfiguratorScreen(player,
@@ -577,7 +584,8 @@ public class ConfiguratorNetworkHandler extends SGChannel {
                     displayGateAddressPerm,
                     isGeneratedPerm,
                     gateAccessPerm,
-                    playerAccessPerm)
+                    playerAccessPerm,
+                    invulnerablePerm)
                     .display();
         }
     }

@@ -105,7 +105,8 @@ public class ConfiguratorItem extends Item {
                       SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakPlayerGate"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.canPlayerBreakGeneratedGate"),
                       SGCraft.hasPermission(player, "sgcraft.configurator.displayGateAddress"),
-                      SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated"));
+                      SGCraft.hasPermission(player, "sgcraft.configurator.isGenerated"),
+                      SGCraft.hasPermission(player, "sgcraft.configurator.invulnerable"));
 
               } else {
                   if (!SGCraft.hasPermission(player, "sgcraft.gui.configurator"))
