@@ -12,6 +12,7 @@ import gcewing.sg.block.SGRingBlock;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.SGAddressing;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockChest;
 import net.minecraft.block.BlockStoneBrick;
@@ -24,6 +25,8 @@ import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityChest;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.block.BlockStairs.EnumShape;
@@ -90,15 +93,97 @@ public class FeatureStargate extends StructureComponent {
         this.boundingBox = box;
     }
 
+    // What was rolled for this piece and where its parts go, saved with the structure: a structure is often only partly
+    // built when the server stops, and the rest must be built the same way when it's loaded again
     @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
+    protected void writeStructureToNBT(NBTTagCompound compound) {
+        compound.setBoolean("Generate", generateStructure);
+        compound.setBoolean("ChevronUpgrade", generateChevronUpgrade);
+        compound.setBoolean("ZpmChest", generateZpmChest);
+        compound.setBoolean("Tokra", generateTokra);
+        compound.setBoolean("TaintedZpm", taintedZpm);
+        compound.setInteger("GateType", gateType);
+        writePart(compound, "Gate", gateX, gateY, gateZ, gatePos, gateFaces);
+        writePart(compound, "Dhd", dhdX, dhdY, dhdZ, dhdPos, dhdFaces);
+        writePart(compound, "Chest", chestX, chestY, chestZ, chestPos, chestFaces);
+        if (centerPos != null)
+            compound.setLong("CenterPos", centerPos.toLong());
+        compound.setInteger("FirstY", firstY);
+        if (spawnDirection != null)
+            compound.setString("SpawnDirection", spawnDirection.getName());
+        NBTTagList camo = new NBTTagList();
+        for (int i = 0; i < gateCamo.length; i++) {
+            if (gateCamo[i] != null) {
+                NBTTagCompound slot = gateCamo[i].writeToNBT(new NBTTagCompound());
+                slot.setByte("Slot", (byte) i);
+                camo.appendTag(slot);
+            }
+        }
+        compound.setTag("GateCamo", camo);
+    }
 
     @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
+    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {
+        // A piece saved by an older SGCraft has none of this; it then builds nothing, as nothing it rolled was kept
+        generateStructure = compound.getBoolean("Generate");
+        generateChevronUpgrade = compound.getBoolean("ChevronUpgrade");
+        generateZpmChest = compound.getBoolean("ZpmChest");
+        generateTokra = compound.getBoolean("Tokra");
+        taintedZpm = compound.getBoolean("TaintedZpm");
+        if (compound.hasKey("GateType"))
+            gateType = compound.getInteger("GateType");
+        int[] gate = readPart(compound, "Gate");
+        gateX = gate[0]; gateY = gate[1]; gateZ = gate[2];
+        gatePos = readPos(compound, "GatePos");
+        gateFaces = readFacing(compound, "GateFaces");
+        int[] dhd = readPart(compound, "Dhd");
+        dhdX = dhd[0]; dhdY = dhd[1]; dhdZ = dhd[2];
+        dhdPos = readPos(compound, "DhdPos");
+        dhdFaces = readFacing(compound, "DhdFaces");
+        int[] chest = readPart(compound, "Chest");
+        chestX = chest[0]; chestY = chest[1]; chestZ = chest[2];
+        chestPos = readPos(compound, "ChestPos");
+        chestFaces = readFacing(compound, "ChestFaces");
+        centerPos = readPos(compound, "CenterPos");
+        firstY = compound.hasKey("FirstY") ? compound.getInteger("FirstY") : -1;
+        spawnDirection = readFacing(compound, "SpawnDirection");
+        NBTTagList camo = compound.getTagList("GateCamo", 10);
+        for (int i = 0; i < camo.tagCount(); i++) {
+            NBTTagCompound slot = camo.getCompoundTagAt(i);
+            int index = slot.getByte("Slot");
+            if (index >= 0 && index < gateCamo.length)
+                gateCamo[index] = new ItemStack(slot);
+        }
+    }
 
+    private static void writePart(NBTTagCompound compound, String name, int x, int y, int z, BlockPos pos, EnumFacing faces) {
+        compound.setIntArray(name, new int[] {x, y, z});
+        if (pos != null)
+            compound.setLong(name + "Pos", pos.toLong());
+        if (faces != null)
+            compound.setString(name + "Faces", faces.getName());
+    }
+
+    private static int[] readPart(NBTTagCompound compound, String name) {
+        int[] xyz = compound.getIntArray(name);
+        return xyz.length == 3 ? xyz : new int[3];
+    }
+
+    private static BlockPos readPos(NBTTagCompound compound, String name) {
+        return compound.hasKey(name) ? BlockPos.fromLong(compound.getLong(name)) : null;
+    }
+
+    private static EnumFacing readFacing(NBTTagCompound compound, String name) {
+        return compound.hasKey(name) ? EnumFacing.byName(compound.getString(name)) : null;
+    }
+
+    // Always true, so the piece stays in its structure even when it builds nothing: the structure is saved without the
+    // pieces that return false, and one saved without this piece gets a new one, with new rolls, when it's loaded again
     @Override
     public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
+        if (generateStructure)
+            addAugmentationParts(world, rand, clip);
+        return true;
     }
 
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
@@ -140,22 +225,27 @@ public class FeatureStargate extends StructureComponent {
         Block edge = null, edge2 = null;
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
+                // Only the part of the platform in the area being generated is placed, and only there may we look at
+                // the world: looking anywhere else can make Minecraft generate more chunks from inside this one
+                if (!clip.isVecInside(new BlockPos (box.minX + x, box.minY + useY, box.minZ + z)))
+                    continue;
+
                 edge = null;
                 id = null;
 
                 //  Handle corners
                 if ((x == minX) && (z == minZ)) {
-                    edge = world.getBlockState(new BlockPos (box.minX + minX, box.minY + useY, box.minZ + minZ - 1)).getBlock();
-                    edge2 = world.getBlockState(new BlockPos (box.minX + minX - 1, box.minY + useY, box.minZ + minZ)).getBlock();
+                    edge = blockBeside(world, clip, box, x, useY, z, 0, -1);
+                    edge2 = blockBeside(world, clip, box, x, useY, z, -1, 0);
                 } else if ((x == maxX) && (z == minZ)) {
-                    edge = world.getBlockState(new BlockPos (box.minX + maxX, box.minY + useY, box.minZ + minZ - 1)).getBlock();
-                    edge2 = world.getBlockState(new BlockPos (box.minX + maxX + 1, box.minY + useY, box.minZ + minZ)).getBlock();
+                    edge = blockBeside(world, clip, box, x, useY, z, 0, -1);
+                    edge2 = blockBeside(world, clip, box, x, useY, z, 1, 0);
                 } else if ((x == minX) && (z == maxZ)) {
-                    edge = world.getBlockState(new BlockPos (box.minX + minX - 1, box.minY + useY, box.minZ + maxZ)).getBlock();
-                    edge2 = world.getBlockState(new BlockPos (box.minX + minX, box.minY + useY, box.minZ + maxZ + 1)).getBlock();
+                    edge = blockBeside(world, clip, box, x, useY, z, -1, 0);
+                    edge2 = blockBeside(world, clip, box, x, useY, z, 0, 1);
                 } else if ((x == maxX) && (z == maxZ)) {
-                    edge = world.getBlockState(new BlockPos (box.minX + maxX + 1, box.minY + useY, box.minZ + maxZ)).getBlock();
-                    edge2 = world.getBlockState(new BlockPos (box.minX + maxX, box.minY + useY, box.minZ + maxZ + 1)).getBlock();
+                    edge = blockBeside(world, clip, box, x, useY, z, 1, 0);
+                    edge2 = blockBeside(world, clip, box, x, useY, z, 0, 1);
                 }
 
                 if ((edge != null) && (edge2 != null)) {
@@ -170,13 +260,13 @@ public class FeatureStargate extends StructureComponent {
                     //  Check if edges are flush
                     edge = null;
                     if (z == minZ)
-                        edge = world.getBlockState(new BlockPos (box.minX + x, box.minY + useY, box.minZ + minZ - 1)).getBlock();
+                        edge = blockBeside(world, clip, box, x, useY, z, 0, -1);
                     else if (z == maxZ)
-                        edge = world.getBlockState(new BlockPos (box.minX + x, box.minY + useY, box.minZ + maxZ + 1)).getBlock();
+                        edge = blockBeside(world, clip, box, x, useY, z, 0, 1);
                     else if (x == minX)
-                        edge = world.getBlockState(new BlockPos (box.minX + minX - 1, box.minY + useY, box.minZ + z)).getBlock();
+                        edge = blockBeside(world, clip, box, x, useY, z, -1, 0);
                     else if (x == maxX)
-                        edge = world.getBlockState(new BlockPos (box.minX + maxX + 1, box.minY + useY, box.minZ + z)).getBlock();
+                        edge = blockBeside(world, clip, box, x, useY, z, 1, 0);
 
                     if (edge != null) {
                         if (edge == Blocks.WATER)
@@ -258,6 +348,16 @@ public class FeatureStargate extends StructureComponent {
         // TokRa villager
         GenerateTokRa (world, clip);
 
+    }
+
+    // The block just outside the platform's edge at (x, y, z) in the box, in the direction (dx, dz), which decides how that
+    // edge is finished. Where that block is outside the area being generated, the platform's own spot, which is in it,
+    // stands in for it.
+    private static Block blockBeside(World world, StructureBoundingBox clip, StructureBoundingBox box, int x, int y, int z, int dx, int dz) {
+        BlockPos beside = new BlockPos (box.minX + x + dx, box.minY + y, box.minZ + z + dz);
+        if (!clip.isVecInside(beside))
+            beside = new BlockPos (box.minX + x, box.minY + y, box.minZ + z);
+        return world.getBlockState(beside).getBlock();
     }
 
     public void GenerateStargateStairs (World world, StructureBoundingBox clip, Block stairBlock) {
@@ -357,9 +457,15 @@ public class FeatureStargate extends StructureComponent {
             return;
         }
 
+        // The gate base is set up when the part of the world it's in is generated, and only then: looking for it from
+        // anywhere else would make Minecraft generate its chunk from inside this one
+        if (gatePos == null || !clip.isVecInside(gatePos))
+            return;
+
         SGBaseTE te = null;
-        if (gatePos != null)
-            te = (SGBaseTE)world.getTileEntity(gatePos);
+        TileEntity tileEntity = world.getTileEntity(gatePos);
+        if (tileEntity instanceof SGBaseTE)
+            te = (SGBaseTE)tileEntity;
 
         if (te != null) {
             if (generateChevronUpgrade) {
@@ -382,15 +488,24 @@ public class FeatureStargate extends StructureComponent {
 
             te.markChanged();
 
-            if (te.homeAddress != null) {
-                GeneratorAddressRegistry.addAddress(te.getWorld(), te.homeAddress);
-                te.isGenerated = true; // Tag gate as being generated here.
+            // The gate only has its address once its ring is whole, which may be in a chunk generated later; the address
+            // comes from where the gate is, so it's known already
+            String address = te.homeAddress;
+            if (address == null) {
+                try {
+                    address = te.getHomeAddress();
+                } catch (SGAddressing.AddressingError e) {
+                    address = null;
+                }
             }
 
-            if ((te.homeAddress == null) && (pass >= 3)) {
+            if (address != null) {
+                GeneratorAddressRegistry.addAddress(te.getWorld(), address);
+                te.isGenerated = true; // Tag gate as being generated here.
+            } else {
                 System.err.println("Something bad happened!!! please report to Dockter:  unable to assign home address during generation");
             }
-        } else if (pass == 3) {
+        } else {
             System.err.println ("SGCraft: FeatureGeneration is done and Stargate TE was null! That's bad. gatePos " + gatePos + " and spawnDirection " + spawnDirection);
         }
     }
@@ -407,14 +522,19 @@ public class FeatureStargate extends StructureComponent {
         if (debug)
             System.out.println("DHD built at: " + dhdPos);
 
+        // Only when its part of the world is generated (see GenerateStargate)
+        if (dhdPos == null || !clip.isVecInside(dhdPos))
+            return;
+
         DHDTE dhdte = null;
-        if (dhdPos != null)
-            dhdte = (DHDTE)world.getTileEntity(dhdPos);
+        TileEntity tileEntity = world.getTileEntity(dhdPos);
+        if (tileEntity instanceof DHDTE)
+            dhdte = (DHDTE)tileEntity;
 
         if (dhdte != null) {
             ItemStack naquadahPieces = new ItemStack(SGCraft.naquadah, 3);
             dhdte.getInventory().setInventorySlotContents(0, naquadahPieces);
-        } else if (pass == 3) {
+        } else {
             System.err.println ("SGCraft: FeatureGeneration is done and DHD TE was null! That's bad. dhdPos " + dhdPos + " and spawnDirection " + spawnDirection);
         }
     }
@@ -432,12 +552,17 @@ public class FeatureStargate extends StructureComponent {
                 return;
             }
 
+            // Only when its part of the world is generated (see GenerateStargate)
+            if (chestPos == null || !clip.isVecInside(chestPos))
+                return;
+
             setBlockState(world, air, chestX, chestY, chestZ, clip);
             setBlockState(world, chest, chestX, chestY, chestZ, clip);
 
             TileEntityChest chestTE = null;
-            if (chestPos != null)
-                chestTE = (TileEntityChest) world.getTileEntity(chestPos);
+            TileEntity tileEntity = world.getTileEntity(chestPos);
+            if (tileEntity instanceof TileEntityChest)
+                chestTE = (TileEntityChest) tileEntity;
 
             if (chestTE != null) {
                 if (debug)
@@ -460,18 +585,23 @@ public class FeatureStargate extends StructureComponent {
                     if (chestTE.isEmpty())
                         chestTE.getSingleChestHandler().insertItem(0, zpm, false);
                 }
-            } else if (pass == 3) {
+            } else {
                 System.err.println ("FeatureGeneration is done and ZPM Chest TE was null! That's bad. chestPos: " + chestPos + " and spawnDirection " + spawnDirection);
             }
         }
     }
 
     public void GenerateTokRa (World world, StructureBoundingBox clip) {
-        if (generateTokra && pass == 3) {
-            if ((chestPos == null) && (FeatureGeneration.debugStructures)) {
-                System.err.println ("Tried to spawn a Tok'Ra but chestPos was null!");
+        // Spawned once, with the part of the world the chest is in: entities can only be added to chunks that exist, and
+        // that part is generated once (counting the times this piece is generated misses some or repeats after a restart)
+        if (generateTokra) {
+            if (chestPos == null) {
+                if (FeatureGeneration.debugStructures)
+                    System.err.println ("Tried to spawn a Tok'Ra but chestPos was null!");
                 return;
             }
+            if (!clip.isVecInside(chestPos))
+                return;
 
             EntityVillager entityvillager = new EntityVillager(world);
             entityvillager.setLocationAndAngles((double)chestPos.getX() + 0.5D, (double)chestPos.getY() + 2, (double)chestPos.getZ() + 0.5D, 0.0F, 0.0F);
@@ -562,22 +692,21 @@ public class FeatureStargate extends StructureComponent {
         return (curY + maxTries);
     }
 
-    // Because World.getTopSolidOrLiquidBlock lies like a snake's belly in a wagon rut.
-    public static int getJungleTempleTop (World world, BlockPos centerPos) {
-        int curX = centerPos.getX();
-        int curY = centerPos.getY();
-        int curZ = centerPos.getZ();
-        Block temp = null;
-
-        for (int tries = 255; tries >= 0; tries--) {
-            temp = world.getBlockState (new BlockPos (curX, tries, curZ)).getBlock();
-
-            if ((temp == Blocks.MOSSY_COBBLESTONE) || (temp == Blocks.STONE_STAIRS) || (temp == Blocks.COBBLESTONE))
-                return (tries);
+    // The lowest ground in the part of this piece's box that's being generated. Only that part may be looked at: looking
+    // anywhere else can make Minecraft generate more chunks from inside this one.
+    public int getLowestSurfaceInClip (World world, StructureBoundingBox clip) {
+        int lowY = -1;
+        for (int x = boundingBox.minX; x <= boundingBox.maxX; x++) {
+            for (int z = boundingBox.minZ; z <= boundingBox.maxZ; z++) {
+                BlockPos column = new BlockPos (x, 64, z);
+                if (clip.isVecInside(column)) {
+                    int y = world.getTopSolidOrLiquidBlock(column).getY();
+                    if (lowY == -1 || y < lowY)
+                        lowY = y;
+                }
+            }
         }
-
-        System.err.println ("No jungle temple found! whoops.");
-        return (-1);
+        return lowY;
     }
 
     public static EnumFacing getOppDirection(EnumFacing origDir) {

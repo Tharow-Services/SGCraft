@@ -21,11 +21,8 @@ import net.minecraft.world.gen.structure.template.TemplateManager;
 import java.util.Random;
 
 public class FeatureUnderDesertPyramid extends FeatureStargate {
-    @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
-
-    @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
+    // The room's corner, which everything is placed from
+    int originX, originZ;
 
     public FeatureUnderDesertPyramid() {}
 
@@ -84,23 +81,45 @@ public class FeatureUnderDesertPyramid extends FeatureStargate {
 
         chestPos = new BlockPos (boundingBox.minX + chestX, boundingBox.minY + chestY, boundingBox.minZ + chestZ);
 
+        // The chest stands 3 blocks outside the room. The piece's box is stretched to take it in: this piece is only
+        // generated in chunks its box reaches, so a chest in a chunk with no part of the room was never placed. Everything
+        // is still placed from the room's corner.
+        originX = boundingBox.minX;
+        originZ = boundingBox.minZ;
+        boundingBox.expandTo(new StructureBoundingBox(chestPos, chestPos));
+
         if ((generateStructure) && (FeatureGeneration.debugStructures))
             System.out.println ("SGCraft: Desert Temple got a gate at " + centerPos + ", facing " + spawnDirection);
     }
 
     @Override
-    public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
+    protected void writeStructureToNBT(NBTTagCompound compound) {
+        super.writeStructureToNBT(compound);
+        compound.setInteger("OriginX", originX);
+        compound.setInteger("OriginZ", originZ);
+    }
+
+    @Override
+    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {
+        super.readStructureFromNBT(compound, templateManager);
+        originX = compound.hasKey("OriginX") ? compound.getInteger("OriginX") : boundingBox.minX;
+        originZ = compound.hasKey("OriginZ") ? compound.getInteger("OriginZ") : boundingBox.minZ;
+    }
+
+    // Blocks are placed from the room's corner, not the corner of the piece's box (see the constructor)
+    @Override
+    protected int getXWithOffset(int x, int z) {
+        return originX + x;
+    }
+
+    @Override
+    protected int getZWithOffset(int x, int z) {
+        return originZ + z;
     }
 
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
         if ((pass == 3) && (FeatureGeneration.debugStructures))
             System.out.printf("SGCraft: FeatureUnderDesertPyramid.addComponentParts in %s clipped to %s\n", getBoundingBox(), clip);
-
-        if (base == null) {
-            System.out.printf("SGCraft: FeatureUnderDesertPyramid.addComponentParts: no base\n");
-            return false;
-        }
 
         IBlockState air = Blocks.AIR.getDefaultState();
         IBlockState sandstoneSmooth = Blocks.SANDSTONE.getDefaultState().withProperty(BlockSandStone.TYPE, BlockSandStone.EnumType.SMOOTH);

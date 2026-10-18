@@ -10,23 +10,15 @@ import net.minecraft.block.BlockPrismarine;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraft.world.gen.structure.StructureComponent;
-import net.minecraft.world.gen.structure.template.TemplateManager;
 
 import java.util.Random;
 
 public class FeatureOceanMonument extends FeatureStargate {
-    @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
-
-    @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
-
     public FeatureOceanMonument() {}
 
     public FeatureOceanMonument(StructureComponent base) {
@@ -87,19 +79,9 @@ public class FeatureOceanMonument extends FeatureStargate {
             System.out.println ("SGCraft: Ocean Monument got a gate at " + centerPos + ", facing " + spawnDirection);
     }
 
-    @Override
-    public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
-    }
-
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
         if ((pass == 3) && (FeatureGeneration.debugStructures))
             System.out.printf("SGCraft: FeatureOceanMonument.addComponentParts in %s clipped to %s\n", getBoundingBox(), clip);
-
-        if (base == null) {
-            System.out.printf("SGCraft: FeatureOceanMonument.addComponentParts: no base\n");
-            return false;
-        }
 
         IBlockState water = Blocks.WATER.getDefaultState();
         IBlockState seaLantern = Blocks.SEA_LANTERN.getDefaultState();
