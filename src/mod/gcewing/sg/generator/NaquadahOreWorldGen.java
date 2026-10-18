@@ -51,9 +51,42 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         debugRandom = cfg.getBoolean("naquadah", "debugRandom", debugRandom);
         debugLevel = cfg.getInteger("naquadah", "debugLevel", debugLevel);
         dimensionIDs = cfg.getString("naquadah", "dimensionIDs", dimensionIDs);
+        dimensions = parseDimensions(dimensionIDs);
     }
 
-    String[] dimensions = dimensionIDs.split(",");
+    // The worlds it generates in, from dimensionIDs: each a dimension number, a world's name (each Sponge world has its
+    // own), or a kind of dimension (overworld, the_nether, the_end), separated by commas; or * for every world
+    static String[] dimensions = parseDimensions(dimensionIDs);
+
+    static String[] parseDimensions(String list) {
+        String[] entries = list.split(",");
+        for (int i = 0; i < entries.length; i++) {
+            entries[i] = entries[i].trim();
+        }
+        return entries;
+    }
+
+    static boolean generatesIn(World world) {
+        int dimension = world.provider.getDimension();
+        String worldName = world.getWorldInfo().getWorldName();
+        String kind = world.provider.getDimensionType().getName();
+        for (String entry : dimensions) {
+            if (entry.isEmpty()) {
+                continue;
+            }
+            if (entry.equals("*") || entry.equalsIgnoreCase(worldName) || entry.equalsIgnoreCase(kind)) {
+                return true;
+            }
+            try {
+                if (Integer.parseInt(entry) == dimension) {
+                    return true;
+                }
+            } catch (NumberFormatException ex) {
+                // a name, not a number
+            }
+        }
+        return false;
+    }
 
     public void generate(Random random, int chunkX, int chunkZ, World world,
         IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
@@ -64,14 +97,8 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
         chunk = world.getChunk(chunkX, chunkZ);
-        for (String dimension : dimensions) {
-            try {
-                if (world.provider.getDimension() == Integer.parseInt(dimension.replace(" ", "")))
-                    generateChunk();
-            }
-            catch (NumberFormatException ex){
-                //System.out.printf("NaquadahOreWorldGen:[ERROR] Entered dimension ID is not a number.\n");
-            }
+        if (generatesIn(world)) {
+            generateChunk();
         }
     }
     
@@ -87,14 +114,8 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         random.setSeed((xSeed * chunkX + zSeed * chunkZ) ^ worldSeed);
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
-        for (String dimension : dimensions) {
-            try {
-                if (world.provider.getDimension() == Integer.parseInt(dimension.replace(" ", "")))
-                    generateChunk();
-            }
-            catch (NumberFormatException ex){
-                //System.out.printf("NaquadahOreWorldGen:[ERROR] Entered dimension ID is not a number.\n");
-            }
+        if (generatesIn(world)) {
+            generateChunk();
         }
     }
     
@@ -147,7 +168,8 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
 
     void generateChunk() {
         SGChunkData.forChunk(chunk).oresGenerated = true;
-        if (odds(genUnderLavaOdds)) {
+        // Odds or a count of 0 or less turn that kind off, rather than crashing on nextInt(0)
+        if (genUnderLavaOdds > 0 && maxNodesUnderLava > 0 && odds(genUnderLavaOdds)) {
             int n = random.nextInt(maxNodesUnderLava) + 1;
             for (int i = 0; i < n; i++) {
                 int x = random.nextInt(16);
@@ -160,7 +182,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
                 }
             }
         }
-        if (genIsolatedOdds > 0 && odds(genIsolatedOdds)) {
+        if (genIsolatedOdds > 0 && maxIsolatedNodes > 0 && odds(genIsolatedOdds)) {
             int n = random.nextInt(maxIsolatedNodes) + 1;
             for (int i = 0; i < n; i++) {
                 int x = random.nextInt(16);
