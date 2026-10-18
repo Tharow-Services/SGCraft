@@ -335,6 +335,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean allowRedstoneInput = true;
     public boolean canPlayerBreakPlayerGate = false;
     public boolean canPlayerBreakGeneratedGate = false;
+    // Can't be broken at all, but by players in creative: not by survival players, explosions, withers or the dragon
+    public boolean invulnerable = false;
     public boolean displayGateAddress = true;
     public boolean isGenerated = false;
 
@@ -882,6 +884,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             this.allowRedstoneInput = cfg.getBoolean("iris", "allowRedstoneInput", this.allowRedstoneInput);
         }
 
+        this.invulnerable = nbt.getBoolean("invulnerable");
         if (nbt.hasKey("canPlayerBreakPlayerGate") && !SGCraft.forceSGBaseTEUpdate) {
             this.canPlayerBreakPlayerGate = nbt.getBoolean("canPlayerBreakPlayerGate");
         } else {
@@ -1011,6 +1014,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         nbt.setBoolean("allowRedstoneInput", this.allowRedstoneInput);
         nbt.setBoolean("canPlayerBreakPlayerGate", this.canPlayerBreakPlayerGate);
         nbt.setBoolean("canPlayerBreakGeneratedGate", this.canPlayerBreakGeneratedGate);
+        nbt.setBoolean("invulnerable", this.invulnerable);
         nbt.setBoolean("displayGateAddress", this.displayGateAddress);
         nbt.setBoolean("isGenerated", isGenerated);
 

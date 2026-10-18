@@ -370,9 +370,15 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
                 // Note: make sure the neighbor isn't also a ZpmConsoleTE otherwise a loopback is created.  This only applies to forge based power with this update method.
                 if (tile != null && (!(tile instanceof ZpmConsoleTE))) {
                     if (tile.hasCapability(CapabilityEnergy.ENERGY, side.getOpposite())) {
-                        if (tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).getEnergyStored() < tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).getMaxEnergyStored()) {
-                            int max = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).receiveEnergy(this.extractEnergy(50000, true), true); // Prevent the draw of what ever the entery is going to > than capability.
-                            tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).receiveEnergy(this.extractEnergy(max, false), false);
+                        IEnergyStorage target = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite());
+                        // Offer it what it will take, asking first: cables and conduits that pass power on report no
+                        // store of their own (0 of 0), so going by spare room would never feed them (issue #107). Only a
+                        // draw that moves something is made, as a real draw also syncs the console and checks for taint.
+                        if (target != null && target.canReceive()) {
+                            int accepted = target.receiveEnergy(this.extractEnergy(50000, true), true);
+                            if (accepted > 0) {
+                                target.receiveEnergy(this.extractEnergy(accepted, false), false);
+                            }
                         }
                     }
                 }

@@ -12,6 +12,7 @@ import gcewing.sg.interfaces.ISGBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.*;
@@ -29,6 +30,9 @@ public abstract class SGBlock<TE extends TileEntity> extends BaseBlock<TE> imple
         SGBaseTE te = getBaseTE(world, pos);
         if (te != null) {
             if (!player.capabilities.isCreativeMode) {
+                if (te.invulnerable) {
+                    return false; // only a player in creative can break an invulnerable gate
+                }
                 if (te.isConnected()) {
                     if (world.isRemote)
                         SGBaseTE.sendErrorMsg(player, "disconnectFirst");
@@ -49,6 +53,38 @@ public abstract class SGBlock<TE extends TileEntity> extends BaseBlock<TE> imple
             }
         }
         return super.removedByPlayer(state, world, pos, player, willHarvest);
+    }
+
+    // ---- An invulnerable gate (see SGBaseTE.invulnerable): like bedrock, but for players in creative ----
+
+    private boolean invulnerable(IBlockAccess world, BlockPos pos) {
+        SGBaseTE te = getBaseTE(world, pos);
+        return te != null && te.invulnerable;
+    }
+
+    // Unbreakable to survival players, who make no headway mining it (creative breaks it anyway)
+    @Override
+    public float getBlockHardness(IBlockState state, World world, BlockPos pos) {
+        return invulnerable(world, pos) ? -1 : super.getBlockHardness(state, world, pos);
+    }
+
+    @Override
+    public float getExplosionResistance(World world, BlockPos pos, Entity exploder, Explosion explosion) {
+        return invulnerable(world, pos) ? 18000000F : super.getExplosionResistance(world, pos, exploder, explosion);
+    }
+
+    // Some explosions (from other mods) remove blocks without asking how resistant they are
+    @Override
+    public void onBlockExploded(World world, BlockPos pos, Explosion explosion) {
+        if (!invulnerable(world, pos)) {
+            super.onBlockExploded(world, pos, explosion);
+        }
+    }
+
+    // Withers and the dragon
+    @Override
+    public boolean canEntityDestroy(IBlockState state, IBlockAccess world, BlockPos pos, Entity entity) {
+        return !invulnerable(world, pos) && super.canEntityDestroy(state, world, pos, entity);
     }
 
     // Middle-clicking any block of a finished gate gives the block that builds a gate like it

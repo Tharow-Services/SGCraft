@@ -41,7 +41,7 @@ public class ConfiguratorScreen extends BasicScreen {
     private UIRadioButton noBarrierRadio, irisRadio, shieldRadio;
     private UIRadioButton milkyWayGateTypeRadio, pegasusGateTypeRadio, universeGateTypeRadio, oriGateTypeRadio;
     private UICheckBox closeFromEitherEndCheckbox, preserveInventoryCheckbox, noPowerRequiredCheckbox, chevronsLockOnDialCheckbox, returnIrisToPreviousStateCheckbox;
-    private UICheckBox transientDamageCheckbox, transparencyCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox;
+    private UICheckBox transientDamageCheckbox, transparencyCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox, invulnerableCheckbox;
     private UITextField secondsToStayOpen, gateRotationSpeed, energyBufferSize, energyPerNaquadah, gateOpeningsPerNaquadah, distanceMultiplier, dimensionalMultiplier;
     private UIButton gateAddressAccessListButton, playerAccessListButton;
     // The button to the gate's linked ZPMs, its count kept up as they're unlinked (see update), and the gate
@@ -55,7 +55,7 @@ public class ConfiguratorScreen extends BasicScreen {
     private boolean secondsToStayOpenPerm, gateRotationSpeedPerm, energyBufferSizePerm, energyPerNaquadahPerm, openingsPerNaquadahPerm, distanceFactorMultiplierPerm, interDimensionalMultiplierPerm;
     private boolean oneWayTravelOnlyPerm, irisUpgradePerm, chevronUpgradePerm, pegasusGateTypePerm, reverseWormholeKillsPerm, closeFromEitherEndPerm, preserveInventoryOnIrisDeathPerm, noInputPowerRequiredPerm;
     private boolean chevronsLockOnDialPerm, returnToPreviousIrisStatePerm, transientDamagePerm, transparencyPerm, dhdAsFuelSourcePerm, allowRedstoneOutputPerm, allowRedstoneInputPerm, gateAccessPerm, playerAccessPerm;
-    private boolean playerCanDestroyPlayerGatePerm, playerCanDestroyGeneratedGatePerm, displayGateAddressPerm, isGeneratedPerm;
+    private boolean playerCanDestroyPlayerGatePerm, playerCanDestroyGeneratedGatePerm, displayGateAddressPerm, isGeneratedPerm, invulnerablePerm;
 
     //public ConfiguratorScreen(EntityPlayer player, World worldIn,  boolean isAdmin) {
     //    this.player = player;
@@ -68,7 +68,7 @@ public class ConfiguratorScreen extends BasicScreen {
             boolean distanceFactorMultiplierPerm, boolean interDimensionalMultiplierPerm, boolean oneWayTravelOnlyPerm, boolean irisUpgradePerm, boolean chevronUpgradePerm, boolean pegasusGateTypePerm, boolean reverseWormholeKillsPerm,
             boolean closeFromEitherEndPerm, boolean preserveInventoryOnIrisDeathPerm, boolean noInputPowerRequiredPerm, boolean chevronsLockOnDialPerm, boolean returnToPreviousIrisStatePerm, boolean transientDamagePerm, boolean transparencyPerm,
             boolean dhdAsFuelSourcePerm, boolean allowRedstoneOutputPerm, boolean allowRedstoneInputPerm, boolean playerCanDestroyPlayerGatePerm, boolean playerCanDestroyGeneratedGatePerm, boolean displayGateAddressPerm, boolean isGeneratedPerm,
-            boolean gateAccessPerm, boolean playerAccessPerm) {
+            boolean gateAccessPerm, boolean playerAccessPerm, boolean invulnerablePerm) {
 
         this.player = player;
         this.world = worldIn;
@@ -102,6 +102,7 @@ public class ConfiguratorScreen extends BasicScreen {
         this.isGeneratedPerm = isGeneratedPerm;
         this.gateAccessPerm = gateAccessPerm;
         this.playerAccessPerm = playerAccessPerm;
+        this.invulnerablePerm = invulnerablePerm;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
     }
 
@@ -507,10 +508,19 @@ public class ConfiguratorScreen extends BasicScreen {
         this.isGeneratedCheckbox.setName("checkbox.isgenerated");
         this.isGeneratedCheckbox.register(this);
 
+        // Only a player in creative can break it (see SGBlock)
+        this.invulnerableCheckbox = new UICheckBox(this);
+        this.invulnerableCheckbox.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.invulnerable"));
+        this.invulnerableCheckbox.setPosition(checkboxIndentPadding, this.isGeneratedCheckbox.getY() + padding, Anchor.LEFT | Anchor.TOP);
+        this.invulnerableCheckbox.setEnabled(this.invulnerablePerm);
+        this.invulnerableCheckbox.setChecked(localGate.invulnerable);
+        this.invulnerableCheckbox.setName("checkbox.invulnerable");
+        this.invulnerableCheckbox.register(this);
+
         this.checkboxOptionsArea.add(booleanValuesLabel, checkboxSeparator, this.oneWayTravelCheckbox, this.noBarrierRadio, this.irisRadio, this.shieldRadio, this.chevronUpgradeCheckbox);
         this.checkboxOptionsArea.add(this.reverseWormholeKillsCheckbox, this.closeFromEitherEndCheckbox, this.preserveInventoryCheckbox, this.noPowerRequiredCheckbox);
         this.checkboxOptionsArea.add(this.chevronsLockOnDialCheckbox, this.returnIrisToPreviousStateCheckbox, this.transientDamageCheckbox, this.transparencyCheckbox, this.useDHDFuelSourceCheckbox);
-        this.checkboxOptionsArea.add(this.allowRedstoneOutputCheckbox, this.allowRedstoneInputCheckbox, this.playerCanDestroyPlayerGateCheckbox, this.playerCanDestroyGeneratedGateCheckbox, this.displayGateAddressCheckbox, this.isGeneratedCheckbox);
+        this.checkboxOptionsArea.add(this.allowRedstoneOutputCheckbox, this.allowRedstoneInputCheckbox, this.playerCanDestroyPlayerGateCheckbox, this.playerCanDestroyGeneratedGateCheckbox, this.displayGateAddressCheckbox, this.isGeneratedCheckbox, this.invulnerableCheckbox);
 
         // Load Defaults button
         final UIButton buttonDefaults = new UIButtonBuilder(this)
@@ -573,7 +583,7 @@ public class ConfiguratorScreen extends BasicScreen {
                             this.oneWayTravelCheckbox.isChecked(), !this.noBarrierRadio.isSelected(), this.chevronUpgradeCheckbox.isChecked(), gateType, this.reverseWormholeKillsCheckbox.isChecked(), this.closeFromEitherEndCheckbox.isChecked(),
                             this.preserveInventoryCheckbox.isChecked(), this.noPowerRequiredCheckbox.isChecked(), this.chevronsLockOnDialCheckbox.isChecked(), this.returnIrisToPreviousStateCheckbox.isChecked(), this.transientDamageCheckbox.isChecked(),
                             this.transparencyCheckbox.isChecked(), orientation, this.useDHDFuelSourceCheckbox.isChecked(), this.allowRedstoneOutputCheckbox.isChecked(), this.allowRedstoneInputCheckbox.isChecked(), this.playerCanDestroyPlayerGateCheckbox.isChecked(),
-                            this.playerCanDestroyGeneratedGateCheckbox.isChecked(), this.displayGateAddressCheckbox.isChecked(), this.isGeneratedCheckbox.isChecked(), this.shieldRadio.isSelected());
+                            this.playerCanDestroyGeneratedGateCheckbox.isChecked(), this.displayGateAddressCheckbox.isChecked(), this.isGeneratedCheckbox.isChecked(), this.shieldRadio.isSelected(), this.invulnerableCheckbox.isChecked());
 
                     this.close();
                 })
@@ -769,7 +779,10 @@ public class ConfiguratorScreen extends BasicScreen {
             this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
 
             this.isGeneratedCheckbox.setChecked(localGate.isGenerated);
-            this.displayGateAddressCheckbox.setEnabled(this.displayGateAddressPerm);
+            this.isGeneratedCheckbox.setEnabled(this.isGeneratedPerm);
+
+            this.invulnerableCheckbox.setChecked(localGate.invulnerable);
+            this.invulnerableCheckbox.setEnabled(this.invulnerablePerm);
 
             lockOriSettings(selectedGateType() == GateType.ORI);
         }
