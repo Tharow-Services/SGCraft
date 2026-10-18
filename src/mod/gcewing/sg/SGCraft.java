@@ -138,6 +138,7 @@ import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.event.world.WorldEvent;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -836,6 +837,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                         ((IIntegration)om).onServerTick();
                 break;
             }
+        }
+    }
+
+    @SubscribeEvent
+    public void onWorldTick(TickEvent.WorldTickEvent e) {
+        if (e.phase == TickEvent.Phase.END && e.world instanceof WorldServer) {
+            SGChunkData.onWorldTick((WorldServer) e.world);
         }
     }
 

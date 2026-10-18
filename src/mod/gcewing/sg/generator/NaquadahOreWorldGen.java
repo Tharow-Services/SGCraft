@@ -21,6 +21,8 @@ import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import net.minecraftforge.common.config.Property;
 import net.minecraft.world.gen.IChunkGenerator;
 import net.minecraftforge.fml.common.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class NaquadahOreWorldGen implements IWorldGenerator {
 
@@ -32,6 +34,9 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
     static boolean debugLava = false;
     static boolean debugRandom = false;
     static int debugLevel = 0;
+    // Logs what adding ore to chunks made before does with each chunk, and why
+    public static boolean debugRetrogen = false;
+    static final Logger log = LogManager.getLogger("sgcraft");
 
     // Every world but Nether and End ones, by default
     static final String defaultWorlds = "*, !the_nether, !the_end";
@@ -55,6 +60,9 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         debugLava = cfg.getBoolean("naquadah", "debugLava", debugLava);
         debugRandom = cfg.getBoolean("naquadah", "debugRandom", debugRandom);
         debugLevel = cfg.getInteger("naquadah", "debugLevel", debugLevel);
+        Property debugRetro = cfg.get("naquadah", "debugRetrogen", false);
+        debugRetro.setComment("Log what adding ore to chunks made before (addToExistingChunks) does with each chunk, and why");
+        debugRetrogen = debugRetro.getBoolean(false);
 
         // The worlds it generates in were "dimensionIDs", which defaulted to dimension 0 alone, and adding ore to chunks
         // made before it was "options.addOresToExistingWorlds", off by default. They're now "worlds" and
@@ -77,6 +85,7 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         Property existing = cfg.get("naquadah", "addToExistingChunks", true);
         existing.setComment("Add naquadah ore to chunks made before (in the worlds above), once each, as they load");
         SGCraft.addOresToExistingWorlds = existing.getBoolean(true);
+        retrogenLog("worlds = %s, addToExistingChunks = %s", dimensionIDs, SGCraft.addOresToExistingWorlds);
     }
 
     // The worlds it generates in, from the "worlds" setting: each a dimension number, a world's name (each Sponge world
@@ -151,14 +160,18 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         z0 = chunkZ * 16;
         retrogen = true;
         if (!generatesIn(world)) {
+            retrogenLog("%s: not in the worlds setting, so no ore", where(chunk));
             return;
         }
         // A chunk already holding naquadah ore had it when it was made: its record of that may have been lost (chunks of
         // different worlds once shared one), and it shouldn't get a second lot
         if (hasNaquadah(chunk)) {
             SGChunkData.forChunk(chunk).oresGenerated = true;
+            retrogenLog("%s: already has naquadah ore, so none added", where(chunk));
         } else {
+            placed = 0;
             generateChunk();
+            retrogenLog("%s: added %d naquadah ore blocks", where(chunk), placed);
         }
         chunk.markDirty(); // so that it's saved as done, even with no ore placed
     }
@@ -182,6 +195,22 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
     // Where (x, z) within the chunk is in the world. The chunk passes the position it's given on to the block it replaces
     // (breakBlock) and the one it places, so it must be the real one, not the place within the chunk: a chest replaced at
     // (5, 20, 7) in any chunk would otherwise empty and remove whatever is at (5, 20, 7) in the world.
+    // Ore blocks placed in a chunk being given ore after it was made (for debugRetrogen)
+    int placed;
+
+    public static void retrogenLog(String format, Object... args) {
+        if (debugRetrogen) {
+            log.info("Naquadah retrogen: " + String.format(format, args));
+        }
+    }
+
+    // A chunk, by world and position, for retrogenLog
+    public static String where(Chunk chunk) {
+        World world = chunk.getWorld();
+        return String.format("world %s (dimension %d) chunk (%d, %d)", world.getWorldInfo().getWorldName(),
+            world.provider.getDimension(), chunk.x, chunk.z);
+    }
+
     BlockPos at(int x, int y, int z) {
         return new BlockPos(x0 + x, y, z0 + z);
     }
@@ -226,7 +255,15 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
                             if (debugRandom && debugLevel >= 2)
                                 System.out.printf("NaquadahOreWorldGen: block at (%d, %d, %d)\n",
                                     x0 + i, j, z0 + k);
-                            chunk.setBlockState(at(i, j, k), id);
+                            // A chunk made before has been loaded (SGChunkData.onWorldTick) and may already have been
+                            // sent to players, who'd never see ore put straight into it: the world sends them the change
+                            if (retrogen) {
+                                if (world.setBlockState(at(i, j, k), id, 2)) {
+                                    placed++;
+                                }
+                            } else {
+                                chunk.setBlockState(at(i, j, k), id);
+                            }
                         }
                     }
     }
