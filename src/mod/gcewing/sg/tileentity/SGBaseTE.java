@@ -588,6 +588,31 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return te instanceof SGBaseTE ? (SGBaseTE) te : null;
     }
 
+    // Why the gate this one is dialling can't go on with the dial (found as target), or null if it can: it isn't there,
+    // or no longer counts itself connected to this gate
+    private String farGateProblem(SGBaseTE target) {
+        if (connectedLocation == null) {
+            return "it no longer knows which gate it was dialling";
+        }
+        String where = String.format("%s in dimension %d", connectedLocation.pos, connectedLocation.dimension);
+        if (target == null) {
+            World farWorld = SGAddressing.getWorld(connectedLocation.dimension);
+            if (farWorld == null) {
+                return "the gate it was dialling, at " + where + ", is in a dimension that isn't registered";
+            }
+            TileEntity te = farWorld.getTileEntity(connectedLocation.pos);
+            return "the gate it was dialling, at " + where + ", isn't there (found "
+                + (te == null ? "no tile entity" : te.getClass().getSimpleName()) + ")";
+        }
+        if (target.state == SGState.Idle || target.connectedLocation == null || !target.connectedLocation.pos.equals(pos)
+                || target.connectedLocation.dimension != world.provider.getDimension()) {
+            return "the gate it was dialling, at " + where + ", is no longer connected to it (it's " + target.state
+                + (target.connectedLocation == null ? ", connected to nothing" : ", connected to " + target.connectedLocation.pos
+                + " in dimension " + target.connectedLocation.dimension) + ")";
+        }
+        return null;
+    }
+
     public static SGBaseTE at(SGLocation loc) {
         if (loc != null) {
             World world = SGAddressing.getWorld(loc.dimension);
@@ -3523,16 +3548,29 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                     case Dialling:
                         if (isInitiator) {
                             try {
+                                // The gate being dialled, which locks its symbol with this one's: if it's gone, or has
+                                // lost its side of the connection, say why (it used to stop without a word) and stop
+                                SGBaseTE targetGate = SGBaseTE.at(connectedLocation);
+                                String lost = farGateProblem(targetGate);
+                                if (lost != null) {
+                                    System.out.printf("SGCraft: gate at %s in dimension %d stopped dialling %s: %s\n",
+                                        pos, world.provider.getDimension(), dialledAddress, lost);
+                                    this.clearConnection();
+                                    this.resetStargate();
+                                    break;
+                                }
                                 char charTargetSymbol = dialledAddress.charAt(numEngagedChevrons);
                                 char charOwnSymbol = homeAddress.charAt(numEngagedChevrons);
                                 String targetSymbol = Character.toString(charTargetSymbol);
                                 String ownSymbol = Character.toString(charOwnSymbol);
                                 // Note:  CC interfaces can't use CHAR!
                                 finishDiallingSymbol(targetSymbol, true, true, !symbolsRemaining(true));
-                                SGBaseTE targetGate = SGBaseTE.at(connectedLocation);
                                 targetGate.finishDiallingSymbol(ownSymbol, false, true, !targetGate.symbolsRemaining(true));
                             }
-                            catch (Exception e) {  // Fall back.
+                            catch (Exception e) {  // Fall back, but say what went wrong
+                                System.out.printf("SGCraft: gate at %s in dimension %d stopped dialling %s after %d symbols: %s\n",
+                                    pos, world.provider.getDimension(), dialledAddress, numEngagedChevrons, e);
+                                e.printStackTrace();
                                 this.clearConnection();
                                 this.resetStargate();
                             }
