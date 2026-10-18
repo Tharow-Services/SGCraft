@@ -5,6 +5,8 @@ import static gcewing.sg.features.ic2.zpm.modulehub.ZpmHub.ZPMS;
 
 import gcewing.sg.BaseTileInventory;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
+import gcewing.sg.features.zpm.link.ZpmLink;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.tileentity.SGBaseTE;
@@ -38,7 +40,7 @@ import net.minecraftforge.energy.IEnergyStorage;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource, IEnergySource, IInventory, ITickable {
+public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergySource, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(3, ItemStack.EMPTY);
     public final BasicSource hubSource;
     public static final int firstZpmSlot = 0;
@@ -61,9 +63,28 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
 
     /* TileEntity */
 
+    // The stargate it's linked to, if any (see ZpmLinks)
+    private final ZpmLink zpmLink = new ZpmLink();
+
+    @Override
+    public ZpmLink getZpmLink() {
+        return zpmLink;
+    }
+
+    @Override
+    public boolean hasNoZpm() {
+        return isEmpty();
+    }
+
     @Override
     public void readFromNBT(final NBTTagCompound compound) {
+        // On the client, what the server sends is all it holds: a slot it leaves out is empty (the block shows what's
+        // here, see getActualState), not whatever was there before
+        if (world != null && world.isRemote) {
+            items.clear();
+        }
         super.readFromNBT(compound);
+        this.zpmLink.readFromNBT(compound);
         this.hubSource.readFromNBT(compound);
         this.zpmSlot0Energy = compound.getInteger("zpmSlot0Energy");
         this.zpmSlot1Energy = compound.getInteger("zpmSlot1Energy");
@@ -74,6 +95,7 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
         super.writeToNBT(compound);
+        this.zpmLink.writeToNBT(compound);
         this.hubSource.writeToNBT(compound);
         compound.setInteger("zpmSlot0Energy", zpmSlot0Energy);
         compound.setInteger("zpmSlot1Energy", zpmSlot1Energy);

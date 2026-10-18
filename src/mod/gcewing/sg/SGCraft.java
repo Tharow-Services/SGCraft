@@ -42,6 +42,8 @@ import gcewing.sg.features.obelisk.AsgardObeliskTE;
 import gcewing.sg.features.obelisk.AsgardObelisks;
 import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
 import gcewing.sg.features.zat.Zat;
+import gcewing.sg.features.zpm.link.ZpmLinkNetworkHandler;
+import gcewing.sg.features.zpm.link.ZpmLinks;
 import gcewing.sg.features.zat.ZatItem;
 import gcewing.sg.features.zat.ZatNetworkHandler;
 import gcewing.sg.features.cityshield.CityShieldBlock;
@@ -312,6 +314,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
         MinecraftForge.EVENT_BUS.register(AsgardObelisks.class); // beams players a moment after they touch the crystal
         MinecraftForge.EVENT_BUS.register(Zat.class); // fires zats once they've charged
+        MinecraftForge.EVENT_BUS.register(ZpmLinks.class); // linking ZPM devices to stargates by sneak-clicking
 
         super.preInit(e);
     }
@@ -325,6 +328,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         channel = new SGChannel(Info.modID);
         new SupergatePowerNetworkHandler(Info.modID + "-power");
         new ObeliskNetworkHandler(Info.modID + "-obelisk");
+        new ZpmLinkNetworkHandler(Info.modID + "-zpmlink");
         new ZatNetworkHandler(Info.modID + "-zat");
         chunkManager = new BaseTEChunkManager(this);
     }

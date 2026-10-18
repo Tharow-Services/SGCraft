@@ -44,6 +44,10 @@ public class ConfiguratorScreen extends BasicScreen {
     private UICheckBox transientDamageCheckbox, transparencyCheckbox, useDHDFuelSourceCheckbox, allowRedstoneOutputCheckbox, allowRedstoneInputCheckbox, playerCanDestroyPlayerGateCheckbox, playerCanDestroyGeneratedGateCheckbox, displayGateAddressCheckbox, isGeneratedCheckbox;
     private UITextField secondsToStayOpen, gateRotationSpeed, energyBufferSize, energyPerNaquadah, gateOpeningsPerNaquadah, distanceMultiplier, dimensionalMultiplier;
     private UIButton gateAddressAccessListButton, playerAccessListButton;
+    // The button to the gate's linked ZPMs, its count kept up as they're unlinked (see update), and the gate
+    private UIButton linkedZpmsButton;
+    private SGBaseTE linkedZpmsGate;
+    private int linkedZpmsShown = -1;
     private BlockPos location;
     private BlockPos gatePos;
     private World world;
@@ -333,7 +337,19 @@ public class ConfiguratorScreen extends BasicScreen {
                 .listener(this)
                 .build("button.playeraccesslist");
 
-        final UILabel accessControlSystemsLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.accessControlSystems") + ":");
+        // The ZPM devices linked to the gate, wherever they are (see ZpmLinks)
+        this.linkedZpmsGate = localGate;
+        this.linkedZpmsShown = localGate.linkedZpmPositions().size();
+        this.linkedZpmsButton = new UIButtonBuilder(this)
+                .width(160)
+                .anchor(Anchor.TOP | Anchor.CENTER)
+                .position(0, this.playerAccessListButton.getY() + 20)
+                .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.linkedZpms", localGate.linkedZpmPositions().size()))
+                .onClick(() -> new LinkedZpmsScreen(this, world, localGate).display())
+                .listener(this)
+                .build("button.linkedzpms");
+
+        final UILabel accessControlSystemsLabel =new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.configurator.label.accessControlSystems") + ":");
         accessControlSystemsLabel.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(true).scale(1.1F).build());
         accessControlSystemsLabel.setPosition(0, this.gateAddressAccessListButton.getY() - 20, Anchor.CENTER | Anchor.TOP);
 
@@ -346,7 +362,7 @@ public class ConfiguratorScreen extends BasicScreen {
         this.numericOptionsArea.add(numericValuesLabel, valuesSeparator, secondsToStayOpenLabel, gateRotationSpeedLabel, energyBufferMaxSizeLabel, energyPerItemLabel, energyPerOpeningLabel, distanceFactorMultiplierLabel, interDimensionalMultiplierLabel);
         this.numericOptionsArea.add(this.secondsToStayOpen, this.gateRotationSpeed, this.energyBufferSize, this.energyPerNaquadah, this.gateOpeningsPerNaquadah, this.distanceMultiplier, this.dimensionalMultiplier);
         this.numericOptionsArea.add(gateStyleLabel, gateStyleSeparator, gateTypeLabel, this.milkyWayGateTypeRadio, this.pegasusGateTypeRadio, this.universeGateTypeRadio, this.oriGateTypeRadio);
-        this.numericOptionsArea.add(this.gateAddressAccessListButton, this.playerAccessListButton, accessControlSystemsLabel, accSeparator);
+        this.numericOptionsArea.add(this.gateAddressAccessListButton, this.playerAccessListButton, this.linkedZpmsButton, accessControlSystemsLabel, accSeparator);
 
         // ****************************************************************************************************************************
 
@@ -787,6 +803,15 @@ public class ConfiguratorScreen extends BasicScreen {
 
         if (++this.lastUpdate > 30) {
             this.lastUpdate = 0;
+        }
+
+        // Its linked ZPMs, as the server last sent them: fewer after some are unlinked from their own screen
+        if (this.linkedZpmsButton != null) {
+            int linked = this.linkedZpmsGate.linkedZpmPositions().size();
+            if (linked != this.linkedZpmsShown) {
+                this.linkedZpmsShown = linked;
+                this.linkedZpmsButton.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.linkedZpms", linked));
+            }
         }
     }
 

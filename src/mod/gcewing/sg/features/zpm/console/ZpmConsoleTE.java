@@ -5,6 +5,8 @@ import static gcewing.sg.features.zpm.console.ZpmConsole.ZPM_LOADED;
 
 import gcewing.sg.BaseTileInventory;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
+import gcewing.sg.features.zpm.link.ZpmLink;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.tileentity.DHDTE;
@@ -37,7 +39,7 @@ import net.minecraftforge.energy.IEnergyStorage;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySource, IEnergyStorage, IInventory, ITickable {
+public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergyStorage, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(1, ItemStack.EMPTY);
 
     // Todo: specify console buffer
@@ -79,14 +81,34 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
         }
     }
 
+    // The stargate it's linked to, if any (see ZpmLinks)
+    private final ZpmLink zpmLink = new ZpmLink();
+
+    @Override
+    public ZpmLink getZpmLink() {
+        return zpmLink;
+    }
+
+    @Override
+    public boolean hasNoZpm() {
+        return isEmpty();
+    }
+
     @Override
     public void readFromNBT(final NBTTagCompound compound) {
+        // On the client, what the server sends is all it holds: a slot it leaves out is empty (the block shows what's
+        // here, see getActualState), not whatever was there before
+        if (world != null && world.isRemote) {
+            items.clear();
+        }
         super.readFromNBT(compound);
+        this.zpmLink.readFromNBT(compound);
     }
 
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
         super.writeToNBT(compound);
+        this.zpmLink.writeToNBT(compound);
         return compound;
     }
 

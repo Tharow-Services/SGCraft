@@ -3,6 +3,7 @@ package gcewing.sg.features.zpm.console;
 import static gcewing.sg.client.gui.SGGui.ZPMConsole;
 
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ZpmLinks;
 import gcewing.sg.features.zpm.ZPMItem;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockContainer;
@@ -23,8 +24,10 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.Explosion;
+import net.minecraft.world.ChunkCache;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 
 import java.util.ArrayList;
 
@@ -46,6 +49,9 @@ public class ZpmConsole extends BlockContainer {
 
     @Override
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
+        if (!world.isRemote) {
+            ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
+        }
         ZpmConsoleTE zpmConsole = ZpmConsoleTE.at(world, pos);
         ItemStack zpm = zpmConsole.getStackInSlot(0);
         NBTTagCompound tag = zpm.getTagCompound();
@@ -118,6 +124,18 @@ public class ZpmConsole extends BlockContainer {
     @Override
     protected boolean hasInvalidNeighbor(World worldIn, BlockPos pos) {
         return false;
+    }
+
+    // The ZPM it shows is the one in its slot, not the stored "zpm" state: that's set from whichever side last touched
+    // the slot, so can be stale (a click with the Configurator, which opens no inventory to fix it, showed it empty)
+    @Override
+    public IBlockState getActualState(IBlockState state, IBlockAccess world, BlockPos pos) {
+        TileEntity te = world instanceof ChunkCache ? ((ChunkCache) world).getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)
+            : world.getTileEntity(pos);
+        if (te instanceof ZpmConsoleTE) {
+            return state.withProperty(ZPM_LOADED, ZpmConsoleTE.isValidFuelItem(((ZpmConsoleTE) te).getStackInSlot(0)));
+        }
+        return state;
     }
 
     @Override

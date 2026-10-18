@@ -40,6 +40,7 @@ import gcewing.sg.entity.EntityStargateIris;
 import gcewing.sg.features.ic2.IC2PowerTE;
 import gcewing.sg.features.zpm.ZpmAddon;
 import gcewing.sg.features.zpm.ZpmSlotSource;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartTE;
 import gcewing.sg.features.oc.OCIntegration;
 import gcewing.sg.features.oc.OCInterfaceTE;
@@ -68,6 +69,8 @@ import net.minecraft.inventory.InventoryBasic;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagLong;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.server.MinecraftServer;
@@ -88,6 +91,7 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraft.world.EnumSkyBlock;
@@ -660,6 +664,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (nbt.hasKey("connectedLocation")) {
             connectedLocation = new SGLocation(nbt.getCompoundTag("connectedLocation"));
         }
+        linkedZpms.clear();
+        NBTTagList zpmList = nbt.getTagList("linkedZpms", Constants.NBT.TAG_LONG);
+        for (int i = 0; i < zpmList.tagCount(); i++) {
+            linkedZpms.add(BlockPos.fromLong(((NBTTagLong) zpmList.get(i)).getLong()));
+        }
         this.isInitiator = nbt.getBoolean("isInitiator");
         this.timeout = nbt.getInteger("timeout");
         this.maxTimeout = nbt.getInteger("maxTimeout");
@@ -931,6 +940,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         nbt.setLong("pegasusFillStart", pegasusFillStart);
         nbt.setLong("pegasusFillEnd", pegasusFillEnd);
         nbt.setBoolean("isLinkedToController", isLinkedToController);
+        NBTTagList zpmList = new NBTTagList();
+        for (BlockPos p : linkedZpms) {
+            zpmList.appendTag(new NBTTagLong(p.toLong()));
+        }
+        nbt.setTag("linkedZpms", zpmList);
         nbt.setInteger("linkedX", linkedPos.getX());
         nbt.setInteger("linkedY", linkedPos.getY());
         nbt.setInteger("linkedZ", linkedPos.getZ());
@@ -1060,7 +1074,67 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
         }
         sources.addAll(ZpmAddon.findZpmSources(world, pos, SGCraft.zpmSearchRange));
+        addLinkedZpms(sources);
         return sources;
+    }
+
+    // ---- ZPM devices linked to this gate (see ZpmLinks), which it draws on wherever they stand ----
+
+    private final List<BlockPos> linkedZpms = new ArrayList<>();
+
+    public void addLinkedZpm(BlockPos devicePos) {
+        if (!linkedZpms.contains(devicePos)) {
+            linkedZpms.add(devicePos.toImmutable());
+            markChanged(); // clients too: the Configurator lists them
+        }
+    }
+
+    public void removeLinkedZpm(BlockPos devicePos) {
+        if (linkedZpms.remove(devicePos)) {
+            markChanged();
+        }
+    }
+
+    // The devices still linked to it; any that are gone, or now linked elsewhere, are let go
+    public List<ILinkableZpm> linkedZpmDevices() {
+        List<ILinkableZpm> devices = new ArrayList<>();
+        for (BlockPos p : new ArrayList<>(linkedZpms)) {
+            TileEntity te = world.getTileEntity(p);
+            if (te instanceof ILinkableZpm && ((ILinkableZpm) te).getZpmLink().isLinkedTo(pos)) {
+                devices.add((ILinkableZpm) te);
+            } else {
+                removeLinkedZpm(p);
+            }
+        }
+        return devices;
+    }
+
+    // Where the devices linked to it are, as last saved or sent (on a client, for the Configurator)
+    public List<BlockPos> linkedZpmPositions() {
+        return new ArrayList<>(linkedZpms);
+    }
+
+    // Adds the linked devices with energy to sources, leaving out any already there (nearby ones are found anyway)
+    private void addLinkedZpms(List<ISGEnergySource> sources) {
+        if (linkedZpms.isEmpty() || world == null || world.isRemote) {
+            return;
+        }
+        for (ILinkableZpm device : linkedZpmDevices()) {
+            if (!device.hasNoZpm() && !sources.contains(device)) {
+                sources.add(device);
+            }
+        }
+    }
+
+    // The energy in ZPMs it can draw on: near its base, and linked to it
+    public double zpmPowerAvailable() {
+        List<ISGEnergySource> sources = new ArrayList<>(ZpmAddon.findZpmSources(world, pos, SGCraft.zpmSearchRange));
+        addLinkedZpms(sources);
+        double power = 0;
+        for (ISGEnergySource source : sources) {
+            power += source.availableEnergy();
+        }
+        return power;
     }
 
     public int zpmCount() {
@@ -1643,7 +1717,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             String destinationName = targetGate.getWorld().getWorldInfo().getWorldName().toLowerCase();
 
             if (ZpmAddon.routeRequiresZpm(originName, destinationName)) {
-                long power = (long) ZpmAddon.zpmPowerAvailable(world, this.pos, SGCraft.zpmSearchRange, false);
+                long power = (long) zpmPowerAvailable();
                 if (!(power > 0)) {
                     return diallingFailure(player, "zpmNotFound");
                 } else {
@@ -2391,7 +2465,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public void validateZPM() {
         if (this.destinationRequiresZPM && this.isConnected()) {
-            long power = (long) ZpmAddon.zpmPowerAvailable(world, this.pos, SGCraft.zpmSearchRange, false);
+            long power = (long) zpmPowerAvailable();
             if (power <= 0) {
                 // Force disconnect if a zpm was required but suddenly missing or dead.
                 this.disconnect();
@@ -2434,7 +2508,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
 
         if (this.destinationRequiresZPM) {
-            long power = (long) ZpmAddon.zpmPowerAvailable(world, this.pos, SGCraft.zpmSearchRange, false);
+            long power = (long) zpmPowerAvailable();
             if (power == 0) {
                 this.disconnect();
             }
@@ -2566,6 +2640,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 }
             }
         }
+
+        // ZPM devices linked to the gate, wherever they are
+        addLinkedZpms(result);
 
         if (te != null) {
             if (this.useDHDFuelSource) {

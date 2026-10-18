@@ -1,6 +1,7 @@
 package gcewing.sg.util;
 
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ZpmLinks;
 import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
 import gcewing.sg.block.SGBaseBlock;
@@ -163,6 +164,10 @@ public class GateUtil {
 
     // Does what right clicking the gate's base with the player's main hand does
     public static boolean activateGate(SGBaseTE gate, EntityPlayer player) {
+        // A ZPM device waiting to be linked to a gate is linked to this one instead (see ZpmLinks)
+        if (ZpmLinks.gateClicked(player, gate)) {
+            return true;
+        }
         World world = gate.getWorld();
         BlockPos pos = gate.getPos();
         IBlockState state = world.getBlockState(pos);

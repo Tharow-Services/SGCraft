@@ -7,6 +7,8 @@ import gcewing.sg.BaseTileInventory;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
+import gcewing.sg.features.zpm.link.ZpmLink;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateUtil;
@@ -39,7 +41,7 @@ import net.minecraftforge.energy.IEnergyStorage;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEnergySource, IEnergySource, IInventory, ITickable {
+public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergySource, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(1, ItemStack.EMPTY);
     public final BasicSource source;
     public static final int firstZpmSlot = 0;
@@ -58,9 +60,28 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     /* TileEntity */
 
+    // The stargate it's linked to, if any (see ZpmLinks)
+    private final ZpmLink zpmLink = new ZpmLink();
+
+    @Override
+    public ZpmLink getZpmLink() {
+        return zpmLink;
+    }
+
+    @Override
+    public boolean hasNoZpm() {
+        return isEmpty();
+    }
+
     @Override
     public void readFromNBT(final NBTTagCompound compound) {
+        // On the client, what the server sends is all it holds: a slot it leaves out is empty (the block shows what's
+        // here, see getActualState), not whatever was there before
+        if (world != null && world.isRemote) {
+            items.clear();
+        }
         super.readFromNBT(compound);
+        this.zpmLink.readFromNBT(compound);
         this.source.readFromNBT(compound);
 
     }
@@ -68,6 +89,7 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
         super.writeToNBT(compound);
+        this.zpmLink.writeToNBT(compound);
         this.source.writeToNBT(compound);
 
         return compound;
