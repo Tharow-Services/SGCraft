@@ -368,8 +368,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
         FeatureGeneration.configure(config);
 
-        // Server-Side Options
-        addOresToExistingWorlds = config.getBoolean("options", "addOresToExistingWorlds", false);
+        // (Adding ore to existing chunks is read with the ore's settings: NaquadahOreWorldGen.configure)
 
         // Client-Side Options
         useHDEventHorizionTexture = config.getBoolean("client", "useHDEventHorizonTexture", useHDEventHorizionTexture);
