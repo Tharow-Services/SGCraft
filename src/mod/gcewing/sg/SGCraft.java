@@ -122,6 +122,7 @@ import net.minecraftforge.event.terraingen.InitMapGenEvent;
 import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.ChunkWatchEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -783,6 +784,14 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                     te.disconnect();
                 }
             }
+            SGChunkData.onChunkUnload(chunk);
+        }
+    }
+
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload e) {
+        if (!e.getWorld().isRemote) {
+            SGChunkData.onWorldUnload(e.getWorld());
         }
     }
 
