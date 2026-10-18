@@ -8,6 +8,7 @@ package gcewing.sg.item;
 
 import gcewing.sg.interfaces.ISGBlock;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.GateUtil;
 import net.minecraft.block.*;
 import net.minecraft.item.*;
 import net.minecraft.entity.player.*;
@@ -29,6 +30,14 @@ public class SGIrisUpgradeItem extends Item {
                 return te.applyIrisUpgrade(player.getHeldItem(hand), player);
         }
         return EnumActionResult.FAIL;
+    }
+
+    // A click on a gate's drawn ring that missed its blocks, as most on a supergate do
+    @Override
+    public ActionResult<ItemStack> onItemRightClick(World world, EntityPlayer player, EnumHand hand) {
+        ItemStack stack = player.getHeldItem(hand);
+        SGBaseTE te = GateUtil.gateClickedOn(world, player);
+        return new ActionResult<>(te != null ? te.applyIrisUpgrade(stack, player) : EnumActionResult.PASS, stack);
     }
 
 }

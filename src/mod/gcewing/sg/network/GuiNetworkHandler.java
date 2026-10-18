@@ -1,19 +1,19 @@
 package gcewing.sg.network;
 
-import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
-
+import gcewing.sg.BaseBlockUtils;
 import gcewing.sg.BaseDataChannel;
 import gcewing.sg.SGCraft;
-import gcewing.sg.features.configurator.client.gui.ConfiguratorScreen;
 import gcewing.sg.features.gdo.client.gui.GdoScreen;
 import gcewing.sg.features.pdd.client.gui.PddScreen;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.SGAddressing;
 import gcewing.sg.util.SGState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.TextComponentString;
+
+import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 
 public class GuiNetworkHandler extends SGChannel {
 
@@ -34,12 +34,15 @@ public class GuiNetworkHandler extends SGChannel {
     @ServerMessageHandler("requestGUI")
     public void handleGUIRequestFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
-        boolean canAccessLocal = localGate.allowGateAccess(player.getName());
+        SGBaseTE localGate = loadedGateAt(player, pos);
+        if (localGate == null || !playerAtGate(player, localGate)) {
+            return; // its screens are opened at the gate
+        }
+        boolean canAccessLocal = localGate.allowGateAccess(player);
         boolean canEditRemote = false;
         if (localGate.isConnected() && localGate.state == SGState.Connected) {
             SGBaseTE remoteGate = localGate.getConnectedStargateTE();
-            canEditRemote = remoteGate.allowGateAccess(player.getName());
+            canEditRemote = remoteGate != null && remoteGate.allowGateAccess(player);
         }
         int guiType = data.readInt();
         if (guiType == 1) {
@@ -47,7 +50,7 @@ public class GuiNetworkHandler extends SGChannel {
                 if (canAccessLocal) {
                     this.openGuiAtClient(localGate, player, 1, SGCraft.hasPermission(player, "sgcraft.admin"), canAccessLocal, canEditRemote);
                 } else {
-                    sendErrorMsg(player, "insufficientGatePermission");
+                    sendErrorMsg(player, "insufficientGateAccessPermission");
                 }
             } else {
                 sendErrorMsg(player, "configuratorPermission");
@@ -66,15 +69,21 @@ public class GuiNetworkHandler extends SGChannel {
 
     public static void openGuiAtClient(SGBaseTE te, EntityPlayer player, int guiType, boolean isAdmin, boolean canEditLocal, boolean canEditRemote) {
         ChannelOutput data = guiChannel.openPlayer(player,"OpenGUI");
-        writeCoords(data, te);
+        if (te != null) {
+            writeCoords(data, te);
+            // Original Code
+        } else {
+            BaseBlockUtils.writeBlockPos(data, player.getPosition());
+            // fill in coordinate so it doesn't thrown an NPE.
+        }
         data.writeInt(guiType);
         data.writeBoolean(isAdmin);
         data.writeBoolean(canEditLocal);
         data.writeBoolean(canEditRemote);
         if (guiType == 2) {
-            data.writeBoolean(te.isConnected() && te.state == SGState.Connected);
-            if (te.isConnected() && te.state == SGState.Connected) {
-                SGBaseTE remoteGate = te.getConnectedStargateTE();
+            SGBaseTE remoteGate = te.isConnected() && te.state == SGState.Connected ? te.getConnectedStargateTE() : null;
+            data.writeBoolean(remoteGate != null);
+            if (remoteGate != null) {
                 data.writeBoolean(remoteGate.hasIrisUpgrade);
                 data.writeBoolean(remoteGate.hasChevronUpgrade);
                 data.writeBoolean(remoteGate.irisIsClosed());
@@ -127,6 +136,9 @@ public class GuiNetworkHandler extends SGChannel {
         }
         if (guiType == 3) {
             new PddScreen(player, player.world, pos, isAdmin).display();
+        }
+        if (guiType == 4) {
+            new PddScreen(player, player.world, pos, isAdmin, true).display();
         }
     }
 }

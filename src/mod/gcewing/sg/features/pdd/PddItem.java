@@ -1,7 +1,5 @@
 package gcewing.sg.features.pdd;
 
-import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
-
 import gcewing.sg.SGCraft;
 import gcewing.sg.features.pdd.network.PddNetworkHandler;
 import gcewing.sg.network.GuiNetworkHandler;
@@ -22,9 +20,10 @@ import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
-import javax.annotation.Nullable;
+import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 
 public class PddItem extends Item {
 
@@ -53,20 +52,20 @@ public class PddItem extends Item {
                 player.inventoryContainer.detectAndSendChanges();
             }
 
-            TileEntity localGateTE = GateUtil.locateLocalGate(worldIn, new BlockPos(player.posX, player.posY, player.posZ), SGCraft.toolSearchRange, false);
+            TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, SGCraft.toolSearchRange);
 
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;
 
-                boolean canEditLocal = localGate.allowGateAccess(player.getName());
+                boolean canEditLocal = localGate.allowGateAccess(player);
                 boolean canEditRemote = false;
                 if (localGate.isConnected() && localGate.state == SGState.Connected) {
                     SGBaseTE remoteGate = localGate.getConnectedStargateTE();
                     if (remoteGate != null) {
-                        canEditRemote = remoteGate.allowGateAccess(player.getName());
+                        canEditRemote = remoteGate.allowGateAccess(player);
                     }
                 }
-
+                // This will return false always unless it detects a permissions plugin AND has sgcraft.admin.
                 boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
 
                 if (SGCraft.hasPermission(player, "sgcraft.gui.pdd")) {
@@ -77,18 +76,19 @@ public class PddItem extends Item {
                             if (addresses.stream().noneMatch(data -> data.getAddress().replaceAll("-", "").equalsIgnoreCase(localGateAddress))) {
                                 PddNetworkHandler.addPddEntryFromServer(player, localGateAddress, addresses.size() + 10);
                             } else {
-                                sendErrorMsg(player, "pddContainsAddress");
+                                AddressData currentAddressData = addresses.stream().filter(data -> data.getAddress().replaceAll("-", "").equalsIgnoreCase(localGate.homeAddress.toUpperCase())).findFirst().get();
+                                PddNetworkHandler.editPddEntryFromServer(player, localGateAddress, currentAddressData.getName(), currentAddressData.getIndex(), currentAddressData.getUnid(), currentAddressData.isAutoClose());
                             }
                         } else {
                             sendErrorMsg(player, "gateAddressHidden");
                         }
                     } else {
-                        if (localGate.allowGateAccess(player.getName()) || isPermissionsAdmin){
+                        if (localGate.allowGateAccess(player) || isPermissionsAdmin){
                             GuiNetworkHandler.openGuiAtClient(localGate, player, 3, isPermissionsAdmin, canEditLocal, canEditRemote);
                         } else {
                             if (!SGCraft.hasPermission(player, "sgcraft.gui.pdd"))
                                 sendErrorMsg(player, "pddPermission");
-                            if (!localGate.allowGateAccess(player.getName()))
+                            if (!localGate.allowGateAccess(player))
                                 sendErrorMsg(player, "insufficientPlayerAccessPermission");
                         }
                     }
@@ -98,8 +98,8 @@ public class PddItem extends Item {
 
                 return new ActionResult<>(EnumActionResult.PASS, player.getHeldItem(handIn));  //Both Server & Client expect a returned value.
             } else {
-                sendErrorMsg(player, "cantFindStargate");
-                return new ActionResult<>(EnumActionResult.FAIL, player.getHeldItem(handIn));
+                // Open GUI so that the player can edit the PDD without being near a Stargate.
+                GuiNetworkHandler.openGuiAtClient(null, player, 3, false, false, false);
             }
         }
 

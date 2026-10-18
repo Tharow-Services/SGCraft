@@ -8,6 +8,7 @@ package gcewing.sg;
 
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.features.cityshield.CityShieldChunks;
 import gcewing.sg.tileentity.SGInterfaceTE;
 import gcewing.sg.tileentity.SGRingTE;
 import net.minecraft.nbt.NBTTagCompound;
@@ -19,6 +20,8 @@ import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.ForgeChunkManager.Ticket;
 import net.minecraftforge.common.ForgeChunkManager.Type;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
@@ -60,6 +63,9 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
                             System.out.printf("%s: BaseTEChunkManager.ticketsLoaded: : Unable to reinstate ticket\n", base.modPackage);
                         ForgeChunkManager.releaseTicket(ticket);
                     }
+                }
+                else if (nbt.getString("type").equals(CityShieldChunks.TICKET_TYPE)) {
+                    CityShieldChunks.ticketLoaded(ticket, world);
                 }
         }
     }
@@ -105,24 +111,37 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
         BlockPos pos = te.getPos();
         int chunkX = pos.getX() >> 4;
         int chunkZ = pos.getZ() >> 4;
-        for (int i = minX; i <= maxX; i++)
-            for (int j = minZ; j <= maxZ; j++) {
-                int x = chunkX + i, z = chunkZ + j;
-                if (debug) {
-                    System.out.println("Created chunk ticket at: " + x + "/" + z + " for: " + te + " with ticket: " + ticket);
-                }
-                if (ticket.world == null) {
-                    if (debug) {
-                        System.out.println("World is null in chunk ticket!!!");
-                    }
-                    return;
-                }
-                if (debug) {
-                    System.out.println("Ticket World: " + ticket.world);
-                    System.out.println("Ticket Size: " + ticket.getChunkList().size());
-                }
-                ForgeChunkManager.forceChunk(ticket, new ChunkPos(x, z));
+        if (ticket.world == null) {
+            if (debug) {
+                System.out.println("World is null in chunk ticket!!!");
             }
+            return;
+        }
+        // A ticket holds only so many chunks (forgeChunkLoading.cfg, 25 by default), and Forge lets go of the first
+        // forced to make room for more. So force the farthest first and the tile entity's own chunk last, and no more
+        // than the ticket holds: if the range is too big, the outer chunks go, never the one it stands in.
+        List<ChunkPos> chunks = new ArrayList<>();
+        for (int i = minX; i <= maxX; i++)
+            for (int j = minZ; j <= maxZ; j++)
+                chunks.add(new ChunkPos(chunkX + i, chunkZ + j));
+        chunks.sort(Comparator.comparingInt((ChunkPos c) -> -distanceSq(c, chunkX, chunkZ)));
+        int depth = ticket.getChunkListDepth();
+        if (depth > 0 && chunks.size() > depth) {
+            System.out.printf("SGCraft: %s at %s wants %d chunks loaded, but a chunk ticket holds only %d; keeping the nearest\n",
+                te.getClass().getSimpleName(), pos, chunks.size(), depth);
+            chunks = chunks.subList(chunks.size() - depth, chunks.size());
+        }
+        for (ChunkPos chunk : chunks) {
+            if (debug) {
+                System.out.println("Forcing chunk " + chunk + " for: " + te + " with ticket: " + ticket + " (" + ticket.getChunkList().size() + " so far)");
+            }
+            ForgeChunkManager.forceChunk(ticket, chunk);
+        }
+    }
+
+    private static int distanceSq(ChunkPos c, int chunkX, int chunkZ) {
+        int dx = c.x - chunkX, dz = c.z - chunkZ;
+        return dx * dx + dz * dz;
     }
 
     protected Ticket getChunkTicket(BaseTileEntity te) {
@@ -147,6 +166,11 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
                 System.out.printf("BaseChunkLoadingTE: Reinstating chunk ticket %s\n", ticket);
             te.chunkTicket = ticket;
             forceChunkRangeOnTicket(te, ticket);
+            // Only while it needs them: a gate that was idle (or had gone idle) lets them go, where they used to stay
+            // loaded until its next dial
+            if (te instanceof gcewing.sg.tileentity.SGBaseTE) {
+                ((gcewing.sg.tileentity.SGBaseTE) te).updateChunkLoadingStatus();
+            }
             return true;
         }
         else

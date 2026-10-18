@@ -30,9 +30,12 @@ import gcewing.sg.BaseUtils;
 import gcewing.sg.tileentity.SGBaseTE;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.util.text.TextComponentString;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.gen.ChunkProviderServer;
 
 import javax.annotation.Nullable;
 
@@ -297,19 +300,36 @@ public class SGAddressing {
         }
     }
     
+    // The stargate in the chunk an address names: a complete one first, as a lone base block put in the same chunk would
+    // otherwise take the gate's dials, or hide it. Looking leaves the chunk as it was: one never generated isn't made
+    // just to look in (no gate can be there), and one loaded only to look in is let go again, unless a dial keeps it (the
+    // gate then holds it with a ticket) or a player is there. Computers asking about addresses over and over were
+    // keeping chunks loaded that way, and making new ones (issue #163). (A gate found is no longer marked pending here:
+    // connect does that for a gate it dials, and a lookup that didn't dial left the gate unable to be removed.)
     protected static SGBaseTE getBaseTE(int chunkX, int chunkZ, int dimension, boolean pending) {
-        World toWorld = getWorld(dimension);
-        if (toWorld != null) {
-            Chunk chunk = toWorld.getChunk(chunkX, chunkZ);
-            if (chunk != null)
-                for (Object te : chunk.getTileEntityMap().values()) {
-                    if (te instanceof SGBaseTE) {
-                        ((SGBaseTE) te).isPending = pending;
-                        return (SGBaseTE) te;
-                    }
-                }
+        WorldServer toWorld = getWorld(dimension);
+        if (toWorld == null) {
+            return null;
         }
-        return null;
+        ChunkProviderServer provider = toWorld.getChunkProvider();
+        Chunk chunk = provider.loadedChunks.get(ChunkPos.asLong(chunkX, chunkZ)); // loaded, without keeping it so
+        boolean wasLoaded = chunk != null;
+        if (!wasLoaded) {
+            if (!provider.isChunkGeneratedAt(chunkX, chunkZ)) {
+                return null;
+            }
+            chunk = toWorld.getChunk(chunkX, chunkZ);
+        }
+        SGBaseTE found = null;
+        for (TileEntity te : chunk.getTileEntityMap().values()) {
+            if (te instanceof SGBaseTE && (found == null || ((SGBaseTE) te).isMerged && !found.isMerged)) {
+                found = (SGBaseTE) te;
+            }
+        }
+        if (!wasLoaded && !toWorld.getPlayerChunkMap().contains(chunkX, chunkZ)) {
+            provider.queueUnload(chunk);
+        }
+        return found;
     }
     
     protected static int permuteDimension(long c, int d) {

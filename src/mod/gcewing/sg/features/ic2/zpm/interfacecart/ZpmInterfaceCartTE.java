@@ -7,6 +7,8 @@ import gcewing.sg.BaseTileInventory;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
+import gcewing.sg.features.zpm.link.ZpmLink;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateUtil;
@@ -32,18 +34,25 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.energy.CapabilityEnergy;
+import net.minecraftforge.energy.IEnergyStorage;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEnergySource, IEnergySource, IInventory, ITickable {
+public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergySource, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(1, ItemStack.EMPTY);
     public final BasicSource source;
     public static final int firstZpmSlot = 0;
     public static final int numZpmSlots = 1;
     public static final int numSlots = numZpmSlots; // future usage > 1
 
-    private double energyPerSGEnergyUnit = 80;
     private int update = 0;
+
+    // Same per-call cap as the ZPM console.
+    private static final int maxForgeEnergyExtract = 5000;
+    private final IEnergyStorage forgeEnergy = new ForgeEnergyAdapter();
 
     public ZpmInterfaceCartTE() {
         this.source = new ZpmInterfaceCartBasicSource(this, Integer.MAX_VALUE, 3);
@@ -51,16 +60,44 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     /* TileEntity */
 
+    // The stargate it's linked to, if any (see ZpmLinks)
+    private final ZpmLink zpmLink = new ZpmLink();
+
+    @Override
+    public ZpmLink getZpmLink() {
+        return zpmLink;
+    }
+
+    @Override
+    public boolean hasNoZpm() {
+        return isEmpty();
+    }
+
     @Override
     public void readFromNBT(final NBTTagCompound compound) {
-        super.readFromNBT(compound);
-        this.source.readFromNBT(compound);
+        // On the client, what the server sends is all it holds: a slot it leaves out is empty (the block shows what's
+        // here, see getActualState), not whatever was there before
+        if (world != null && world.isRemote) {
+            items.clear();
+        }
+        reading = true;
+        try {
+            super.readFromNBT(compound);
+        } finally {
+            reading = false;
+        }
+        this.zpmLink.readFromNBT(compound);
+        this.source.readFromNBT(compound); // the energy of the ZPM put back in its slot
 
     }
+
+    // Reading saved data, which puts the ZPM back in its slot; its energy is the source's own (see readFromNBT)
+    private boolean reading = false;
 
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
         super.writeToNBT(compound);
+        this.zpmLink.writeToNBT(compound);
         this.source.writeToNBT(compound);
 
         return compound;
@@ -73,6 +110,89 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
         }
 
         this.source.update();
+        pushForgeEnergy();
+    }
+
+    // Feed neighbouring Forge Energy acceptors (EnderIO conduits, RF/FE machines) alongside the IC2 network.
+    private void pushForgeEnergy() {
+        if (this.source.getEnergyStored() <= 0) {
+            return;
+        }
+        for (EnumFacing side : EnumFacing.values()) {
+            TileEntity tile = this.world.getTileEntity(this.pos.offset(side));
+            if (tile == null || tile instanceof ZpmInterfaceCartTE || !tile.hasCapability(CapabilityEnergy.ENERGY, side.getOpposite())) {
+                continue;
+            }
+            IEnergyStorage acceptor = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite());
+            if (acceptor == null || !acceptor.canReceive()) {
+                continue;
+            }
+            int accepted = acceptor.receiveEnergy(this.forgeEnergy.extractEnergy(maxForgeEnergyExtract, true), true);
+            if (accepted > 0) {
+                acceptor.receiveEnergy(this.forgeEnergy.extractEnergy(accepted, false), false);
+            }
+        }
+    }
+
+    @Override
+    public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
+        return capability == CapabilityEnergy.ENERGY || super.hasCapability(capability, facing);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    @Nullable
+    public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
+        if (capability == CapabilityEnergy.ENERGY) {
+            return (T) this.forgeEnergy;
+        }
+        return super.getCapability(capability, facing);
+    }
+
+    /**
+     * Extract-only Forge Energy view of the IC2 buffer, converting at {@link SGCraft#Ic2FEPerEU}.
+     */
+    private class ForgeEnergyAdapter implements IEnergyStorage {
+        @Override
+        public int receiveEnergy(int maxReceive, boolean simulate) {
+            return 0;
+        }
+
+        @Override
+        public int extractEnergy(int maxExtract, boolean simulate) {
+            double ratio = SGCraft.Ic2FEPerEU;
+            if (ratio <= 0 || maxExtract <= 0) {
+                return 0;
+            }
+            int fe = (int) Math.min(Math.min(maxExtract, maxForgeEnergyExtract), Math.floor(source.getEnergyStored() * ratio));
+            if (fe <= 0) {
+                return 0;
+            }
+            if (!simulate) {
+                drawEnergy(fe / ratio); // goes through the taint check and markChanged
+            }
+            return fe;
+        }
+
+        @Override
+        public int getEnergyStored() {
+            return (int) Math.min(Integer.MAX_VALUE, source.getEnergyStored() * SGCraft.Ic2FEPerEU);
+        }
+
+        @Override
+        public int getMaxEnergyStored() {
+            return (int) Math.min(Integer.MAX_VALUE, source.getCapacity() * SGCraft.Ic2FEPerEU);
+        }
+
+        @Override
+        public boolean canExtract() {
+            return true;
+        }
+
+        @Override
+        public boolean canReceive() {
+            return false;
+        }
     }
 
     @Override
@@ -107,8 +227,14 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     /* Energy */
 
+    // In SGCraft energy units, as every ISGEnergySource gives it, not the ZPM energy it holds
     @Override
     public double availableEnergy() {
+        return this.source.getEnergyStored() / SGCraft.ZPMEnergyPerSGEnergyUnit;
+    }
+
+    // The ZPM energy it holds, for its screen
+    public double storedZpmEnergy() {
         return this.source.getEnergyStored();
     }
 
@@ -119,9 +245,9 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     @Override
     public double drawEnergyDouble(double amount) {
-        double available = this.source.getEnergyStored();
+        double available = availableEnergy();
         double supply = min(amount, available);
-        this.source.drawEnergy(supply * energyPerSGEnergyUnit);
+        this.source.drawEnergy(supply * SGCraft.ZPMEnergyPerSGEnergyUnit);
 
         if (isTainted(this.getStackInSlot(0))) {
             world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
@@ -195,60 +321,17 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     @Override
     public ItemStack removeStackFromSlot(final int index) {
-        final ItemStack item = ItemStackHelper.getAndSplit(this.items, 0, 1);
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
-        }
-
-        if(tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.source.setEnergyStored(0);
-        }
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other, 3);
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
-        return ItemStackHelper.getAndRemove(this.items, 0);
+        return decrStackSize(index, 1);
     }
 
+    // The ZPM, with what's left of its energy (see setInventorySlotContents)
     @Override
     public ItemStack decrStackSize(final int index, final int quantity) {
-        final ItemStack item = ItemStackHelper.getAndRemove(this.items, 0);
-
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
+        final ItemStack item = this.items.get(0);
+        if (item.isEmpty() || quantity <= 0) {
+            return ItemStack.EMPTY;
         }
-
-        if(tag != null && tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.source.setEnergyStored(0);
-        }
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other, 3);
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
+        setInventorySlotContents(0, ItemStack.EMPTY);
         return item;
     }
 
@@ -263,32 +346,51 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
         }
     }
 
+    // A ZPM's energy goes into the source as it goes into the slot, and what's left goes back onto it as it leaves,
+    // however it leaves: taken, shift-clicked, swapped with a hotbar key or for the stack on the cursor, or by another
+    // mod. Only one taken through decrStackSize used to get it back, so a ZPM swapped out kept the energy it went in
+    // with while the cart kept supplying it too: endless energy. (On a client the server's sync sets the source.)
     @Override
     public void setInventorySlotContents(final int index, final ItemStack item) {
-        this.items.set(0, item);
-        if (isValidFuelItem(item)) {
-            NBTTagCompound tag = item.getTagCompound();
-
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                item.setTagCompound(tag);
+        final ItemStack old = this.items.get(0);
+        final boolean server = world != null && !world.isRemote && !reading;
+        if (server && old != item) {
+            if (isValidFuelItem(old)) {
+                NBTTagCompound tag = old.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    old.setTagCompound(tag);
+                }
+                tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
+                tag.setBoolean(ZPMItem.LOADED, false);
             }
-
-            tag.setBoolean(ZPMItem.LOADED, true);
-
-            if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
-                this.source.setCapacity(Integer.MAX_VALUE);
-                this.source.setEnergyStored(tag.getDouble(ZPMItem.ENERGY));
-            } else {
-                this.source.setEnergyStored(tag.getDouble(ZPMItem.ENERGY));
+            this.source.setEnergyStored(0);
+            if (isValidFuelItem(item)) {
+                NBTTagCompound tag = item.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    item.setTagCompound(tag);
+                }
+                if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
+                    tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
+                }
+                tag.setBoolean(ZPMItem.LOADED, true);
+                this.source.setCapacity(Math.max(this.source.getCapacity(), tag.getDouble(ZPMItem.ENERGY)));
+                this.source.setEnergyStored(Math.max(0, tag.getDouble(ZPMItem.ENERGY)));
             }
         }
+        this.items.set(0, item);
 
-        if (world != null){ // This will be null both on the server AND client at time, no idea why....
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, isValidFuelItem(item));
-            world.setBlockState(pos, other, 3);
+        if (world != null) {
+            // Only while it's still a cart: this also runs as it's broken (see ZpmInterfaceCart.breakBlock)
+            IBlockState state = world.getBlockState(pos);
+            if (state.getBlock() instanceof ZpmInterfaceCart && state.getValue(ZPM_LOADED) != isValidFuelItem(item)) {
+                world.setBlockState(pos, state.withProperty(ZPM_LOADED, isValidFuelItem(item)), 3);
+            }
             markChanged();
+        }
+        if (server && item.isEmpty() && !old.isEmpty()) {
+            pingSGBaseTE();
         }
     }
 

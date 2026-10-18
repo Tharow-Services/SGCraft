@@ -10,6 +10,7 @@ import gcewing.sg.BaseContainer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
@@ -70,11 +71,20 @@ public class ZpmConsoleContainer extends BaseContainer {
                     else
                         slot.onSlotChanged();
                 } else {
-                    player.inventory.addItemStackToInventory(te.decrStackSize(0, 1));
+                    // Back in its slot if the player has no room for it, rather than lost
+                    ItemStack zpm = te.decrStackSize(0, 1);
+                    if (!zpm.isEmpty() && !player.inventory.addItemStackToInventory(zpm)) {
+                        te.setInventorySlotContents(0, zpm);
+                    }
                 }
             }
         }
         return result;
+    }
+
+    @Override
+    protected TileEntity tileEntity() {
+        return te;
     }
 
 

@@ -10,24 +10,16 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.block.BlockStairs;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.block.BlockStairs.EnumShape;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraft.world.gen.structure.StructureComponent;
-import net.minecraft.world.gen.structure.template.TemplateManager;
 
 import java.util.Random;
 
 public class FeatureJungleTemple extends FeatureStargate {
-    @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
-
-    @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
-
     public FeatureJungleTemple() {}
 
     public FeatureJungleTemple(StructureComponent base) {
@@ -35,12 +27,12 @@ public class FeatureJungleTemple extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.jungleAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.jungleChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.jungleZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.jungleAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.jungleChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.jungleZpmChestChance;
         generateTokra = FeatureGeneration.jungleSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureJungleTemple with GenerateStructure: " + generateStructure);
@@ -95,30 +87,21 @@ public class FeatureJungleTemple extends FeatureStargate {
             System.out.println ("SGCraft: Jungle Temple got a gate at " + centerPos + ", facing " + spawnDirection);
     }
 
-    @Override
-    public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
-    }
-
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
         if ((pass == 3) && (FeatureGeneration.debugStructures))
             System.out.printf("SGCraft: FeatureJungleTemple.addComponentParts in %s clipped to %s\n", getBoundingBox(), clip);
 
-        if (base == null) {
-            System.out.printf("SGCraft: FeatureJungleTemple.addComponentParts: no base\n");
-            return false;
-        }
-
-        // TODO: Find a better way to determine the Jungle Temple's top Y before it generates. This is ugly.
-        // NOTE: Found the same sort of check in Immersive Engineering, used in the Village Engineer's House.
-        //       I don't feel so bad now.
+        // Our base Y level is 5 below the temple's roof, which is 9 above the temple's floor across its middle. The
+        // temple comes before this piece in the structure, so it has already been moved to the ground it stands on (when
+        // the first of its chunks is generated). This used to look down the middle of the temple for its roof, which
+        // made Minecraft generate the chunk there when it wasn't generated yet.
         if (firstY == -1) {
-            int tempY = FeatureStargate.getJungleTempleTop (world, centerPos) - 5;
-
-            if (tempY < 0)
+            if (base == null) {
+                System.out.printf("SGCraft: FeatureJungleTemple.addComponentParts: no base\n");
                 return true;
+            }
 
-            firstY = tempY;
+            firstY = base.getBoundingBox().minY + 9 - 5;
             boundingBox.minY = firstY;
 
             gatePos = new BlockPos (boundingBox.minX + gateX, boundingBox.minY + gateY, boundingBox.minZ + gateZ);

@@ -1,6 +1,7 @@
 package gcewing.sg.features.ic2.zpm.interfacecart;
 
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ZpmLinks;
 import gcewing.sg.client.gui.SGGui;
 import gcewing.sg.features.zpm.ZPMItem;
 import net.minecraft.block.Block;
@@ -20,10 +21,13 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.Explosion;
+import net.minecraft.world.ChunkCache;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 
 import java.util.ArrayList;
 
@@ -32,6 +36,10 @@ import javax.annotation.Nullable;
 public class ZpmInterfaceCart extends BlockContainer {
 
     public static final PropertyBool ZPM_LOADED = PropertyBool.create("zpm");
+
+    // Matches the model, which is full width and height but only spans pixels 4-12 front to back.
+    private static final AxisAlignedBB NORTH_SOUTH_AABB = new AxisAlignedBB(0.0D, 0.0D, 0.25D, 1.0D, 1.0D, 0.75D);
+    private static final AxisAlignedBB EAST_WEST_AABB = new AxisAlignedBB(0.25D, 0.0D, 0.0D, 0.75D, 1.0D, 1.0D);
 
     public ZpmInterfaceCart() {
         super(Material.IRON);
@@ -45,24 +53,18 @@ public class ZpmInterfaceCart extends BlockContainer {
 
     @Override
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
-        ZpmInterfaceCartTE zpmCart = ZpmInterfaceCartTE.at(world, pos);
-        ItemStack zpm = zpmCart.getStackInSlot(0);
-        NBTTagCompound tag = zpm.getTagCompound();
-
-        if (zpmCart != null) {
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                zpm.setTagCompound(tag);
+        if (!world.isRemote) {
+            ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
+            // Taken out of its slot, with its energy, before it's dropped: left in, a screen still open on the cart could
+            // take it a second time
+            ZpmInterfaceCartTE zpmCart = ZpmInterfaceCartTE.at(world, pos);
+            if (zpmCart != null) {
+                ItemStack zpm = zpmCart.removeStackFromSlot(0);
+                if (!zpm.isEmpty()) {
+                    Block.spawnAsEntity(world, pos, zpm);
+                }
             }
-
-            if (tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, zpmCart.source.getEnergyStored());
-                tag.setBoolean(ZPMItem.LOADED, false);
-                zpmCart.source.setEnergyStored(0);
-            }
-
         }
-        Block.spawnAsEntity(world, pos, zpm);
         super.breakBlock(world, pos, state);
     }
 
@@ -75,6 +77,18 @@ public class ZpmInterfaceCart extends BlockContainer {
     @Override
     public boolean isFullBlock(IBlockState state) { //Render surrounding blocks which connect..
         return false;
+    }
+
+    @Deprecated
+    @Override
+    public boolean isFullCube(IBlockState state) {
+        return false;
+    }
+
+    @Deprecated
+    @Override
+    public AxisAlignedBB getBoundingBox(IBlockState state, IBlockAccess source, BlockPos pos) {
+        return state.getValue(BlockHorizontal.FACING).getAxis() == EnumFacing.Axis.X ? EAST_WEST_AABB : NORTH_SOUTH_AABB;
     }
 
     @Override
@@ -117,6 +131,18 @@ public class ZpmInterfaceCart extends BlockContainer {
     @Override
     protected boolean hasInvalidNeighbor(World worldIn, BlockPos pos) {
         return false;
+    }
+
+    // The ZPM it shows is the one in its slot, not the stored "zpm" state: that's set from whichever side last touched
+    // the slot, so can be stale (a click with the Configurator, which opens no inventory to fix it, showed it empty)
+    @Override
+    public IBlockState getActualState(IBlockState state, IBlockAccess world, BlockPos pos) {
+        TileEntity te = world instanceof ChunkCache ? ((ChunkCache) world).getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)
+            : world.getTileEntity(pos);
+        if (te instanceof ZpmInterfaceCartTE) {
+            return state.withProperty(ZPM_LOADED, ZpmInterfaceCartTE.isValidFuelItem(((ZpmInterfaceCartTE) te).getStackInSlot(0)));
+        }
+        return state;
     }
 
     @Override

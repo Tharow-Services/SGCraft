@@ -5,6 +5,8 @@ import static gcewing.sg.features.zpm.console.ZpmConsole.ZPM_LOADED;
 
 import gcewing.sg.BaseTileInventory;
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ILinkableZpm;
+import gcewing.sg.features.zpm.link.ZpmLink;
 import gcewing.sg.features.zpm.ZPMItem;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.tileentity.DHDTE;
@@ -37,7 +39,7 @@ import net.minecraftforge.energy.IEnergyStorage;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySource, IEnergyStorage, IInventory, ITickable {
+public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergyStorage, IInventory, ITickable {
     private NonNullList<ItemStack> items = NonNullList.withSize(1, ItemStack.EMPTY);
 
     // Todo: specify console buffer
@@ -54,12 +56,20 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
     public boolean loaded = false;
     private boolean debugOutput = false;
     private int maxExtract = 5000;
+    // Reading saved data, which puts the ZPM back in its slot with its energy already in the storage
+    private boolean reading = false;
 
-    public ZpmConsoleTE() {}
+    public ZpmConsoleTE() {
+        this.storage = emptyStorage(0);
+    }
 
     public ZpmConsoleTE(double zpmEnergyPerSGEnergyUnit) {
         this.energyPerSGEnergyUnit = zpmEnergyPerSGEnergyUnit;
-        this.storage =  new EnergyStorage((int)maxEnergyBufferSize, maxInput, maxOutput);
+        this.storage = emptyStorage(0);
+    }
+
+    private EnergyStorage emptyStorage(int energy) {
+        return new EnergyStorage((int) maxEnergyBufferSize, maxInput, maxOutput, energy);
     }
 
     /* TileEntity */
@@ -75,18 +85,44 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
 
         if (SGCraft.forceZPMCfgUpdate) {
             energyPerSGEnergyUnit = SGCraft.ZPMEnergyPerSGEnergyUnit;
-            this.storage = new EnergyStorage((int)maxEnergyBufferSize);
+            this.storage = emptyStorage(this.storage.getEnergyStored()); // the ZPM in it keeps its energy
         }
+    }
+
+    // The stargate it's linked to, if any (see ZpmLinks)
+    private final ZpmLink zpmLink = new ZpmLink();
+
+    @Override
+    public ZpmLink getZpmLink() {
+        return zpmLink;
+    }
+
+    @Override
+    public boolean hasNoZpm() {
+        return isEmpty();
     }
 
     @Override
     public void readFromNBT(final NBTTagCompound compound) {
-        super.readFromNBT(compound);
+        // On the client, what the server sends is all it holds: a slot it leaves out is empty (the block shows what's
+        // here, see getActualState), not whatever was there before
+        if (world != null && world.isRemote) {
+            items.clear();
+        }
+        reading = true;
+        try {
+            super.readFromNBT(compound);
+        } finally {
+            reading = false;
+        }
+        this.loaded = isValidFuelItem(items.get(0));
+        this.zpmLink.readFromNBT(compound);
     }
 
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
         super.writeToNBT(compound);
+        this.zpmLink.writeToNBT(compound);
         return compound;
     }
 
@@ -155,67 +191,17 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
 
     @Override
     public ItemStack removeStackFromSlot(final int index) {
-        final ItemStack item = ItemStackHelper.getAndSplit(this.items, 0, 1);
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
-        }
-
-        if(tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            tag.setDouble(ZPMItem.ENERGY, this.storage.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.storage =  new EnergyStorage((int)maxEnergyBufferSize, maxInput, maxOutput);
-        }
-        this.loaded = false;
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other, 3);
-        }
-
-        markDirty();
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
-        return ItemStackHelper.getAndRemove(this.items, 0);
+        return decrStackSize(index, 1);
     }
 
+    // The ZPM, with what's left of its energy (see setInventorySlotContents)
     @Override
     public ItemStack decrStackSize(final int index, final int quantity) {
-        final ItemStack item = ItemStackHelper.getAndRemove(this.items, 0);
-        IInventory inventory = getInventory();
-        if(!item.isEmpty()) {
-            this.markDirty();
+        final ItemStack item = this.items.get(0);
+        if (item.isEmpty() || quantity <= 0) {
+            return ItemStack.EMPTY;
         }
-
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
-        }
-
-        if(tag != null && tag.hasKey(ZPMItem.ENERGY, 99)) {
-            tag.setDouble(ZPMItem.ENERGY, this.storage.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.storage =  new EnergyStorage((int)maxEnergyBufferSize, maxInput, maxOutput);
-
-        }
-        this.loaded = false;
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other,  3);
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
-        markDirty();
+        setInventorySlotContents(0, ItemStack.EMPTY);
         return item;
     }
 
@@ -230,39 +216,57 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
        }
     }
 
+    // A ZPM's energy goes into the storage as it goes into the slot, and what's left goes back onto it as it leaves,
+    // however it leaves: taken, shift-clicked, swapped with a hotbar key or for the stack on the cursor, or by another
+    // mod. Only one taken through decrStackSize used to get it back, so a ZPM swapped out kept the energy it went in
+    // with while the console kept supplying it too: endless energy. (On a client the server's sync sets the storage.)
     @Override
     public void setInventorySlotContents(final int index, final ItemStack item) {
-        this.items.set(0, item);
-
-        if (world != null && isValidFuelItem(item) && !this.loaded) {
-            if (this.getEnergyStored() == 0) {
+        final ItemStack old = this.items.get(0);
+        final boolean server = world != null && !world.isRemote && !reading;
+        if (server && old != item) {
+            if (isValidFuelItem(old)) {
+                NBTTagCompound tag = old.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    old.setTagCompound(tag);
+                }
+                tag.setDouble(ZPMItem.ENERGY, this.storage.getEnergyStored());
+                tag.setBoolean(ZPMItem.LOADED, false);
+            }
+            this.storage = emptyStorage(0);
+            this.loaded = false;
+            if (isValidFuelItem(item)) {
                 NBTTagCompound tag = item.getTagCompound();
-
                 if (tag == null) {
                     tag = new NBTTagCompound();
                     item.setTagCompound(tag);
                 }
-
-                tag.setBoolean(ZPMItem.LOADED, true);
-
                 if (!tag.hasKey(ZPMItem.ENERGY, 99)) {
                     tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
-                    item.setTagCompound(tag);
                 }
-                this.storage =  new EnergyStorage((int)maxEnergyBufferSize, maxInput, maxOutput, (int) tag.getDouble(ZPMItem.ENERGY));
+                tag.setBoolean(ZPMItem.LOADED, true);
+                this.storage = emptyStorage((int) Math.max(0, Math.min(Integer.MAX_VALUE, tag.getDouble(ZPMItem.ENERGY))));
+                this.loaded = true;
             }
-
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, isValidFuelItem(item));
-            world.setBlockState(pos, other, 3);
-
-            this.loaded = true;
-
         }
-        if (world != null){ // This will be null both on the server AND client at time, no idea why....
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, isValidFuelItem(item));
-            world.setBlockState(pos, other, 3);
+        this.items.set(0, item);
+
+        if (world != null) {
+            // Only while it's still a console: this also runs as it's broken (see ZpmConsole.breakBlock)
+            IBlockState state = world.getBlockState(pos);
+            if (state.getBlock() instanceof ZpmConsole && state.getValue(ZPM_LOADED) != isValidFuelItem(item)) {
+                world.setBlockState(pos, state.withProperty(ZPM_LOADED, isValidFuelItem(item)), 3);
+            }
         }
-        markDirty();
+        if (server) {
+            markChanged(); // its screen shows the new ZPM's energy
+        } else {
+            markDirty();
+        }
+        if (server && item.isEmpty() && !old.isEmpty()) {
+            pingSGBaseTE();
+        }
     }
 
     public static boolean isValidFuelItem(ItemStack stack) {
@@ -323,7 +327,7 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
 
     @Override
     public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
-        return capability == CapabilityEnergy.ENERGY;
+        return capability == CapabilityEnergy.ENERGY || super.hasCapability(capability, facing);
     }
 
     @SuppressWarnings("unchecked")
@@ -331,11 +335,11 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
     @Nullable
     public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
         if (capability == CapabilityEnergy.ENERGY) {
-            if (this.storage != null) {
-                return (T) this.storage;
-            }
+            // Hand out the console itself, not its storage, so external cables (EnderIO conduits etc.) go through the
+            // extraction cap, taint check and receive block below.
+            return this.storage != null ? (T) this : null;
         }
-        return null;
+        return super.getCapability(capability, facing);
     }
 
     @Override
@@ -348,9 +352,15 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
                 // Note: make sure the neighbor isn't also a ZpmConsoleTE otherwise a loopback is created.  This only applies to forge based power with this update method.
                 if (tile != null && (!(tile instanceof ZpmConsoleTE))) {
                     if (tile.hasCapability(CapabilityEnergy.ENERGY, side.getOpposite())) {
-                        if (tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).getEnergyStored() < tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).getMaxEnergyStored()) {
-                            int max = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).receiveEnergy(this.extractEnergy(50000, true), true); // Prevent the draw of what ever the entery is going to > than capability.
-                            tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite()).receiveEnergy(this.extractEnergy(max, false), false);
+                        IEnergyStorage target = tile.getCapability(CapabilityEnergy.ENERGY, side.getOpposite());
+                        // Offer it what it will take, asking first: cables and conduits that pass power on report no
+                        // store of their own (0 of 0), so going by spare room would never feed them (issue #107). Only a
+                        // draw that moves something is made, as a real draw also syncs the console and checks for taint.
+                        if (target != null && target.canReceive()) {
+                            int accepted = target.receiveEnergy(this.extractEnergy(50000, true), true);
+                            if (accepted > 0) {
+                                target.receiveEnergy(this.extractEnergy(accepted, false), false);
+                            }
                         }
                     }
                 }
@@ -371,24 +381,27 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
     // **********************************************************
     @Override
     public int receiveEnergy(int maxReceive, boolean simulate) {
-        int result = storage.receiveEnergy(maxReceive, simulate);
-        markChanged();
-
-        return result;
+        return 0; // A ZPM is a source only; never accept power from cables.
     }
 
     @Override
     public int extractEnergy(int extract, boolean simulate) {
+        if (extract <= 0) {
+            return 0; // a negative draw would add energy
+        }
         if (extract > this.maxExtract) {
             extract = this.maxExtract;
         }
         int result = storage.extractEnergy(extract, simulate);
 
-        if (isTainted(this.getStackInSlot(0))) {
-            world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
-        }
+        // Cables simulate constantly; only a real draw should set off a tainted ZPM or dirty the TE.
+        if (!simulate) {
+            if (isTainted(this.getStackInSlot(0))) {
+                world.newExplosion(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(), (float)250, true, true);
+            }
 
-        markChanged();
+            markChanged();
+        }
 
         return result;
     }
@@ -430,8 +443,11 @@ public final class ZpmConsoleTE extends BaseTileInventory implements ISGEnergySo
 
     public double drawEnergyDouble(double request) {
         double available = this.storage.getEnergyStored() / energyPerSGEnergyUnit;
-        double supply = min(request, available);
-        this.storage.extractEnergy((int)(supply * energyPerSGEnergyUnit), false);
+        double supply = Math.max(0, min(request, available));
+        // Straight from the storage: its extractEnergy is capped per call (maxOutput) for cables, and a gate was credited
+        // all it asked for while the storage gave only that much
+        int drawn = (int) Math.min(this.storage.getEnergyStored(), Math.ceil(supply * energyPerSGEnergyUnit));
+        this.storage = emptyStorage(this.storage.getEnergyStored() - drawn);
         markChanged();
 
         if (isTainted(this.getStackInSlot(0))) {

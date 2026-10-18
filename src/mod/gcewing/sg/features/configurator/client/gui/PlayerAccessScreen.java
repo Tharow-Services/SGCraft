@@ -50,25 +50,27 @@ public class PlayerAccessScreen extends BasicScreen {
     private UICheckBox defaultAllowAccessCheckbox, defaultDenyAccessCheckbox, defaultAllowIrisCheckbox, defaultDenyIrisCheckbox, defaultAllowAdminCheckbox, defaultDenyAdminCheckbox;
     private UICheckBox allowAccessCheckbox, denyAccessCheckbox, allowIrisControllerCheckbox, denyIrisControllerCheckbox, allowAdminCheckbox, denyAdminCheckbox;
     private BlockPos location;
+    private BlockPos gatePos;
     private World world;
     private EntityPlayer player;
     private SGBaseTE localGate;
     private List<PlayerAccessData> clonedList;
     private BasicList<PlayerAccessData> playerAccessList;
 
-    public PlayerAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, boolean isAdmin) {
+    public PlayerAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin) {
         super(parent, true);
         this.player = player;
         this.isAdmin = false;
         this.world = worldIn;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
+        this.gatePos = gatePos;
     }
 
     @Override
     public void construct() {
         this.guiscreenBackground = false;
         Keyboard.enableRepeatEvents(true);
-        final TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        final TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }
@@ -311,13 +313,15 @@ public class PlayerAccessScreen extends BasicScreen {
     @Subscribe
     public void onListChange(BasicList.SelectEvent<PlayerAccessData> event) {
         boolean firstClick = (event.getOldValue() == null);
-        if (localGate.getPlayerAccessData().size() > 0) {
-            this.allowAccessCheckbox.setChecked(localGate.allowGateAccess(event.getNewValue().getPlayerName()));
-            this.denyAccessCheckbox.setChecked(!localGate.allowGateAccess(event.getNewValue().getPlayerName()));
-            this.allowIrisControllerCheckbox.setChecked(localGate.allowAccessToIrisController(event.getNewValue().getPlayerName()));
-            this.denyIrisControllerCheckbox.setChecked(!localGate.allowAccessToIrisController(event.getNewValue().getPlayerName()));
-            this.allowAdminCheckbox.setChecked(localGate.allowAdminAccess(event.getNewValue().getPlayerName()));
-            this.denyAdminCheckbox.setChecked(!localGate.allowAdminAccess(event.getNewValue().getPlayerName()));
+        final PlayerAccessData entry = event.getNewValue();
+        if (localGate.getPlayerAccessData().size() > 0 && entry != null) {
+            // The entry's own settings, as listed for the gate
+            this.allowAccessCheckbox.setChecked(entry.hasGateAccess());
+            this.denyAccessCheckbox.setChecked(!entry.hasGateAccess());
+            this.allowIrisControllerCheckbox.setChecked(entry.hasIrisAccess());
+            this.denyIrisControllerCheckbox.setChecked(!entry.hasIrisAccess());
+            this.allowAdminCheckbox.setChecked(entry.isAdmin());
+            this.denyAdminCheckbox.setChecked(!entry.isAdmin());
             this.optionsContainer.setEnabled(true);
         } else {
             this.optionsContainer.setEnabled(false);

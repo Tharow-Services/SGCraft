@@ -52,7 +52,9 @@ public class OCWirelessEndpoint implements WirelessEndpoint {
         if (debugWireless)
             System.out.printf("OCSGWirelessEndpoint.receivePacket: ttl %s from %s by %s\n",
                 packet.ttl(), sender, te);
-        if (packet.ttl() > 0) {
+        // Once a tick through the gate at most, and not back the way it came, as with wired packets (see
+        // OCInterfaceTE.throughGate): connected gates near each other passed each one back and forth
+        if (packet.ttl() > 0 && OCInterfaceTE.throughGate(te, packet)) {
             SGBaseTE dte = te.getConnectedStargateTE();
             if (dte != null && dte.ocWirelessEndpoint != null) {
                 if (debugWireless)

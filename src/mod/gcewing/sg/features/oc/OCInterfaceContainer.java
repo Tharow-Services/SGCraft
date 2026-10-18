@@ -39,6 +39,11 @@ public class OCInterfaceContainer extends BaseContainer {
         return range;
     }
 
+    @Override
+    protected net.minecraft.tileentity.TileEntity tileEntity() {
+        return te;
+    }
+
     public static class UpgradeSlot extends Slot {
     
         public UpgradeSlot(IInventory inv, int i, int x, int y) {

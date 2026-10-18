@@ -59,7 +59,12 @@ public class DHDFuelContainer extends BaseContainer {
         range.numSlots = DHDTE.numFuelSlots;
         return range;
     }
-    
+
+    @Override
+    protected net.minecraft.tileentity.TileEntity tileEntity() {
+        return te;
+    }
+
 //  @Override
 //  void sendStateTo(ICrafting crafter) {
 //      crafter.sendProgressBarUpdate(this, 0, (int)((10000 * te.energyInBuffer) / te.maxEnergyBuffer));

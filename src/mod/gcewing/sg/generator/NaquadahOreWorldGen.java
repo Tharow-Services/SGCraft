@@ -17,6 +17,8 @@ import net.minecraft.init.*;
 import net.minecraft.util.math.*;
 import net.minecraft.world.*;
 import net.minecraft.world.chunk.*;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
+import net.minecraftforge.common.config.Property;
 import net.minecraft.world.gen.IChunkGenerator;
 import net.minecraftforge.fml.common.*;
 
@@ -31,14 +33,17 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
     static boolean debugRandom = false;
     static int debugLevel = 0;
 
-    static String dimensionIDs = "0";
+    // Every world but Nether and End ones, by default
+    static final String defaultWorlds = "*, !the_nether, !the_end";
+    static String dimensionIDs = defaultWorlds;
 
     Random random;
     World world;
     Chunk chunk;
     int x0, z0;
+    // Adding ore to a chunk made before (see regenerate), which players may have built in since
+    boolean retrogen;
 
-    Block stone = Blocks.STONE;
     Block lava = Blocks.LAVA;
     IBlockState naquadah = SGCraft.naquadahOre.getDefaultState();
     
@@ -50,10 +55,72 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         debugLava = cfg.getBoolean("naquadah", "debugLava", debugLava);
         debugRandom = cfg.getBoolean("naquadah", "debugRandom", debugRandom);
         debugLevel = cfg.getInteger("naquadah", "debugLevel", debugLevel);
-        dimensionIDs = cfg.getString("naquadah", "dimensionIDs", dimensionIDs);
+
+        // The worlds it generates in were "dimensionIDs", which defaulted to dimension 0 alone, and adding ore to chunks
+        // made before it was "options.addOresToExistingWorlds", off by default. They're now "worlds" and
+        // "addToExistingChunks", so the new defaults (every world but the Nether and End, and on) reach config files that
+        // have the old ones written in; a list of worlds someone chose is kept.
+        String carried = defaultWorlds;
+        if (cfg.hasKey("naquadah", "dimensionIDs")) {
+            String old = cfg.getString("naquadah", "dimensionIDs", "0").trim();
+            if (!old.equals("0")) {
+                carried = old;
+            }
+            cfg.removeKey("naquadah", "dimensionIDs");
+        }
+        cfg.removeKey("options", "addOresToExistingWorlds");
+        Property worlds = cfg.get("naquadah", "worlds", carried);
+        worlds.setComment("Worlds naquadah ore generates in, separated by commas: dimension numbers, world names, or kinds of "
+            + "world (overworld, the_nether, the_end); * for every world; ! in front leaves one out");
+        dimensionIDs = worlds.getString();
+        dimensions = parseDimensions(dimensionIDs);
+        Property existing = cfg.get("naquadah", "addToExistingChunks", true);
+        existing.setComment("Add naquadah ore to chunks made before (in the worlds above), once each, as they load");
+        SGCraft.addOresToExistingWorlds = existing.getBoolean(true);
     }
 
-    String[] dimensions = dimensionIDs.split(",");
+    // The worlds it generates in, from the "worlds" setting: each a dimension number, a world's name (each Sponge world
+    // has its own), or a kind of dimension (overworld, the_nether, the_end), separated by commas; or * for every world.
+    // An entry with ! in front leaves those worlds out, whatever else names them.
+    static String[] dimensions = parseDimensions(dimensionIDs);
+
+    static String[] parseDimensions(String list) {
+        String[] entries = list.split(",");
+        for (int i = 0; i < entries.length; i++) {
+            entries[i] = entries[i].trim();
+        }
+        return entries;
+    }
+
+    static boolean generatesIn(World world) {
+        int dimension = world.provider.getDimension();
+        String worldName = world.getWorldInfo().getWorldName();
+        String kind = world.provider.getDimensionType().getName();
+        boolean named = false;
+        for (String entry : dimensions) {
+            boolean leaveOut = entry.startsWith("!");
+            String name = leaveOut ? entry.substring(1).trim() : entry;
+            if (name.isEmpty() || !names(name, dimension, worldName, kind)) {
+                continue;
+            }
+            if (leaveOut) {
+                return false;
+            }
+            named = true;
+        }
+        return named;
+    }
+
+    private static boolean names(String entry, int dimension, String worldName, String kind) {
+        if (entry.equals("*") || entry.equalsIgnoreCase(worldName) || entry.equalsIgnoreCase(kind)) {
+            return true;
+        }
+        try {
+            return Integer.parseInt(entry) == dimension;
+        } catch (NumberFormatException ex) {
+            return false; // a name, not a number
+        }
+    }
 
     public void generate(Random random, int chunkX, int chunkZ, World world,
         IChunkGenerator chunkGenerator, IChunkProvider chunkProvider)
@@ -64,14 +131,9 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
         chunk = world.getChunk(chunkX, chunkZ);
-        for (String dimension : dimensions) {
-            try {
-                if (world.provider.getDimension() == Integer.parseInt(dimension.replace(" ", "")))
-                    generateChunk();
-            }
-            catch (NumberFormatException ex){
-                //System.out.printf("NaquadahOreWorldGen:[ERROR] Entered dimension ID is not a number.\n");
-            }
+        retrogen = false;
+        if (generatesIn(world)) {
+            generateChunk();
         }
     }
     
@@ -87,38 +149,67 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
         random.setSeed((xSeed * chunkX + zSeed * chunkZ) ^ worldSeed);
         x0 = chunkX * 16;
         z0 = chunkZ * 16;
-        for (String dimension : dimensions) {
-            try {
-                if (world.provider.getDimension() == Integer.parseInt(dimension.replace(" ", "")))
-                    generateChunk();
-            }
-            catch (NumberFormatException ex){
-                //System.out.printf("NaquadahOreWorldGen:[ERROR] Entered dimension ID is not a number.\n");
-            }
+        retrogen = true;
+        if (!generatesIn(world)) {
+            return;
         }
+        // A chunk already holding naquadah ore had it when it was made: its record of that may have been lost (chunks of
+        // different worlds once shared one), and it shouldn't get a second lot
+        if (hasNaquadah(chunk)) {
+            SGChunkData.forChunk(chunk).oresGenerated = true;
+        } else {
+            generateChunk();
+        }
+        chunk.markDirty(); // so that it's saved as done, even with no ore placed
     }
-    
+
+    // Whether there's naquadah ore anywhere it generates (below y 64)
+    private boolean hasNaquadah(Chunk chunk) {
+        for (ExtendedBlockStorage storage : chunk.getBlockStorageArray()) {
+            if (storage == null || storage == Chunk.NULL_BLOCK_STORAGE || storage.isEmpty() || storage.getYLocation() >= 64) {
+                continue;
+            }
+            for (int y = 0; y < 16; y++)
+                for (int z = 0; z < 16; z++)
+                    for (int x = 0; x < 16; x++)
+                        if (storage.get(x, y, z).getBlock() == SGCraft.naquadahOre) {
+                            return true;
+                        }
+        }
+        return false;
+    }
+
+    // Where (x, z) within the chunk is in the world. The chunk passes the position it's given on to the block it replaces
+    // (breakBlock) and the one it places, so it must be the real one, not the place within the chunk: a chest replaced at
+    // (5, 20, 7) in any chunk would otherwise empty and remove whatever is at (5, 20, 7) in the world.
+    BlockPos at(int x, int y, int z) {
+        return new BlockPos(x0 + x, y, z0 + z);
+    }
+
     Block getBlock(int x, int y, int z) {
-        return getBlock(new BlockPos(x, y, z));
+        return chunk.getBlockState(at(x, y, z)).getBlock();
     }
-    
-    Block getBlock(BlockPos pos) {
-        return chunk.getBlockState(pos).getBlock();
-    }
-    
-    boolean isSolidBlock(int x, int y, int z) {
-        return isSolidBlock(new BlockPos(x, y, z));
-    }
-    
-    boolean isSolidBlock(BlockPos pos) {
-        IBlockState state = chunk.getBlockState(pos);
+
+    // Whether ore may take the place of the block at (x, y, z) within the chunk: never one holding something (a dungeon's
+    // chest or spawner, or anything a player has put there); in a chunk being made, any solid block; in one made before,
+    // only natural stone, as players may have built there since
+    boolean mayReplace(int x, int y, int z) {
+        IBlockState state = chunk.getBlockState(at(x, y, z));
+        Block block = state.getBlock();
+        if (block.hasTileEntity(state)) {
+            return false;
+        }
+        if (retrogen) {
+            if (block != Blocks.STONE) {
+                return false;
+            }
+            BlockStone.EnumType type = state.getValue(BlockStone.VARIANT);
+            return type == BlockStone.EnumType.STONE || type == BlockStone.EnumType.GRANITE
+                || type == BlockStone.EnumType.DIORITE || type == BlockStone.EnumType.ANDESITE;
+        }
         return state.getMaterial().isSolid();
     }
-    
-    void setBlockState(BlockPos pos, IBlockState state) {
-        chunk.setBlockState(pos, state);
-    }
-    
+
     void generateNode(IBlockState id, int x, int y, int z, int sx, int sy, int sz) {
         int dx = random.nextInt(sx);
         int dy = random.nextInt(sy);
@@ -131,12 +222,11 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
             for (int j = y; j <= y + dy; j++)
                 for (int k = z; k <= z + dz; k++)
                     if (i < 16 && j < h && k < 16) {
-                        BlockPos pos = new BlockPos(i, j, k);
-                        if (isSolidBlock(pos)) {
+                        if (mayReplace(i, j, k)) {
                             if (debugRandom && debugLevel >= 2)
                                 System.out.printf("NaquadahOreWorldGen: block at (%d, %d, %d)\n",
                                     x0 + i, j, z0 + k);
-                            setBlockState(pos, id);
+                            chunk.setBlockState(at(i, j, k), id);
                         }
                     }
     }
@@ -147,26 +237,27 @@ public class NaquadahOreWorldGen implements IWorldGenerator {
 
     void generateChunk() {
         SGChunkData.forChunk(chunk).oresGenerated = true;
-        if (odds(genUnderLavaOdds)) {
+        // Odds or a count of 0 or less turn that kind off, rather than crashing on nextInt(0)
+        if (genUnderLavaOdds > 0 && maxNodesUnderLava > 0 && odds(genUnderLavaOdds)) {
             int n = random.nextInt(maxNodesUnderLava) + 1;
             for (int i = 0; i < n; i++) {
                 int x = random.nextInt(16);
                 int z = random.nextInt(16);
                 for (int y = 1; y < 64; y++)
-                    if (isSolidBlock(x, y, z) && getBlock(x, y+1, z) == lava) {
+                    if (mayReplace(x, y, z) && getBlock(x, y+1, z) == lava) {
                         if (debugLava)
                             System.out.printf("NaquadahOreWorldGen: generating under lava at (%d, %d, %d)\n", x0+x, y, z0+z);
                         generateNode(naquadah, x, y, z, 3, 1, 3);
                 }
             }
         }
-        if (genIsolatedOdds > 0 && odds(genIsolatedOdds)) {
+        if (genIsolatedOdds > 0 && maxIsolatedNodes > 0 && odds(genIsolatedOdds)) {
             int n = random.nextInt(maxIsolatedNodes) + 1;
             for (int i = 0; i < n; i++) {
                 int x = random.nextInt(16);
                 int y = random.nextInt(16) + 16;
                 int z = random.nextInt(16);
-                if (isSolidBlock(x, y, z)) {
+                if (mayReplace(x, y, z)) {
                     if (debugRandom)
                         System.out.printf("NaquadahOreWorldGen: generating randomly at (%d, %d, %d)\n", x0+x, y, z0+z);
                     generateNode(naquadah, x, y, z, 2, 2, 2);

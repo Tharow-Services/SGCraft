@@ -14,28 +14,15 @@ public final class ZpmHubBasicSource extends BasicSource {
         this.parent = parent;
     }
 
+    // ZPMs in a hub together go further: with n of them, each unit drawn costs them 1/n (the "optimization factor" its
+    // screen shows), shared among them. Their own energies, which they take back as they leave, used to be lowered by
+    // whole units only, so small draws (from a slow cable) took nothing from them at all.
     @Override
     public void drawEnergy(double amount) {
         ZpmHubTE te = ((ZpmHubTE) this.parent);
-        if (te != null) {
-            te.drawEnergy(amount);
-
-            int zpmCount = ((ZpmHubTE) this.parent).getZpmSlotsloaded();
-
-            double drawAmount = amount / zpmCount;
-            int perZpmDrawAmount = (int) (drawAmount / zpmCount);
-
-            if (te.zpmSlot0Energy > 0) {
-                te.zpmSlot0Energy = te.zpmSlot0Energy - perZpmDrawAmount;
-            }
-            if (te.zpmSlot1Energy > 0) {
-                te.zpmSlot1Energy = te.zpmSlot1Energy - perZpmDrawAmount;
-            }
-            if (te.zpmSlot2Energy > 0) {
-                te.zpmSlot2Energy = te.zpmSlot2Energy - perZpmDrawAmount;
-            }
-
-            super.drawEnergy(drawAmount);
+        if (te != null && amount > 0) {
+            int zpmCount = te.getZpmSlotsloaded();
+            te.drawFromZpms(zpmCount > 0 ? amount / zpmCount : amount); // sets this source's energy from theirs
 
             te.markChanged();
             // Todo: fix this.

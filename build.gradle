@@ -84,9 +84,25 @@ compile 'org.spongepowered:configurate-yaml:3.7'
     //deobfCompile "cofh:ThermalExpansion:1.12.2-5.5.3.41:universal"
     //deobfCompile "cofh:ThermalFoundation:1.12.2-2.6.2.26:universal"
     //deobfCompile "cofh:ThermalDynamics:1.12.2-2.5.5.21:universal"
-    deobfCompile ('com.almuradev:malisiscore:1.12.2-6.5.3-SNAPSHOT-dev') {
+    // Compile-only: MalisisCore is a coremod that also contains a mod, and Forge only loads the mod
+    // part from the mods folder, so the dev client gets it from run/mods (see copyDevMods)
+    deobfProvided ('com.almuradev:malisiscore:1.12.2-6.5.3-SNAPSHOT-dev') {
         transitive = false
     }
+}
+
+task copyDevMods(type: Copy) {
+    from 'lib/malisiscore-1.12.2-6.5.3-SNAPSHOT-dev.jar'
+    into 'run/mods'
+}
+
+tasks.matching { it.name in ['runClient', 'runServer'] }.all {
+    dependsOn copyDevMods
+}
+
+// Minecraft 1.12 needs Guava 21; SpongeForge's Guice would otherwise pull in 27.1 and crash the dev client
+configurations.all {
+    resolutionStrategy.force 'com.google.guava:guava:21.0'
 }
 
 deobfMcMCP { failOnAtError = false }
@@ -117,7 +133,7 @@ processResources {
         include 'mcmod.info'
 
         // replace version and mcversion
-        expand 'version':project.version, 'mcversion':project.minecraft.version, 'modid':project.jarName
+        expand 'version':project.version, 'mcversion':project.minecraft.version
     }
 
     // copy everything else, thats not the mcmod.info

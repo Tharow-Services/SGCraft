@@ -9,23 +9,15 @@ package gcewing.sg.generator;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraft.world.gen.structure.StructureComponent;
-import net.minecraft.world.gen.structure.template.TemplateManager;
 
 import java.util.Random;
 
 public class FeatureNetherFortress extends FeatureStargate {
-    @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
-
-    @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
-
     public FeatureNetherFortress() {}
 
     public FeatureNetherFortress(StructureComponent base) {
@@ -33,12 +25,12 @@ public class FeatureNetherFortress extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.netherAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.netherChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.netherZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.netherAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.netherChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.netherZpmChestChance;
         generateTokra = FeatureGeneration.netherSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureNetherFortress with GenerateStructure: " + generateStructure);
@@ -86,19 +78,9 @@ public class FeatureNetherFortress extends FeatureStargate {
         pass = 3;   // Nether structure generate in 1 pass only, apparently
     }
 
-    @Override
-    public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
-    }
-
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
         if ((pass == 3) && (FeatureGeneration.debugStructures))
             System.out.printf("SGCraft: FeatureNetherFortress.addComponentParts in %s clipped to %s\n", getBoundingBox(), clip);
-
-        if (base == null) {
-            System.out.printf("SGCraft: FeatureNetherFortress.addComponentParts: no base\n");
-            return false;
-        }
 
         IBlockState air = Blocks.AIR.getDefaultState();
         IBlockState netherbrick = Blocks.NETHER_BRICK.getDefaultState();

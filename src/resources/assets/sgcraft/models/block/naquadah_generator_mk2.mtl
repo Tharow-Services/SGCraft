@@ -1,0 +1,25 @@
+# SGCraft Naquadah generator Mark 2 materials
+newmtl body
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_body
+newmtl dark
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_dark
+newmtl roof
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_roof
+newmtl coil
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_coil
+newmtl sphere
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_sphere
+newmtl dome
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_dome
+newmtl rod
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_rod
+newmtl crystal
+Kd 1 1 1
+map_Kd sgcraft:blocks/naquadah_generator_crystal_blue

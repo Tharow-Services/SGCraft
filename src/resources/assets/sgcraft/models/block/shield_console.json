@@ -1,0 +1,8 @@
+{
+    "parent": "block/cube_bottom_top",
+    "textures": {
+        "top": "sgcraft:blocks/shield_console_top",
+        "side": "sgcraft:blocks/shield_console_side",
+        "bottom": "sgcraft:blocks/shield_console_bottom"
+    }
+}

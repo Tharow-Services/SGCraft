@@ -1,6 +1,7 @@
 package gcewing.sg.features.ic2.zpm.modulehub;
 
 import gcewing.sg.SGCraft;
+import gcewing.sg.features.zpm.link.ZpmLinks;
 import gcewing.sg.client.gui.SGGui;
 import gcewing.sg.features.zpm.ZPMItem;
 import net.minecraft.block.Block;
@@ -23,8 +24,10 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.Explosion;
+import net.minecraft.world.ChunkCache;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 
 import java.util.ArrayList;
 
@@ -46,36 +49,21 @@ public class ZpmHub extends BlockContainer {
 
     @Override
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
-        ZpmHubTE zpmHub = ZpmHubTE.at(world, pos);
-        for (int slot = 0; slot <=2;slot++) { // 3
-            ItemStack zpm = zpmHub.getStackInSlot(slot);
-            NBTTagCompound tag = zpm.getTagCompound();
-
+        if (!world.isRemote) {
+            ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
+            // Taken out of their slots, with their energy, before they're dropped: left in, a screen still open on the hub
+            // could take them a second time
+            ZpmHubTE zpmHub = ZpmHubTE.at(world, pos);
             if (zpmHub != null) {
-                if (tag == null) {
-                    tag = new NBTTagCompound();
-                    zpm.setTagCompound(tag);
-                }
-
-                if (tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                    if (slot == 0) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot0Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot0Energy);
-                    } else if (slot == 1) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot1Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot1Energy);
-                    } else if (slot == 2) {
-                        tag.setDouble(ZPMItem.ENERGY, zpmHub.zpmSlot2Energy);
-                        tag.setBoolean(ZPMItem.LOADED, false);
-                        zpmHub.hubSource.setEnergyStored(zpmHub.hubSource.getEnergyStored() - zpmHub.zpmSlot2Energy);
+                for (int slot = 0; slot < ZpmHubTE.numZpmSlots; slot++) {
+                    ItemStack zpm = zpmHub.removeStackFromSlot(slot);
+                    if (!zpm.isEmpty()) {
+                        Block.spawnAsEntity(world, pos, zpm);
                     }
                 }
             }
-            Block.spawnAsEntity(world, pos, zpm);
-            super.breakBlock(world, pos, state);
         }
+        super.breakBlock(world, pos, state);
     }
 
     @Nullable
@@ -124,6 +112,24 @@ public class ZpmHub extends BlockContainer {
     @Override
     protected boolean hasInvalidNeighbor(World worldIn, BlockPos pos) {
         return false;
+    }
+
+    // The ZPMs it shows are those in its slots, not the stored "zpms" state: that's set from whichever side last
+    // touched a slot, so can be stale (a click with the Configurator, which opens no inventory to fix it, showed none)
+    @Override
+    public IBlockState getActualState(IBlockState state, IBlockAccess world, BlockPos pos) {
+        TileEntity te = world instanceof ChunkCache ? ((ChunkCache) world).getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)
+            : world.getTileEntity(pos);
+        if (te instanceof ZpmHubTE) {
+            int zpms = 0;
+            for (int i = 0; i < ZpmHubTE.numZpmSlots; i++) {
+                if (((ZpmHubTE) te).getStackInSlot(i).getItem() == SGCraft.zpm) {
+                    zpms++;
+                }
+            }
+            return state.withProperty(ZPMS, zpms);
+        }
+        return state;
     }
 
     @Override

@@ -34,6 +34,15 @@
 	"iris_open":  {"category": "ambient", "sounds": ["sgcraft:iris_open"]},
 	"iris_close": {"category": "ambient", "sounds": ["sgcraft:iris_close"]},
 	"iris_hit": {"category": "ambient", "sounds": ["sgcraft:iris_hit"]},
+	"shield_activation_atlantis": {"category": "ambient", "sounds": ["sgcraft:shield_activation_atlantis"]},
+	"shield_deactivation": {"category": "ambient", "sounds": ["sgcraft:shield_deactivation"]},
+	"city_shield_on": {"category": "block", "sounds": ["sgcraft:city_shield_on"]},
+	"city_shield_off": {"category": "block", "sounds": ["sgcraft:city_shield_off"]},
+	"ori_open": {"category": "ambient", "sounds": ["sgcraft:supergate"]},
+	"asgard_beam": {"category": "block", "sounds": ["sgcraft:obelisk_sound"]},
+	"zat_fire": {"category": "player", "sounds": ["sgcraft:zat_fire"]},
+	"naquadah_generator_hum": {"category": "block", "sounds": ["sgcraft:naquadah_generator_hum"]},
+	"ring_transport": {"category": "block", "sounds": ["sgcraft:ring_transport"]},
 	"m_dhd_press": {
 		"category": "ambient",
 		"sounds": [
@@ -46,7 +55,7 @@
 			"sgcraft:milkyway/dhd_usual7"
 		]
 	},
-	"p_dhd_press": {"category": "ambient", "sounds": ["sgcraft:pegasus/dhd_usual1"]},
+	"p_dhd_press": {"category": "ambient", "sounds": ["sgcraft:sga_dhd_button"]},
 	"m_dhd_dial": {"category": "ambient", "sounds": ["sgcraft:milkyway/dhd_usual_dial"]},
 	"p_dhd_dial": {"category": "ambient", "sounds": ["sgcraft:pegasus/dhd_usual1"]},
 	"m_gate_roll": {"category": "ambient", "sounds": ["sgcraft:milkyway/gate_roll"]},

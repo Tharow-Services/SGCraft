@@ -154,6 +154,9 @@ public class FeatureGeneration {
 }
 
 class SGStructureMap extends Long2ObjectOpenHashMap {
+    static Field structureComponents = BaseReflectionUtils.getFieldDef(StructureStart.class,
+        "components", "field_75075_a");
+
     public SGStructureMap() {
         super(1024);
     }
@@ -167,7 +170,30 @@ class SGStructureMap extends Long2ObjectOpenHashMap {
     }
     
     void augmentStructureStart(StructureStart start) {
+        if (start instanceof StructureOceanMonument.StartMonument && !(start.getComponents() instanceof MonumentPieces))
+            BaseReflectionUtils.setField(start, structureComponents, new MonumentPieces(start.getComponents()));
         List<StructureComponent> oldComponents = start.getComponents();
+
+        // A structure loaded from the world's save has its SGCraft piece already, with what was rolled for it. It only
+        // needs the structure piece it was made for (which it doesn't save) back.
+        FeatureStargate saved = null;
+        StructureComponent savedBase = null;
+        for (StructureComponent comp : oldComponents) {
+            if (comp instanceof FeatureStargate) {
+                if (saved == null)
+                    saved = (FeatureStargate)comp;
+            } else if (savedBase == null && isAugmented(comp)) {
+                savedBase = comp;
+            }
+        }
+        if (saved != null) {
+            for (StructureComponent comp : oldComponents) {
+                if (comp instanceof FeatureStargate && ((FeatureStargate)comp).base == null)
+                    ((FeatureStargate)comp).base = savedBase;
+            }
+            return;
+        }
+
         List<StructureComponent> newComponents = new ArrayList<StructureComponent>();
         StructureComponent newComp = null;
         for (Object comp : oldComponents) {
@@ -180,9 +206,9 @@ class SGStructureMap extends Long2ObjectOpenHashMap {
                 newComp = new FeatureIgloo((StructureComponent)comp);
             } else if (comp instanceof ComponentScatteredFeaturePieces.JunglePyramid && FeatureGeneration.jungleAddon) {
                 newComp = new FeatureJungleTemple((StructureComponent)comp);
-            } else if (comp instanceof StructureNetherBridgePieces.Start) {
+            } else if (comp instanceof StructureNetherBridgePieces.Start && FeatureGeneration.netherAddon) {
                 newComp = new FeatureNetherFortress((StructureComponent)comp);
-            } else if (comp instanceof StructureOceanMonumentPieces.MonumentBuilding) {
+            } else if (comp instanceof StructureOceanMonumentPieces.MonumentBuilding && FeatureGeneration.oceanmonumentAddon) {
                 newComp = new FeatureOceanMonument((StructureComponent)comp);
             }
 
@@ -193,5 +219,42 @@ class SGStructureMap extends Long2ObjectOpenHashMap {
             }
         }
         oldComponents.addAll(newComponents);
+    }
+
+    // Whether this is a structure piece that SGCraft adds to
+    static boolean isAugmented(StructureComponent comp) {
+        return comp instanceof ComponentScatteredFeaturePieces.DesertPyramid
+            || comp instanceof ComponentScatteredFeaturePieces.SwampHut
+            || comp instanceof ComponentScatteredFeaturePieces.Igloo
+            || comp instanceof ComponentScatteredFeaturePieces.JunglePyramid
+            || comp instanceof StructureNetherBridgePieces.Start
+            || comp instanceof StructureOceanMonumentPieces.MonumentBuilding;
+    }
+}
+
+// The pieces of an ocean monument. Minecraft throws them away and makes them again the first time a monument is built
+// after being loaded (its rooms aren't saved), which would throw our piece away too, with what was rolled for it. This
+// list keeps our piece, after the monument's pieces, as it builds over them.
+class MonumentPieces extends LinkedList<StructureComponent> {
+    MonumentPieces(Collection<StructureComponent> pieces) {
+        super(pieces);
+    }
+
+    @Override
+    public void clear() {
+        removeIf(piece -> !(piece instanceof FeatureStargate));
+    }
+
+    @Override
+    public boolean add(StructureComponent piece) {
+        if (!(piece instanceof FeatureStargate)) {
+            for (int i = 0; i < size(); i++) {
+                if (get(i) instanceof FeatureStargate) {
+                    add(i, piece);
+                    return true;
+                }
+            }
+        }
+        return super.add(piece);
     }
 }

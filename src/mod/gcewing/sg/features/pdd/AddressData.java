@@ -71,9 +71,16 @@ public final class AddressData implements Comparable<AddressData> {
 
             final int compoundEntryUnid = addressCompound.getInteger(UNID);
             if (compoundEntryUnid == unid) {
-                addressCompound.setString(NAME, newName);
-                addressCompound.setString(ADDRESS, newAddress);
-                addressCompound.setInteger(INDEX, newIndex);
+                // A locked entry (one the server gives every PDD) keeps its name and address and can't be deleted, as its
+                // screen shows; only its place in the list and closing on connect can change
+                final boolean entryLocked = addressCompound.getBoolean(LOCKED);
+                if (!entryLocked) {
+                    addressCompound.setString(NAME, newName);
+                    addressCompound.setString(ADDRESS, newAddress);
+                }
+                if (!entryLocked || newIndex != -1) {
+                    addressCompound.setInteger(INDEX, newIndex);
+                }
                 addressCompound.setBoolean(AUTOCLOSE, autoClose);
             }
 
@@ -87,6 +94,46 @@ public final class AddressData implements Comparable<AddressData> {
         }
 
         writeAddresses(compound, addresses);
+    }
+
+    // Swaps the entry with the one above (direction -1) or below (+1) it in the list. The two trade index values, so
+    // nothing else moves; if the indexes repeat, so the order can't be told apart, the list is renumbered 1, 2, 3...
+    public static boolean moveAddress(final NBTTagCompound compound, final int unid, final int direction) {
+        checkNotNull(compound);
+        final List<AddressData> addresses = getAddresses(compound); // in index order
+
+        int from = -1;
+        for (int i = 0; i < addresses.size(); i++) {
+            if (addresses.get(i).getUnid() == unid) {
+                from = i;
+                break;
+            }
+        }
+        final int to = from + Integer.signum(direction);
+        if (from < 0 || direction == 0 || to < 0 || to >= addresses.size()) {
+            return false;
+        }
+
+        final List<Integer> indexes = new ArrayList<>();
+        boolean repeated = false;
+        for (int i = 0; i < addresses.size(); i++) {
+            indexes.add(addresses.get(i).getIndex());
+            repeated |= i > 0 && indexes.get(i).equals(indexes.get(i - 1));
+        }
+        if (repeated) {
+            for (int i = 0; i < indexes.size(); i++) {
+                indexes.set(i, i + 1);
+            }
+        }
+
+        Collections.swap(addresses, from, to);
+        final List<AddressData> renumbered = new ArrayList<>();
+        for (int i = 0; i < addresses.size(); i++) {
+            final AddressData a = addresses.get(i);
+            renumbered.add(new AddressData(a.getName(), a.getAddress(), a.isLocked(), indexes.get(i), a.getUnid(), a.isAutoClose()));
+        }
+        writeAddresses(compound, renumbered);
+        return true;
     }
 
     public static List<AddressData> getAddresses(final NBTTagCompound compound) {

@@ -92,7 +92,7 @@ public class BaseTileEntity extends TileEntity
     public NBTTagCompound getUpdateTag() {
         NBTTagCompound nbt = new NBTTagCompound();
         if (syncWithClient())
-            writeToNBT(nbt);
+            writeToClientNBT(nbt);
         return nbt;
     }
 
@@ -101,7 +101,7 @@ public class BaseTileEntity extends TileEntity
          //System.out.printf("BaseTileEntity.getDescriptionPacket for %s\n", this);
          if (syncWithClient()) {
             NBTTagCompound nbt = new NBTTagCompound();
-            writeToNBT(nbt);
+            writeToClientNBT(nbt);
             if (updateChunk) {
                 nbt.setBoolean("updateChunk", true);
                 updateChunk = false;
@@ -120,6 +120,12 @@ public class BaseTileEntity extends TileEntity
             world.markBlockRangeForRenderUpdate(pos, pos);
     }
     
+    // What clients are sent of this tile entity: by default all it saves. Override to leave things out. (Strip them
+    // here, not from the finished packet: reading a packet's data back is client-only and missing on servers.)
+    protected NBTTagCompound writeToClientNBT(NBTTagCompound nbt) {
+        return writeToNBT(nbt);
+    }
+
     boolean syncWithClient() {
         return true;
     }

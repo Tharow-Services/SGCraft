@@ -2,7 +2,7 @@ package gcewing.sg.tileentity.data;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.collect.Lists;
+import gcewing.sg.util.SGAddressing;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
@@ -11,8 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import javax.annotation.Nullable;
+
 public class GateAccessData {
-    static final String GATEACCESSLIST = "gateaccesslist";
+    public static final String GATEACCESSLIST = "gateaccesslist";
     public static final String ADDRESS = "address";
     private static final String IACCESS = "iaccess";
     private static final String OACCESS = "oaccess";
@@ -21,11 +23,35 @@ public class GateAccessData {
     private boolean iaccess;
     private boolean oaccess;
 
-
     public GateAccessData(final String address, final boolean iaccess, boolean oaccess) {
         this.address = address;
         this.iaccess = iaccess;
         this.oaccess = oaccess;
+    }
+
+    // An address without its dashes, in capitals, so "abcd-efg-hi" and "ABCDEFGHI" match
+    public static String normalize(String address) {
+        return address == null ? "" : address.replace("-", "").trim().toUpperCase();
+    }
+
+    // A full 9-symbol address as XXXX-XXX-XX, or null if it isn't one. Only full addresses are kept: a 7-symbol one
+    // would mean a different gate depending on which dimension it was dialled from.
+    @Nullable
+    public static String formatForList(String address) {
+        String normalized = normalize(address);
+        if (normalized.length() != SGAddressing.maxAddressLength) {
+            return null;
+        }
+        try {
+            SGAddressing.validateAddress(normalized);
+        } catch (SGAddressing.AddressingError e) {
+            return null;
+        }
+        return SGAddressing.formatAddress(normalized, "-", "-");
+    }
+
+    public boolean matches(String otherAddress) {
+        return normalize(address).equals(normalize(otherAddress));
     }
 
     public String getAddress() {
@@ -52,49 +78,15 @@ public class GateAccessData {
         this.oaccess = value;
     }
 
-    public static void updateAddress(NBTTagCompound compound, String address, boolean iaccess, boolean oaccess, int command) {
-        checkNotNull(compound);
-        final List<GateAccessData> gateAccessData = new ArrayList<>();
-        final NBTTagList list = compound.getTagList(GATEACCESSLIST, Constants.NBT.TAG_COMPOUND);
-        for (int i = 0; i < list.tagCount(); i++) {
-            final NBTTagCompound gateCompound = list.getCompoundTagAt(i);
-
-            final String compoundEntryAddress = gateCompound.getString(ADDRESS);
-            if (compoundEntryAddress.equalsIgnoreCase(address)) {
-                gateCompound.setString(ADDRESS, address);
-                gateCompound.setBoolean(IACCESS, iaccess);
-                gateCompound.setBoolean(OACCESS, oaccess);
-            }
-        }
-
-        if (command == 1) { // Indicates new request.
-            gateAccessData.add(new GateAccessData(address, iaccess, oaccess));
-        }
-
-        writeAddresses(compound, gateAccessData);
-    }
-
     public static List<GateAccessData> getGateAccessList(final NBTTagCompound compound) {
         checkNotNull(compound);
-
-        if (!compound.hasKey(GateAccessData.GATEACCESSLIST)) {
-            /*
-            List<GateAccessData> genericAddressList = Lists.newArrayList();
-            genericAddressList.add(new GateAccessData( "T9FH-3VW-VL", true, true));
-            GateAccessData.writeAddresses(compound, genericAddressList);
-            */
-        }
 
         final List<GateAccessData> gateAccessData = new ArrayList<>();
         final NBTTagList list = compound.getTagList(GATEACCESSLIST, Constants.NBT.TAG_COMPOUND);
         for (int i = 0; i < list.tagCount(); i++) {
             final NBTTagCompound addressCompound = list.getCompoundTagAt(i);
-
-            final String address = addressCompound.getString(ADDRESS);
-            final boolean iaccess = addressCompound.getBoolean(IACCESS);
-            final boolean oaccess = addressCompound.getBoolean(OACCESS);
-
-            gateAccessData.add(new GateAccessData(address, iaccess, oaccess));
+            gateAccessData.add(new GateAccessData(addressCompound.getString(ADDRESS), addressCompound.getBoolean(IACCESS),
+                addressCompound.getBoolean(OACCESS)));
         }
 
         return gateAccessData;
@@ -104,24 +96,15 @@ public class GateAccessData {
         checkNotNull(compound);
         checkNotNull(gateAccessData);
 
-        if (gateAccessData.size() == 0) {
-            List<GateAccessData> genericAddressList = Lists.newArrayList();
+        final NBTTagList list = new NBTTagList();
+        for (final GateAccessData data : gateAccessData) {
+            final NBTTagCompound addressCompound = new NBTTagCompound();
+            addressCompound.setString(ADDRESS, data.getAddress());
+            addressCompound.setBoolean(IACCESS, data.hasIncomingAccess());
+            addressCompound.setBoolean(OACCESS, data.hasOutgoingAccess());
+            list.appendTag(addressCompound);
         }
-
-        if (gateAccessData.size() >= 0) {
-            final NBTTagList list = new NBTTagList();
-
-            for (final GateAccessData data : gateAccessData) {
-                final NBTTagCompound addressCompound = new NBTTagCompound();
-                addressCompound.setString(ADDRESS, data.getAddress());
-                addressCompound.setBoolean(IACCESS, data.hasIncomingAccess());
-                addressCompound.setBoolean(OACCESS, data.hasOutgoingAccess());
-
-                list.appendTag(addressCompound);
-            }
-
-            compound.setTag(GATEACCESSLIST, list);
-        }
+        compound.setTag(GATEACCESSLIST, list);
 
         return compound;
     }
@@ -135,11 +118,11 @@ public class GateAccessData {
             return false;
         }
         GateAccessData that = (GateAccessData) o;
-        return Objects.equals(address, that.address);
+        return iaccess == that.iaccess && oaccess == that.oaccess && Objects.equals(address, that.address);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(address);
+        return Objects.hash(address, iaccess, oaccess);
     }
 }

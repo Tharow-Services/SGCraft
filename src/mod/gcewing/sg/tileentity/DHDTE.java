@@ -16,6 +16,7 @@ import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
 import gcewing.sg.block.DHDBlock;
 import gcewing.sg.interfaces.ISGEnergySource;
+import gcewing.sg.util.SGState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.InventoryBasic;
@@ -76,9 +77,12 @@ public class DHDTE extends BaseTileInventory implements ISGEnergySource {
         return DHDTE.at(world, pos);
     }
 
+    // Only while its gate is idle, as its screen allows. A symbol entered while the gate was dialling (a computer's dial,
+    // say, started just as the key was pressed) wrote over the dial's address and chevrons, and the gate then crashed
+    // the server reading past the end of its address.
     public void enterSymbol(EntityPlayer player, char symbol) {
         SGBaseTE gate = getLinkedStargateTE();
-        if (gate != null) {
+        if (gate != null && gate.state == SGState.Idle) {
             if (enteredAddress.length() < gate.getNumChevrons()) {
                 enteredAddress += symbol;
                 if (gate.chevronsLockOnDial) {
@@ -94,7 +98,7 @@ public class DHDTE extends BaseTileInventory implements ISGEnergySource {
 
     public void unsetSymbol(EntityPlayer player) {
         SGBaseTE gate = getLinkedStargateTE();
-        if (gate != null) {
+        if (gate != null && gate.state == SGState.Idle) {
             if (!enteredAddress.isEmpty()) {
                 char symbol = enteredAddress.charAt(enteredAddress.length() - 1);
                 enteredAddress = enteredAddress.substring(0, enteredAddress.length() - 1);

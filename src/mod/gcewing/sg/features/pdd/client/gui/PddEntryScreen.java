@@ -1,7 +1,5 @@
 package gcewing.sg.features.pdd.client.gui;
 
-import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
-
 import gcewing.sg.features.pdd.network.PddNetworkHandler;
 import net.malisis.core.client.gui.Anchor;
 import net.malisis.core.client.gui.BasicScreen;
@@ -19,7 +17,7 @@ import net.minecraft.util.text.TextFormatting;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
-import java.io.IOException;
+import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 
 public class PddEntryScreen extends BasicScreen {
     private int lastUpdate = 0;
@@ -68,7 +66,9 @@ public class PddEntryScreen extends BasicScreen {
         final UILabel titleLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.pddEntry"));
         titleLabel.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(true).scale(1.1F).build());
         titleLabel.setPosition(0, -15, Anchor.CENTER | Anchor.TOP);
-        if (type == 1) {
+        if (type == 4) {
+            titleLabel.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.edd.label.nameEntry"));
+        } else if (type == 1) {
             titleLabel.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.addPddEntry"));
         } else {
             if (!delete) {
@@ -95,7 +95,7 @@ public class PddEntryScreen extends BasicScreen {
 
         this.addressTextField = new UITextField(this, "", false);
         this.addressTextField.setText(this.address);
-        this.addressTextField.setEditable(!this.isLocked);
+        this.addressTextField.setEditable(!this.isLocked && !isExplorerEntry());
         this.addressTextField.setSize(180, 0);
         this.addressTextField.setPosition(60, 25, Anchor.LEFT | Anchor.TOP);
         this.addressTextField.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(false).build());
@@ -116,6 +116,13 @@ public class PddEntryScreen extends BasicScreen {
         this.autoCloseChk.setAnchor(Anchor.BOTTOM | Anchor.LEFT);
         this.autoCloseChk.setPosition(0, -2);
         this.autoCloseChk.setChecked(autoClose);
+
+        // A generated gate's entry only takes a name: its address is the gate's, and the list keeps its own order
+        if (isExplorerEntry()) {
+            indexLabel.setVisible(false);
+            this.indexTextField.setVisible(false);
+            this.autoCloseChk.setVisible(false);
+        }
 
         // Close button
         final UIButton buttonClose = new UIButtonBuilder(this)
@@ -151,6 +158,11 @@ public class PddEntryScreen extends BasicScreen {
             .anchor(Anchor.BOTTOM | Anchor.RIGHT)
             .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.save"))
             .onClick(() -> {
+                if (isExplorerEntry()) {
+                    PddNetworkHandler.sendExplorerNameToServer(this.address, this.nameTextField.getText().trim());
+                    this.close();
+                    return;
+                }
                 if (this.addressTextField.getText().length() == 11 && this.addressTextField.getText().substring(4,5).equalsIgnoreCase("-") && this.addressTextField.getText().substring(8,9).equalsIgnoreCase("-")) {
                     PddNetworkHandler.sendPddEntryUpdateToServer(this.nameTextField.getText().trim(), this.addressTextField.getText().trim(), Integer.valueOf(this.indexTextField.getText()), this.unid, this.isLocked, this.autoCloseChk.isChecked());
                     this.close();
@@ -163,6 +175,11 @@ public class PddEntryScreen extends BasicScreen {
 
         this.form.add(titleLabel, nameLabel, nameTextField, addressLabel, addressTextField, indexLabel, autoCloseChk, indexTextField, buttonDelete, buttonSave, buttonClose);
         addToScreen(this.form);
+    }
+
+    // Naming one of the server's generated gates, from the Explorer Dialer Device
+    private boolean isExplorerEntry() {
+        return this.type == 4;
     }
 
     @Override
@@ -185,6 +202,10 @@ public class PddEntryScreen extends BasicScreen {
 
     @Override
     protected void keyTyped(char keyChar, int keyCode) {
+        if (keyCode == Keyboard.KEY_TAB && isExplorerEntry()) {
+            this.nameTextField.setFocused(true); // the only field that can be edited
+            return;
+        }
         if (keyCode == Keyboard.KEY_TAB) {
             if (this.nameTextField.isFocused()) {
                 this.addressTextField.setFocused(true);

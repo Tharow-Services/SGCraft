@@ -10,6 +10,7 @@ import gcewing.sg.BaseContainer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
@@ -51,26 +52,32 @@ public class ZpmHubContainer extends BaseContainer {
         }
     }
 
-    @Override // Shift-Click Inventory
+    // Shift-click: a ZPM in the hub to the player's inventory, one in the player's inventory to the hub's first free slot.
+    // The hub's slots are its first three; only the first used to count as the hub's, so a shift-click on the second or
+    // third moved its ZPM into the first, which took the energy the ZPM went in with all over again.
+    @Override
     public ItemStack transferStackInSlot(EntityPlayer player, int index) {
-        ItemStack result = ItemStack.EMPTY;
         Slot slot = inventorySlots.get(index);
-        ItemStack stack = slot.getStack();
-        if (slot != null && slot.getHasStack()) {
-            SlotRange destRange = transferSlotRange(index, stack);
-            if (destRange != null) {
-                if (index >= destRange.numSlots) {
-                    result = stack.copy();
-                    if (!mergeItemStackIntoRange(stack, destRange))
-                        return ItemStack.EMPTY;
-                    if (stack.getCount() == 0)
-                        slot.putStack(ItemStack.EMPTY);
-                    else
-                        slot.onSlotChanged();
-                } else {
-                    player.inventory.addItemStackToInventory(te.decrStackSize(index, 1));
-                }
+        if (slot == null || !slot.getHasStack()) {
+            return ItemStack.EMPTY;
+        }
+        if (index < ZpmHubTE.numZpmSlots) {
+            // Back in its slot if the player has no room for it, rather than lost
+            ItemStack zpm = te.decrStackSize(index, 1);
+            if (!zpm.isEmpty() && !player.inventory.addItemStackToInventory(zpm)) {
+                te.setInventorySlotContents(index, zpm);
             }
+            return ItemStack.EMPTY;
+        }
+        ItemStack stack = slot.getStack();
+        ItemStack result = stack.copy();
+        if (!mergeItemStackIntoRange(stack, transferSlotRange(index, stack))) {
+            return ItemStack.EMPTY;
+        }
+        if (stack.getCount() == 0) {
+            slot.putStack(ItemStack.EMPTY);
+        } else {
+            slot.onSlotChanged();
         }
         return result;
     }
@@ -79,8 +86,13 @@ public class ZpmHubContainer extends BaseContainer {
     protected SlotRange transferSlotRange(int srcSlotIndex, ItemStack stack) {
         SlotRange range = new SlotRange();
         range.firstSlot = 0;
-        range.numSlots = 1;
+        range.numSlots = ZpmHubTE.numZpmSlots;
 
         return range;
+    }
+
+    @Override
+    protected TileEntity tileEntity() {
+        return te;
     }
 }

@@ -52,25 +52,27 @@ public class GateAddressAccessScreen extends BasicScreen {
     private UICheckBox defaultAllowIncomingCheckbox, defaultDenyIncomingCheckbox, defaultAllowOutgoingCheckbox, defaultDenyOutgoingCheckbox;
     private UICheckBox allowIncomingCheckbox, denyIncomingCheckbox, allowOutgoingCheckbox, denyOutgoingCheckbox;
     private BlockPos location;
+    private BlockPos gatePos;
     private World world;
     private EntityPlayer player;
     private SGBaseTE localGate;
     private List<GateAccessData> clonedList;
     private BasicList<GateAccessData> gateAccessList;
 
-    public GateAddressAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, boolean isAdmin) {
+    public GateAddressAccessScreen(BasicScreen parent, EntityPlayer player, World worldIn, BlockPos gatePos, boolean isAdmin) {
         super(parent, true);
         this.player = player;
         this.isAdmin = false;
         this.world = worldIn;
         this.location = new BlockPos(player.posX, player.posY, player.posZ);
+        this.gatePos = gatePos;
     }
 
     @Override
     public void construct() {
         this.guiscreenBackground = false;
         Keyboard.enableRepeatEvents(true);
-        final TileEntity localGateTE = GateUtil.locateLocalGate(this.world, this.location, SGCraft.toolSearchRange, false);
+        final TileEntity localGateTE = this.world.getTileEntity(this.gatePos);
         if (localGateTE instanceof SGBaseTE) {
             localGate = (SGBaseTE) localGateTE;
         }
@@ -279,11 +281,13 @@ public class GateAddressAccessScreen extends BasicScreen {
     @Subscribe
     public void onListChange(BasicList.SelectEvent<GateAccessData> event) {
         boolean firstClick = (event.getOldValue() == null);
-        if (localGate.getGateAccessData().size() > 0) {
-            this.allowIncomingCheckbox.setChecked(localGate.allowIncomingAddress(event.getNewValue().getAddress(), true));
-            this.denyIncomingCheckbox.setChecked(!localGate.allowIncomingAddress(event.getNewValue().getAddress(), true));
-            this.allowOutgoingCheckbox.setChecked(localGate.allowOutgoingAddress(event.getNewValue().getAddress(), true));
-            this.denyOutgoingCheckbox.setChecked(!localGate.allowOutgoingAddress(event.getNewValue().getAddress(), true));
+        final GateAccessData entry = event.getNewValue();
+        if (localGate.getGateAccessData().size() > 0 && entry != null) {
+            // The entry's own settings, as listed for the gate
+            this.allowIncomingCheckbox.setChecked(entry.hasIncomingAccess());
+            this.denyIncomingCheckbox.setChecked(!entry.hasIncomingAccess());
+            this.allowOutgoingCheckbox.setChecked(entry.hasOutgoingAccess());
+            this.denyOutgoingCheckbox.setChecked(!entry.hasOutgoingAccess());
             this.addressOptionsContainer.setEnabled(true);
         } else {
             this.addressOptionsContainer.setEnabled(false);

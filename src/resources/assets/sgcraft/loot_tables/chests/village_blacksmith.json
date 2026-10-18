@@ -1,6 +1,7 @@
 {
     "pools": [
         {
+            "name": "sgcraft_village_blacksmith",
             "conditions": [
                 {
                     "condition": "random_chance",

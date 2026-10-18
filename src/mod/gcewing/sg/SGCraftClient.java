@@ -6,6 +6,19 @@
 
 package gcewing.sg;
 
+import gcewing.sg.features.cityshield.CityShieldTE;
+import gcewing.sg.features.obelisk.client.ObeliskBeamEffects;
+import gcewing.sg.features.zat.client.ZatBolts;
+import gcewing.sg.features.obelisk.AsgardObeliskTE;
+import gcewing.sg.features.obelisk.client.AsgardObeliskRenderer;
+import gcewing.sg.features.rings.RingPlatformTE;
+import gcewing.sg.features.rings.client.RingPlatformRenderer;
+import gcewing.sg.features.rings.client.RingFuelScreen;
+import net.minecraftforge.common.MinecraftForge;
+import gcewing.sg.features.cityshield.client.CityShieldRenderer;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
+import gcewing.sg.features.naquadahgenerator.client.NaquadahGeneratorRenderer;
+
 // import gcewing.sg.ic2.*; //[IC2]
 
 import gcewing.sg.client.gui.DHDFuelScreen;
@@ -33,10 +46,15 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     
     @Override
     protected void registerScreens() {
+        // The white-out and sound of an Asgard obelisk beaming the player
+        MinecraftForge.EVENT_BUS.register(ObeliskBeamEffects.class);
+        // The zat's bolts of lightning
+        MinecraftForge.EVENT_BUS.register(ZatBolts.class);
         //System.out.printf("SGCraft: ProxyClient.registerScreens\n");
         addScreen(SGGui.SGBase, SGBaseScreen.class);
         addScreen(SGGui.SGController, DHDScreen.class);
         addScreen(SGGui.DHDFuel, DHDFuelScreen.class);
+        addScreen(SGGui.RingFuel, RingFuelScreen.class);
         addScreen(SGGui.PowerUnit, PowerScreen.class);
         addScreen(SGGui.ZPMInterfaceCart, ZPMInterfaceCartScreen.class);
         addScreen(SGGui.ZPMConsole, ZPMConsoleScreen.class);
@@ -47,6 +65,12 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     protected void registerTileEntityRenderers() {
         addTileEntityRenderer(SGBaseTE.class, new SGBaseTERenderer());
         addTileEntityRenderer(DHDTE.class, new DHDTERenderer());
+        addTileEntityRenderer(AsgardObeliskTE.class, new AsgardObeliskRenderer());
+        addTileEntityRenderer(RingPlatformTE.class, new RingPlatformRenderer());
+        if (BaseMod.isModLoaded("malisiscore")) {
+            addTileEntityRenderer(CityShieldTE.class, new CityShieldRenderer());
+            addTileEntityRenderer(NaquadahGeneratorTE.class, new NaquadahGeneratorRenderer());
+        }
     }
     
     @Override

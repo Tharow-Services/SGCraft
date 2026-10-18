@@ -35,6 +35,14 @@ public class BaseConfiguration extends Configuration {
         return get(category, key, defaultValue).getString();
     }
     
+    // Takes a setting out of the file (one replaced by another), which is then saved without it
+    public void removeKey(String category, String key) {
+        if (hasKey(category, key)) {
+            getCategory(category).remove(key);
+            extended = true;
+        }
+    }
+
     public String[] getStringList(String category, String key, String... defaultValueList) {
         String defaultValue = BaseStringUtils.join(",", defaultValueList);
         String value = getString(category, key, defaultValue);

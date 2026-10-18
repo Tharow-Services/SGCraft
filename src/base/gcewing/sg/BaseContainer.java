@@ -10,6 +10,9 @@ import java.lang.reflect.*;
 import net.minecraft.entity.player.*;
 import net.minecraft.inventory.*;
 import net.minecraft.item.*;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 
 public class BaseContainer extends Container {
 
@@ -70,9 +73,30 @@ public class BaseContainer extends Container {
         return range;
     }
 
+    // The tile entity whose slots this shows, if any (see canInteractWith)
+    protected TileEntity tileEntity() {
+        return null;
+    }
+
+    // How far (blocks) from the tile entity its player may go before the screen closes
+    protected double maxDistance() {
+        return 8;
+    }
+
+    // Checked every tick on the server, which closes the screen when it's false: once its tile entity is gone (broken,
+    // or its chunk unloaded and saved) or the player has walked away. Kept open, the player could go on taking items
+    // out of a tile entity no longer in the world while the world still had them: a duplicate of each.
     @Override
-    public boolean canInteractWith(EntityPlayer var1) {
-        return true;
+    public boolean canInteractWith(EntityPlayer player) {
+        TileEntity te = tileEntity();
+        if (te == null) {
+            return true;
+        }
+        World world = te.getWorld();
+        BlockPos pos = te.getPos();
+        double max = maxDistance();
+        return !te.isInvalid() && world == player.world && world.isBlockLoaded(pos) && world.getTileEntity(pos) == te
+            && player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= max * max;
     }
 
     @Override
@@ -103,8 +127,14 @@ public class BaseContainer extends Container {
                     else
                         slot.onSlotChanged();
                 }
-                else
+                else {
+                    // Moved out of the slot's own stack, so the tile entity must be told, or the world saves it as it was
                     player.inventory.addItemStackToInventory(stack);
+                    if (stack.isEmpty())
+                        slot.putStack(ItemStack.EMPTY);
+                    else
+                        slot.onSlotChanged();
+                }
             }
         }
         return result;

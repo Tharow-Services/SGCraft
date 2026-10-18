@@ -59,10 +59,12 @@ public class SGPowerTE extends PowerTE implements IEnergyStorage {
 
     @Override
     public int receiveEnergy(int maxReceive, boolean simulate) {
-        int energyReceived = Math.min((int)Math.floor(energyMax - energyBuffer),maxReceive);
-        if (!simulate)
+        int energyReceived = Math.max(0, Math.min((int)Math.floor(energyMax - energyBuffer),maxReceive));
+        // Cables ask (simulate) all the time: only energy actually taken in changes it, and needs saving and sending
+        if (!simulate && energyReceived > 0) {
             energyBuffer += energyReceived;
-        markChanged();
+            markChanged();
+        }
         return energyReceived;
     }
 

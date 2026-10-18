@@ -7,12 +7,17 @@
 package gcewing.sg;
 
 import gcewing.sg.block.DHDBlock;
+import gcewing.sg.block.EventHorizonLightBlock;
+import gcewing.sg.block.GateSpawnerBlock;
 import gcewing.sg.block.NaquadahBlock;
 import gcewing.sg.block.NaquadahOreBlock;
 import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.block.SGPowerBlock;
 import gcewing.sg.block.SGRingBlock;
+import gcewing.sg.block.SupergateBaseBlock;
+import gcewing.sg.block.SupergateRingBlock;
 import gcewing.sg.client.gui.SGGui;
+import gcewing.sg.command.SGSpawnCommand;
 import gcewing.sg.container.DHDFuelContainer;
 import gcewing.sg.container.PowerContainer;
 import gcewing.sg.container.SGBaseContainer;
@@ -33,6 +38,32 @@ import gcewing.sg.features.zpm.ZPMMultiplierRegistry;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartContainer;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCart;
 import gcewing.sg.features.ic2.zpm.interfacecart.ZpmInterfaceCartTE;
+import gcewing.sg.features.edd.EddItem;
+import gcewing.sg.features.obelisk.AsgardObeliskBlock;
+import gcewing.sg.features.obelisk.AsgardObeliskTE;
+import gcewing.sg.features.obelisk.AsgardObelisks;
+import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
+import gcewing.sg.features.rings.RingFuelContainer;
+import gcewing.sg.features.rings.RingPanelBlock;
+import gcewing.sg.features.rings.RingPlatformMalisis;
+import gcewing.sg.features.rings.RingPlatformBlock;
+import gcewing.sg.features.rings.RingPlatformTE;
+import gcewing.sg.features.rings.RingRemoteItem;
+import gcewing.sg.features.rings.RingTransports;
+import gcewing.sg.features.zat.Zat;
+import gcewing.sg.features.zpm.link.ZpmLinkNetworkHandler;
+import gcewing.sg.features.zpm.link.ZpmLinks;
+import gcewing.sg.features.zat.ZatItem;
+import gcewing.sg.features.zat.ZatNetworkHandler;
+import gcewing.sg.features.cityshield.CityShieldBlock;
+import gcewing.sg.features.cityshield.CityShieldTE;
+import gcewing.sg.features.cityshield.network.CityShieldNetworkHandler;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorBlock;
+import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
+import gcewing.sg.features.naquadahgenerator.NaquadahGenerators;
+import gcewing.sg.features.naquadahgenerator.network.NaquadahGeneratorNetworkHandler;
+import gcewing.sg.features.shield.ShieldConsoleBlock;
+import gcewing.sg.features.shield.network.ShieldConsoleNetworkHandler;
 import gcewing.sg.features.pdd.PddItem;
 import gcewing.sg.features.pdd.network.PddNetworkHandler;
 import gcewing.sg.features.tokra.SGTradeHandler;
@@ -54,15 +85,30 @@ import gcewing.sg.interfaces.IIntegration;
 import gcewing.sg.interfaces.SoundSource;
 import gcewing.sg.item.SGChevronUpgradeItem;
 import gcewing.sg.item.SGIrisUpgradeItem;
+import gcewing.sg.item.SGShieldUpgradeItem;
+import gcewing.sg.item.SGInvulnerabilityItem;
 import gcewing.sg.item.SGPegasusUpgradeItem;
+import gcewing.sg.item.SGUniverseUpgradeItem;
 import gcewing.sg.item.SGRingItem;
 import gcewing.sg.network.GuiNetworkHandler;
+import gcewing.sg.network.SupergatePowerNetworkHandler;
 import gcewing.sg.network.SGChannel;
 import gcewing.sg.generator.NaquadahOreWorldGen;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
-import gcewing.sg.util.*;
+import gcewing.sg.util.GateType;
+import gcewing.sg.util.GateUtil;
+import gcewing.sg.util.ComputerLookupLimiter;
+import gcewing.sg.util.GeneralAddressRegistry;
+import gcewing.sg.generator.GateAddressBookFunction;
+import gcewing.sg.util.LootTableConfig;
+import net.minecraft.world.storage.loot.functions.LootFunctionManager;
+import gcewing.sg.util.Info;
+import gcewing.sg.util.PermissionsUtil;
+import gcewing.sg.util.SGChunkData;
+import gcewing.sg.util.Sound;
 import net.minecraft.block.Block;
+import net.minecraft.util.NonNullList;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -70,11 +116,15 @@ import net.minecraft.client.audio.SoundHandler;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.Ingredient;
+import net.minecraft.util.EnumActionResult;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
@@ -84,14 +134,18 @@ import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.client.model.obj.OBJLoader;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.terraingen.InitMapGenEvent;
 import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
+import net.minecraftforge.event.world.ChunkWatchEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -109,6 +163,9 @@ import static net.minecraftforge.fml.common.registry.VillagerRegistry.VillagerPr
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 @Mod(modid = Info.modID, name = Info.modName, version = Info.versionNumber,
     acceptableRemoteVersions = Info.versionBounds, dependencies = "after:opencomputers;after:ic2;after:computercraft;after:malisiscore")
@@ -123,12 +180,29 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static BaseTEChunkManager chunkManager;
 
     public static SGBaseBlock sgBaseBlock;
+    public static EventHorizonLightBlock eventHorizonLightBlock;
+    // Bases that build a gate of their own type, for building one by hand in creative mode
+    public static SGBaseBlock pegasusBaseBlock, universeBaseBlock;
     public static SGRingBlock sgRingBlock;
+    public static SupergateBaseBlock supergateBaseBlock;
+    public static SupergateRingBlock supergateRingBlock;
+    // The order the gates' blocks are shown in the creative tab: each type's base, then the block
+    // that builds that gate finished (see GateSpawnerBlock), side by side, whatever their item ids
+    // (which a world keeps from when they were added)
+    public static final List<Block> creativeGateOrder = new ArrayList<>();
     public static DHDBlock sgControllerBlock;
     public static Block naquadahBlock, naquadahOre;
+    public static Block shieldConsole;
+    public static Block asgardObelisk;
+    public static Block asgardObeliskCeltic;
+    public static Block ringPlatform, ringPlatformCeiling, ringPanel;
+    public static Block cityShieldGenerator;
+    public static Block naquadahGeneratorMk1, naquadahGeneratorMk2;
     public static SGPowerBlock sgPowerUnit;
 
-    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgIrisBlade, pegasus_upgrade;
+    public static Item invulnerabilityUpgrade;
+    public static Item ringRemote;
+    public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgShieldUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
     public static Block ic2PowerUnit;
@@ -142,7 +216,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static OCIntegration ocIntegration; //[OC]
 
     public static Block zpm_interface_cart, zpm_console, zpm_hub;
-    public static Item zpm, gdo, pdd, configurator;
+    public static Item zpm, gdo, pdd, edd, configurator, zat;
 
     public static CreativeTabs creativeTabs;
 
@@ -158,6 +232,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static int Ic2SafeInput = 2048;
     public static int Ic2MaxEnergyBuffer = 1000000;
     public static double Ic2euPerSGEnergyUnit = 20.0;
+    public static double Ic2FEPerEU = 4.0; // Forge Energy given per EU when an IC2 block feeds a Forge Energy (RF/FE) acceptor
     public static int Ic2PowerTETier = 5; //3
 
     // SG Power Block Options
@@ -186,6 +261,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     // Search Ranges for ZPM & Tools
     public static int zpmSearchRange = 6;
+    public static int eventHorizonLightLevel = 12; // Light (0-15) a gate gives off while its event horizon is up; 0 for none
     public static int toolSearchRange = 6;
 
     public static PermissionsUtil permissionsUtil;
@@ -202,6 +278,29 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             @Override public ItemStack createIcon() {
                 return new ItemStack(Item.getItemFromBlock(sgBaseBlock));
             }
+
+            // The gates' blocks together, in creativeGateOrder, where the first of them would be
+            @Override public void displayAllRelevantItems(NonNullList<ItemStack> items) {
+                super.displayAllRelevantItems(items);
+                List<ItemStack> gates = new ArrayList<>();
+                for (Block block : creativeGateOrder) {
+                    for (ItemStack stack : items) {
+                        if (Block.getBlockFromItem(stack.getItem()) == block) {
+                            gates.add(stack);
+                        }
+                    }
+                }
+                int at = -1;
+                for (int i = 0; i < items.size(); i++) {
+                    if (gates.contains(items.get(i))) {
+                        at = at < 0 ? i : at;
+                        items.remove(i--);
+                    }
+                }
+                if (at >= 0) {
+                    items.addAll(at, gates);
+                }
+            }
         };
         FMLCommonHandler.instance().bus().register(this);
         if (FMLCommonHandler.instance().getSide().isClient()) {
@@ -217,6 +316,26 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
 
         GameRegistry.registerTileEntity(ZpmConsoleTE.class, new ResourceLocation(this.modID + ":" + "tile_zpmconsole"));
+        GameRegistry.registerTileEntity(AsgardObeliskTE.class, new ResourceLocation(this.modID + ":" + "tile_asgard_obelisk"));
+        // One name either way, so platforms load with or without MalisisCore (which its fuel screen uses when installed)
+        ResourceLocation ringPlatformId = new ResourceLocation(this.modID + ":" + "tile_ring_platform");
+        if (isModLoaded("malisiscore")) {
+            RingPlatformMalisis.registerTileEntity(ringPlatformId);
+        } else {
+            GameRegistry.registerTileEntity(RingPlatformTE.class, ringPlatformId);
+        }
+        // The City Shield Generator holds its ZPMs in a MalisisCore inventory, so needs MalisisCore
+        if (isModLoaded("malisiscore")) {
+            GameRegistry.registerTileEntity(CityShieldTE.class, new ResourceLocation(this.modID + ":" + "tile_cityshield"));
+            MinecraftForge.EVENT_BUS.register(CityShieldTE.class); // keeps explosions outside the shield from reaching in
+            GameRegistry.registerTileEntity(NaquadahGeneratorTE.class, new ResourceLocation(this.modID + ":" + "tile_naquadah_generator"));
+        }
+
+        LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
+        MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
+        MinecraftForge.EVENT_BUS.register(AsgardObelisks.class); // beams players a moment after they touch the crystal
+        MinecraftForge.EVENT_BUS.register(Zat.class); // fires zats once they've charged
+        MinecraftForge.EVENT_BUS.register(ZpmLinks.class); // linking ZPM devices to stargates by sneak-clicking
 
         super.preInit(e);
     }
@@ -228,6 +347,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         System.out.printf("SGCraft.init\n");
         configure();
         channel = new SGChannel(Info.modID);
+        new SupergatePowerNetworkHandler(Info.modID + "-power");
+        new ObeliskNetworkHandler(Info.modID + "-obelisk");
+        new ZpmLinkNetworkHandler(Info.modID + "-zpmlink");
+        new ZatNetworkHandler(Info.modID + "-zat");
         chunkManager = new BaseTEChunkManager(this);
 
     }
@@ -250,6 +373,16 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         super.postInit(e);
     }
 
+    @Mod.EventHandler
+    public void serverStarting(FMLServerStartingEvent e) {
+        e.registerServerCommand(new SGSpawnCommand());
+    }
+
+    @Mod.EventHandler
+    public void serverStarted(FMLServerStartedEvent e) {
+        checkInjectLootTables(FMLCommonHandler.instance().getMinecraftServerInstance().getWorld(0));
+    }
+
     @Override
     protected SGCraftClient initClient() {
         return new SGCraftClient(this);
@@ -261,10 +394,16 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         NaquadahOreWorldGen.configure(config);
         SGBaseBlock.configure(config);
         SGBaseTE.configure(config);
+        ComputerLookupLimiter.configure(config);
+        Zat.configure(config);
+        RingTransports.configure(config);
+        if (isModLoaded("malisiscore")) {
+            CityShieldTE.configure(config);
+            NaquadahGenerators.configure(config);
+        }
         FeatureGeneration.configure(config);
 
-        // Server-Side Options
-        addOresToExistingWorlds = config.getBoolean("options", "addOresToExistingWorlds", false);
+        // (Adding ore to existing chunks is read with the ore's settings: NaquadahOreWorldGen.configure)
 
         // Client-Side Options
         useHDEventHorizionTexture = config.getBoolean("client", "useHDEventHorizonTexture", useHDEventHorizionTexture);
@@ -298,8 +437,40 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     @Override
     protected void registerBlocks() {
+        // The hidden light behind a closed iris (see EventHorizonLightBlock): no item, never in the creative tab
+        eventHorizonLightBlock = new EventHorizonLightBlock();
+        eventHorizonLightBlock.setTranslationKey(assetKey + ":event_horizon_light");
+        eventHorizonLightBlock.setRegistryName(assetKey, "event_horizon_light");
+        ForgeRegistries.BLOCKS.register(eventHorizonLightBlock);
+
         sgRingBlock = newBlock("stargateRing", SGRingBlock.class, SGRingItem.class);
+        // Each type's base, then (if they are on) the creative-only block that builds that gate
+        // finished, for testing: stargates, then supergates
+        boolean spawners = config.getBoolean("options", "gateSpawnerBlocks", true);
         sgBaseBlock = newBlock("stargateBase", SGBaseBlock.class);
+        creativeGateOrder.add(sgBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_stargate"));
+        }
+        pegasusBaseBlock = addBlock(new SGBaseBlock(GateType.PEGASUS, "stargatebase_front_pegasus"), "stargateBasePegasus");
+        creativeGateOrder.add(pegasusBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_stargate"));
+        }
+        universeBaseBlock = addBlock(new SGBaseBlock(GateType.UNIVERSE, "stargatebase_front_universe"), "stargateBaseUniverse");
+        creativeGateOrder.add(universeBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(sgBaseBlock, GateType.UNIVERSE), "gatespawner_universe_stargate"));
+        }
+        supergateRingBlock = newBlock("supergateRing", SupergateRingBlock.class, SGRingItem.class);
+        supergateBaseBlock = newBlock("supergateBase", SupergateBaseBlock.class);
+        creativeGateOrder.add(supergateBaseBlock);
+        if (spawners) {
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.MILKY_WAY), "gatespawner_milkyway_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.PEGASUS), "gatespawner_pegasus_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.UNIVERSE), "gatespawner_universe_supergate"));
+            creativeGateOrder.add(addBlock(new GateSpawnerBlock(supergateBaseBlock, GateType.ORI), "gatespawner_ori_supergate"));
+        }
         sgControllerBlock = newBlock("stargateController", DHDBlock.class);
         naquadahBlock = newBlock("naquadahBlock", NaquadahBlock.class);
         naquadahOre = newBlock("naquadahOre", NaquadahOreBlock.class);
@@ -310,6 +481,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             zpm_hub = newBlock("zpm_hub", ZpmHub.class);
         }
         zpm_console = newBlock("zpm_console", ZpmConsole.class);
+        asgardObelisk = newBlock("asgard_obelisk", AsgardObeliskBlock.class);
+        asgardObeliskCeltic = addBlock(new AsgardObeliskBlock(AsgardObeliskBlock.Type.CELTIC), "asgard_obelisk_celtic");
+        ringPlatform = addBlock(new RingPlatformBlock(false), "ring_platform");
+        ringPlatformCeiling = addBlock(new RingPlatformBlock(true), "ring_platform_ceiling");
+        ringPanel = newBlock("ring_panel", RingPanelBlock.class);
 
         this.setOptions();
     }
@@ -322,15 +498,20 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         sgControllerCrystal = newItem("sgControllerCrystal"); //, "Stargate Controller Crystal");
         sgChevronUpgrade = addItem(new SGChevronUpgradeItem(), "sgChevronUpgrade");
         sgIrisUpgrade = addItem(new SGIrisUpgradeItem(), "sgIrisUpgrade");
+        sgShieldUpgrade = addItem(new SGShieldUpgradeItem(), "sgShieldUpgrade");
+        invulnerabilityUpgrade = addItem(new SGInvulnerabilityItem(), "invulnerability_upgrade"); // creative only: no recipe
         sgIrisBlade = newItem("sgIrisBlade");
         if (isModLoaded("ic2")) {
             ic2Capacitor = newItem("ic2Capacitor");
         }
 
         zpm = addItem(new ZPMItem(), "zpm");
+        zat = addItem(new ZatItem(), "zat");
+        ringRemote = addItem(new RingRemoteItem(), "ring_remote");
         tollan_phase_shift_device = newItem("tollan_phase_shift_device");
 
         pegasus_upgrade = addItem(new SGPegasusUpgradeItem(), "pegasus_upgrade");
+        universe_upgrade = addItem(new SGUniverseUpgradeItem(), "universe_upgrade");
 
         if (isModLoaded("malisiscore")) {
             new GuiNetworkHandler(Info.modID+"-GUI");
@@ -340,6 +521,17 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
             pdd = addItem(new PddItem(), "pdd");
             new PddNetworkHandler(Info.modID+"-pdd");
+            edd = addItem(new EddItem(), "edd");
+
+            shieldConsole = newBlock("shield_console", ShieldConsoleBlock.class);
+            new ShieldConsoleNetworkHandler(Info.modID+"-shield");
+
+            cityShieldGenerator = newBlock("city_shield_generator", CityShieldBlock.class);
+            new CityShieldNetworkHandler(Info.modID+"-cityshield");
+
+            naquadahGeneratorMk1 = addBlock(new NaquadahGeneratorBlock(NaquadahGenerators.Mark.I), "naquadah_generator_mk1");
+            naquadahGeneratorMk2 = addBlock(new NaquadahGeneratorBlock(NaquadahGenerators.Mark.II), "naquadah_generator_mk2");
+            new NaquadahGeneratorNetworkHandler(Info.modID + "-naqgen");
 
             // PDD default address loader
             final ConfigurationNode rootNode;
@@ -390,7 +582,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     }
 
     public static boolean isValidStargateUpgrade(Item item) {
-        return item == sgChevronUpgrade || item == sgIrisUpgrade;
+        return item == sgChevronUpgrade || item == sgIrisUpgrade || item == sgShieldUpgrade;
     }
 
     @Override
@@ -424,6 +616,34 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             newRecipe("naquadahblock", naquadahBlock, 1, "NNN", "NNN", "NNN", 'N', "ingotNaquadahAlloy");
         }
 
+        // Thor's hammer in sandstone on a stone pillar, an ender pearl for its crystal
+        if (config.getBoolean("recipes", "asgardObelisk", true)) {
+            newRecipe("asgard_obelisk", asgardObelisk, 1, " C ", "SES", "SNS", 'C', chiselledSandstone, 'S', Blocks.STONEBRICK,
+                'E', Items.ENDER_PEARL, 'N', "ingotNaquadahAlloy");
+        }
+        // The zat: naquadah alloy round a core crystal, with a purple grip
+        if (config.getBoolean("recipes", "zat", true)) {
+            newRecipe("zat", zat, 1, " NC", "NRN", "PN ", 'N', "ingotNaquadahAlloy", 'C', sgCoreCrystal, 'R', Blocks.REDSTONE_BLOCK,
+                'P', new ItemStack(Items.DYE, 1, 5));
+        }
+        // Ring platforms: naquadah alloy round an ender pearl in a ring of iron; the panel and the remote in gold
+        if (config.getBoolean("recipes", "ringPlatform", true)) {
+            newRecipe("ring_platform", ringPlatform, 1, "INI", "NEN", "INI", 'I', Blocks.IRON_BLOCK, 'N', "ingotNaquadahAlloy", 'E', Items.ENDER_PEARL);
+            newRecipe("ring_platform_ceiling", ringPlatformCeiling, 1, "X", 'X', ringPlatform);
+            newRecipe("ring_platform_floor", ringPlatform, 1, "X", 'X', ringPlatformCeiling);
+        }
+        if (config.getBoolean("recipes", "ringPanel", true)) {
+            newRecipe("ring_panel", ringPanel, 1, "GRG", "GNG", 'G', Items.GOLD_INGOT, 'R', Items.REDSTONE, 'N', "ingotNaquadahAlloy");
+        }
+        if (config.getBoolean("recipes", "ringRemote", true)) {
+            newRecipe("ring_remote", ringRemote, 1, " R ", "GNG", " G ", 'G', Items.GOLD_INGOT, 'R', Items.REDSTONE, 'N', "ingotNaquadahAlloy");
+        }
+        // The knotwork obelisk, all in sandstone
+        if (config.getBoolean("recipes", "asgardObeliskCeltic", true)) {
+            newRecipe("asgard_obelisk_celtic", asgardObeliskCeltic, 1, " C ", "SES", "SNS", 'C', chiselledSandstone, 'S', smoothSandstone,
+                'E', Items.ENDER_PEARL, 'N', "ingotNaquadahAlloy");
+        }
+
         if (config.getBoolean("recipes", "sgRingBlock", true)) {
             newRecipe("sgringblock", sgRingBlock, 1, "CCC", "NNN", "SSS", 'S', smoothSandstone, 'N', "ingotNaquadahAlloy", 'C', chiselledSandstone);
         }
@@ -434,6 +654,21 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         if (config.getBoolean("recipes", "sgBaseBlock", true)) {
             newRecipe("sgbaseblock", sgBaseBlock, 1, "CrC", "NeN", "ScS", 'S', smoothSandstone, 'N', "ingotNaquadahAlloy", 'C', chiselledSandstone, 'r', Items.REDSTONE, 'e', Items.ENDER_EYE, 'c', sgCoreCrystal);
+        }
+
+        ItemStack sgRingBlockStack = new ItemStack(sgRingBlock, 1, 0);
+        ItemStack supergateRingStack = new ItemStack(supergateRingBlock, 1, 0);
+
+        if (config.getBoolean("recipes", "supergateRingBlock", true)) {
+            newRecipe("supergateringblock", supergateRingBlock, 4, "RNR", "NBN", "RNR", 'R', sgRingBlockStack, 'N', "ingotNaquadahAlloy", 'B', naquadahBlock);
+        }
+
+        if (config.getBoolean("recipes", "supergateChevronBlock", true)) {
+            newRecipe("supergatechevronblock", new ItemStack(supergateRingBlock, 1, 1), "S", "C", 'S', supergateRingStack, 'C', sgChevronBlock);
+        }
+
+        if (config.getBoolean("recipes", "supergateBaseBlock", true)) {
+            newRecipe("supergatebaseblock", supergateBaseBlock, 1, "SeS", "NbN", "SnS", 'S', supergateRingStack, 'N', "ingotNaquadahAlloy", 'e', Items.NETHER_STAR, 'b', sgBaseBlock, 'n', naquadahBlock);
         }
 
         if (config.getBoolean("recipes", "sgControllerBlock", true)) {
@@ -450,6 +685,10 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         if (config.getBoolean("recipes", "sgIrisUpgradeItem", true)) {
             newRecipe("sgirisupgrade", sgIrisUpgrade, 1, "bbb", "brb", "bbb", 'b', sgIrisBlade, 'r', Items.REDSTONE);
+        }
+
+        if (config.getBoolean("recipes", "sgShieldUpgradeItem", true)) {
+            newRecipe("sgshieldupgrade", sgShieldUpgrade, 1, "ili", "rcr", "ili", 'i', naquadahIngot, 'l', blueDye, 'r', Items.REDSTONE, 'c', sgCoreCrystal);
         }
 
         if (config.getBoolean("recipes", "sgCoreCrystalItem", false)) {
@@ -478,9 +717,31 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             }
         }
 
+        // The Universe gate has all nine chevrons, so its upgrade takes two chevron upgrades
+        if (config.getBoolean("recipes", "universe_upgrade", true)) {
+            newRecipe("universe_upgrade", universe_upgrade, 1, "ede", "cnc", "ede", 'e', Items.ENDER_PEARL, 'd', Items.DIAMOND, 'c', sgChevronUpgrade, 'n', sgCoreCrystal);
+        }
+
         if (isModLoaded("malisiscore")) {
             if (config.getBoolean("recipes", "pdd", true)) {
                 newRecipe("pdd", pdd, 1, "rcr", "nCn", "xbz", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'C', Items.CLOCK, 'c', Items.COMPASS);
+            }
+            if (config.getBoolean("recipes", "edd", true)) {
+                newRecipe("edd", edd, 1, "rcr", "nMn", "xbz", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'M', Items.MAP, 'c', Items.COMPASS);
+            }
+            if (config.getBoolean("recipes", "shieldConsole", true)) {
+                newRecipe("shield_console", shieldConsole, 1, "IBI", "RCR", "III", 'I', Items.IRON_INGOT, 'B', Blocks.STONE_BUTTON, 'R', Items.REDSTONE, 'C', sgControllerCrystal);
+            }
+            if (config.getBoolean("recipes", "cityShieldGenerator", true)) {
+                newRecipe("city_shield_generator", cityShieldGenerator, 1, "NSN", "CXC", "NSN", 'N', naquadahBlock, 'S', sgShieldUpgrade, 'C', sgCoreCrystal, 'X', Items.NETHER_STAR);
+            }
+            // The Mark I: naquadah alloy round a core crystal, in an iron case; the Mark II: a Mark I with a diamond and a
+            // naquadah block
+            if (config.getBoolean("recipes", "naquadahGeneratorMk1", true)) {
+                newRecipe("naquadah_generator_mk1", naquadahGeneratorMk1, 1, "INI", "NCN", "INI", 'I', Items.IRON_INGOT, 'N', "ingotNaquadahAlloy", 'C', sgCoreCrystal);
+            }
+            if (config.getBoolean("recipes", "naquadahGeneratorMk2", true)) {
+                newRecipe("naquadah_generator_mk2", naquadahGeneratorMk2, 1, "NDN", "NMN", "NBN", 'N', "ingotNaquadahAlloy", 'D', Items.DIAMOND, 'M', naquadahGeneratorMk1, 'B', naquadahBlock);
             }
             if (config.getBoolean("recipes", "gdo", true)) {
                 newRecipe("gdo", gdo, 1, "rCr", "xLz", "nbn", 'n', naquadah, 'z', sgCoreCrystal, 'x', sgControllerCrystal, 'r', Items.REDSTONE, 'b', Items.WRITABLE_BOOK, 'C', Items.CLOCK, 'L', Blocks.LEVER);
@@ -506,6 +767,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     protected void registerContainers() {
         addContainer(SGGui.SGBase, SGBaseContainer.class);
         addContainer(SGGui.DHDFuel, DHDFuelContainer.class);
+        addContainer(SGGui.RingFuel, RingFuelContainer.class);
         addContainer(SGGui.PowerUnit, PowerContainer.class);
         addContainer(SGGui.ZPMInterfaceCart, ZpmInterfaceCartContainer.class);
         addContainer(SGGui.ZPMConsole, ZpmConsoleContainer.class);
@@ -549,6 +811,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerSounds() {
         SGBaseTE.registerSounds(this);
+        if (isModLoaded("malisiscore")) {
+            CityShieldTE.registerSounds(this); // (it needs MalisisCore, so only with it)
+        }
+        NaquadahGenerators.registerSounds(this);
+        AsgardObelisks.beamSound = newSound("asgard_beam");
+        RingTransports.registerSounds(this);
+        Zat.fireSound = newSound("zat_fire");
     }
 
     @SubscribeEvent
@@ -590,12 +859,70 @@ public class SGCraft extends BaseMod<SGCraftClient> {
                     te.disconnect();
                 }
             }
+            SGChunkData.onChunkUnload(chunk);
+        }
+    }
+
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload e) {
+        if (!e.getWorld().isRemote) {
+            SGChunkData.onWorldUnload(e.getWorld());
+        }
+    }
+
+    // When a player starts seeing a chunk, tell them their own access to any gates in it: clients aren't sent the
+    // gates' access lists, but need to know which screens and slots to show
+    @SubscribeEvent
+    public void onChunkWatch(ChunkWatchEvent.Watch e) {
+        EntityPlayerMP player = e.getPlayer();
+        Chunk chunk = e.getChunkInstance() != null ? e.getChunkInstance() : player.world.getChunk(e.getChunk().x, e.getChunk().z);
+        for (TileEntity te : chunk.getTileEntityMap().values()) {
+            if (te instanceof SGBaseTE) {
+                ((SGBaseTE) te).sendPlayerAccessTo(player);
+            }
+        }
+    }
+
+    // A supergate's ring is drawn far wider than its blocks, so most clicks on it would miss them,
+    // landing on whatever is behind or on nothing. An empty handed click on the drawn ring of any
+    // gate in front of what it would otherwise hit acts on the gate.
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock e) {
+        EntityPlayer player = e.getEntityPlayer();
+        if (e.getHand() != EnumHand.MAIN_HAND || !player.getHeldItemMainhand().isEmpty()) {
+            return;
+        }
+        double[] ringDistance = new double[1];
+        SGBaseTE gate = GateUtil.gateLookedAt(e.getWorld(), player, GateUtil.reach(player), ringDistance);
+        if (gate == null || e.getHitVec() == null || ringDistance[0] >= player.getPositionEyes(1).distanceTo(e.getHitVec())) {
+            return;
+        }
+        e.setCanceled(true);
+        e.setCancellationResult(EnumActionResult.SUCCESS);
+        if (!e.getWorld().isRemote) {
+            GateUtil.activateGate(gate, player);
+        }
+    }
+
+    // Client only: an empty handed click on nothing, which the server doesn't hear of
+    @SubscribeEvent
+    public void onRightClickEmpty(PlayerInteractEvent.RightClickEmpty e) {
+        EntityPlayer player = e.getEntityPlayer();
+        if (e.getHand() != EnumHand.MAIN_HAND) {
+            return;
+        }
+        SGBaseTE gate = GateUtil.gateLookedAt(e.getWorld(), player, GateUtil.reach(player));
+        if (gate != null) {
+            SGChannel.sendGateActivationToServer(gate);
         }
     }
 
     @SubscribeEvent
     @SideOnly(Side.CLIENT)
     public void onModelRegistry(ModelRegistryEvent event) {
+        // The hidden iris light has no model; mapping it to none keeps Minecraft from looking for one
+        ModelLoader.setCustomStateMapper(eventHorizonLightBlock, block -> Collections.emptyMap());
+
         // Register Complex Block Models
         // Note: Complex Item Models register within their creation class because their registration order isn't important.
         if (SGCraft.zpm_interface_cart != null) {
@@ -630,6 +957,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         Ic2MaxEnergyBuffer = config.getInteger("ic2", "energyBufferSize", Ic2MaxEnergyBuffer);
         Ic2euPerSGEnergyUnit = config.getDouble("ic2", "euPerSGEnergyUnit", Ic2euPerSGEnergyUnit);
         Ic2PowerTETier = config.getInteger("ic2", "PowerTETier", Ic2PowerTETier);
+        Ic2FEPerEU = config.getDouble("ic2", "fePerEU", Ic2FEPerEU);
         forceIC2CfgUpdate = config.getBoolean("ic2", "force-update", forceIC2CfgUpdate);
 
         // FP Power Block (Forge Power) i.e.: RF/FE
@@ -643,6 +971,11 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         // Range lookups for various things...
         zpmSearchRange = config.getInteger("stargate", "zpmSearchRange", zpmSearchRange);
+        eventHorizonLightLevel = Math.max(0, Math.min(15, config.getInteger("stargate", "eventHorizonLightLevel", eventHorizonLightLevel)));
+
+        // Loot
+        LootTableConfig.load(config, assetKey);
+        debugLoot = config.getBoolean("loot", "debugLoot", debugLoot); // log 100 sample rolls of each loot table at server start
         toolSearchRange = config.getInteger("stargate", "toolSearchRange", toolSearchRange);
 
         // World Update / Fixes

@@ -38,16 +38,16 @@ public class GdoItem extends Item {
     @Override
     public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer player, EnumHand handIn) {
         if (!worldIn.isRemote) {
-            TileEntity localGateTE = GateUtil.locateLocalGate(worldIn, new BlockPos(player.posX, player.posY, player.posZ), 6, false);
+            TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, 6);
 
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;
 
-                boolean canAccessLocal = localGate.allowAccessToIrisController(player.getName());
+                boolean canAccessLocal = localGate.allowAccessToIrisController(player);
                 boolean canAccessRemote = true;
                 if (localGate.isConnected() && localGate.state == SGState.Connected) {
                     SGBaseTE remoteGate = localGate.getConnectedStargateTE();
-                    canAccessRemote = remoteGate.allowAccessToIrisController(player.getName());
+                    canAccessRemote = remoteGate.allowAccessToIrisController(player);
                 }
 
                 boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
@@ -57,12 +57,12 @@ public class GdoItem extends Item {
                     canAccessRemote = true;
                 }
 
-                if (SGCraft.hasPermission(player, "sgcraft.gui.gdo") && localGate.allowGateAccess(player.getName()) || isPermissionsAdmin) {
+                if (SGCraft.hasPermission(player, "sgcraft.gui.gdo") && localGate.allowGateAccess(player) || isPermissionsAdmin) {
                     GuiNetworkHandler.openGuiAtClient(localGate, player, 2, isPermissionsAdmin, canAccessLocal, canAccessRemote);
                 } else {
                     if (!SGCraft.hasPermission(player, "sgcraft.gui.gdo"))
                         sendErrorMsg(player, "gdoPermission");
-                    if (!localGate.allowGateAccess(player.getName()))
+                    if (!localGate.allowGateAccess(player))
                         sendErrorMsg(player, "insufficientPlayerAccessPermission");
 
                     return new ActionResult<>(EnumActionResult.FAIL, player.getHeldItem(handIn));
