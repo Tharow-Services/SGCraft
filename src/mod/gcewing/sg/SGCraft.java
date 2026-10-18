@@ -41,6 +41,13 @@ import gcewing.sg.features.obelisk.AsgardObeliskBlock;
 import gcewing.sg.features.obelisk.AsgardObeliskTE;
 import gcewing.sg.features.obelisk.AsgardObelisks;
 import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
+import gcewing.sg.features.rings.RingFuelContainer;
+import gcewing.sg.features.rings.RingPanelBlock;
+import gcewing.sg.features.rings.RingPlatformMalisis;
+import gcewing.sg.features.rings.RingPlatformBlock;
+import gcewing.sg.features.rings.RingPlatformTE;
+import gcewing.sg.features.rings.RingRemoteItem;
+import gcewing.sg.features.rings.RingTransports;
 import gcewing.sg.features.zat.Zat;
 import gcewing.sg.features.zpm.link.ZpmLinkNetworkHandler;
 import gcewing.sg.features.zpm.link.ZpmLinks;
@@ -186,11 +193,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     public static Block shieldConsole;
     public static Block asgardObelisk;
     public static Block asgardObeliskCeltic;
+    public static Block ringPlatform, ringPlatformCeiling, ringPanel;
     public static Block cityShieldGenerator;
     public static Block naquadahGeneratorMk1, naquadahGeneratorMk2;
     public static SGPowerBlock sgPowerUnit;
 
     public static Item invulnerabilityUpgrade;
+    public static Item ringRemote;
     public static Item naquadah, naquadahIngot, sgCoreCrystal, sgControllerCrystal, sgChevronUpgrade, sgIrisUpgrade, sgShieldUpgrade, sgIrisBlade, pegasus_upgrade, universe_upgrade;
     public static Item tollan_phase_shift_device;
 
@@ -306,6 +315,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         GameRegistry.registerTileEntity(ZpmConsoleTE.class, new ResourceLocation(this.modID + ":" + "tile_zpmconsole"));
         GameRegistry.registerTileEntity(AsgardObeliskTE.class, new ResourceLocation(this.modID + ":" + "tile_asgard_obelisk"));
+        // One name either way, so platforms load with or without MalisisCore (which its fuel screen uses when installed)
+        ResourceLocation ringPlatformId = new ResourceLocation(this.modID + ":" + "tile_ring_platform");
+        if (isModLoaded("malisiscore")) {
+            RingPlatformMalisis.registerTileEntity(ringPlatformId);
+        } else {
+            GameRegistry.registerTileEntity(RingPlatformTE.class, ringPlatformId);
+        }
         // The City Shield Generator holds its ZPMs in a MalisisCore inventory, so needs MalisisCore
         if (isModLoaded("malisiscore")) {
             GameRegistry.registerTileEntity(CityShieldTE.class, new ResourceLocation(this.modID + ":" + "tile_cityshield"));
@@ -370,6 +386,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         SGBaseTE.configure(config);
         ComputerLookupLimiter.configure(config);
         Zat.configure(config);
+        RingTransports.configure(config);
         if (isModLoaded("malisiscore")) {
             CityShieldTE.configure(config);
             NaquadahGenerators.configure(config);
@@ -456,6 +473,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         zpm_console = newBlock("zpm_console", ZpmConsole.class);
         asgardObelisk = newBlock("asgard_obelisk", AsgardObeliskBlock.class);
         asgardObeliskCeltic = addBlock(new AsgardObeliskBlock(AsgardObeliskBlock.Type.CELTIC), "asgard_obelisk_celtic");
+        ringPlatform = addBlock(new RingPlatformBlock(false), "ring_platform");
+        ringPlatformCeiling = addBlock(new RingPlatformBlock(true), "ring_platform_ceiling");
+        ringPanel = newBlock("ring_panel", RingPanelBlock.class);
 
         this.setOptions();
     }
@@ -477,6 +497,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         zpm = addItem(new ZPMItem(), "zpm");
         zat = addItem(new ZatItem(), "zat");
+        ringRemote = addItem(new RingRemoteItem(), "ring_remote");
         tollan_phase_shift_device = newItem("tollan_phase_shift_device");
 
         pegasus_upgrade = addItem(new SGPegasusUpgradeItem(), "pegasus_upgrade");
@@ -594,6 +615,18 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         if (config.getBoolean("recipes", "zat", true)) {
             newRecipe("zat", zat, 1, " NC", "NRN", "PN ", 'N', "ingotNaquadahAlloy", 'C', sgCoreCrystal, 'R', Blocks.REDSTONE_BLOCK,
                 'P', new ItemStack(Items.DYE, 1, 5));
+        }
+        // Ring platforms: naquadah alloy round an ender pearl in a ring of iron; the panel and the remote in gold
+        if (config.getBoolean("recipes", "ringPlatform", true)) {
+            newRecipe("ring_platform", ringPlatform, 1, "INI", "NEN", "INI", 'I', Blocks.IRON_BLOCK, 'N', "ingotNaquadahAlloy", 'E', Items.ENDER_PEARL);
+            newRecipe("ring_platform_ceiling", ringPlatformCeiling, 1, "X", 'X', ringPlatform);
+            newRecipe("ring_platform_floor", ringPlatform, 1, "X", 'X', ringPlatformCeiling);
+        }
+        if (config.getBoolean("recipes", "ringPanel", true)) {
+            newRecipe("ring_panel", ringPanel, 1, "GRG", "GNG", 'G', Items.GOLD_INGOT, 'R', Items.REDSTONE, 'N', "ingotNaquadahAlloy");
+        }
+        if (config.getBoolean("recipes", "ringRemote", true)) {
+            newRecipe("ring_remote", ringRemote, 1, " R ", "GNG", " G ", 'G', Items.GOLD_INGOT, 'R', Items.REDSTONE, 'N', "ingotNaquadahAlloy");
         }
         // The knotwork obelisk, all in sandstone
         if (config.getBoolean("recipes", "asgardObeliskCeltic", true)) {
@@ -724,6 +757,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     protected void registerContainers() {
         addContainer(SGGui.SGBase, SGBaseContainer.class);
         addContainer(SGGui.DHDFuel, DHDFuelContainer.class);
+        addContainer(SGGui.RingFuel, RingFuelContainer.class);
         addContainer(SGGui.PowerUnit, PowerContainer.class);
         addContainer(SGGui.ZPMInterfaceCart, ZpmInterfaceCartContainer.class);
         addContainer(SGGui.ZPMConsole, ZpmConsoleContainer.class);
@@ -772,6 +806,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
         NaquadahGenerators.registerSounds(this);
         AsgardObelisks.beamSound = newSound("asgard_beam");
+        RingTransports.registerSounds(this);
         Zat.fireSound = newSound("zat_fire");
     }
 

@@ -39,6 +39,12 @@ public final class ObeliskBeamEffects {
         }
     }
 
+    // Just the white-out, the beam coming in delayTicks, for transports with sounds of their own (ring transporters)
+    public static void whiteOut(int delayTicks) {
+        start = System.currentTimeMillis();
+        beamAt = delayTicks * 50L;
+    }
+
     // The player moved, so the beam was called off: the sound stops and the screen clears
     public static void cancel() {
         start = 0;
