@@ -10,26 +10,15 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.block.BlockStoneBrick;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.structure.StructureBoundingBox;
 import net.minecraft.world.gen.structure.StructureComponent;
-import net.minecraft.world.gen.structure.template.TemplateManager;
 
 import java.util.Random;
-import java.util.Collections;
-import java.util.List;
-import java.util.LinkedList;
 
 public class FeatureSwampHut extends FeatureStargate {
-    @Override
-    protected void readStructureFromNBT(NBTTagCompound compound, TemplateManager templateManager) {}
-
-    @Override
-    protected void writeStructureToNBT(NBTTagCompound compound) {}
-
     public FeatureSwampHut() {}
 
     public FeatureSwampHut(StructureComponent base) {
@@ -91,29 +80,17 @@ public class FeatureSwampHut extends FeatureStargate {
         }
     }
 
-    @Override
-    public boolean addComponentParts(World world, Random rand, StructureBoundingBox clip) {
-        return generateStructure && addAugmentationParts(world, rand, clip);
-    }
-
     protected boolean addAugmentationParts(World world, Random rand, StructureBoundingBox clip) {
         if ((pass == 3) && (FeatureGeneration.debugStructures))
             System.out.printf("SGCraft: FeatureSwampHut.addComponentParts in %s clipped to %s\n", getBoundingBox(), clip);
 
-        if (base == null) {
-            System.out.printf("SGCraft: FeatureSwampHut.addComponentParts: no base\n");
-            return false;
-        }
-
-        // Check the four corners of our planned spawn area to find the lowest one, use that as our base Y level.
+        // Find the lowest ground in our planned spawn area, use that as our base Y level. Only the part of the area being
+        // generated now is looked at, as looking further would make Minecraft generate more chunks from inside this one.
         // This gives the gate a chance to spawn partially/entirely submerged or buried, for added fun.
         if (firstY == -1) {
-            List<Integer> cornerY = new LinkedList<Integer>();
-            cornerY.add (world.getTopSolidOrLiquidBlock(new BlockPos (boundingBox.minX, boundingBox.minY, boundingBox.minZ)).getY());
-            cornerY.add (world.getTopSolidOrLiquidBlock(new BlockPos (boundingBox.maxX, boundingBox.minY, boundingBox.minZ)).getY());
-            cornerY.add (world.getTopSolidOrLiquidBlock(new BlockPos (boundingBox.minX, boundingBox.minY, boundingBox.maxZ)).getY());
-            cornerY.add (world.getTopSolidOrLiquidBlock(new BlockPos (boundingBox.maxX, boundingBox.minY, boundingBox.maxZ)).getY());
-            int lowY = Collections.min(cornerY);
+            int lowY = getLowestSurfaceInClip (world, clip);
+            if (lowY == -1)
+                return true;
 
             // Don't let it get tooo deep
             if (lowY < 55)
