@@ -36,13 +36,27 @@ public class ObeliskNetworkHandler extends SGChannel {
         data.close();
     }
 
+    // Just the white-out, for transports with sounds of their own: the screen is white delayTicks from now (ring
+    // transporters, for those inside the rings)
+    public static void whiteOutOnClient(EntityPlayerMP player, int delayTicks) {
+        ChannelOutput data = obeliskChannel.openPlayer(player, "WhiteOut");
+        data.writeInt(delayTicks);
+        data.close();
+    }
+
+    @ClientMessageHandler("WhiteOut")
+    public void handleWhiteOutFromServer(EntityPlayer player, ChannelInput data) {
+        ObeliskBeamEffects.whiteOut(data.readInt());
+    }
+
     // ---- Its configurator screen ----
 
     // How far from the obelisk its configurer may be
     private static final double maxReach = 8;
 
-    // A player clicked the obelisk holding the Configurator: show them its settings, if they may change them
-    public static void openConfigurator(EntityPlayer player, AsgardObeliskTE te) {
+    // A player clicked a transporter (an obelisk or a ring platform) holding the Configurator: show them its settings, if
+    // they may change them
+    public static void openConfigurator(EntityPlayer player, ConfigurableTransport te) {
         if (!SGCraft.isModLoaded("malisiscore") || !(player instanceof EntityPlayerMP)) {
             return; // its screen needs MalisisCore, as the Configurator does
         }
@@ -57,21 +71,31 @@ public class ObeliskNetworkHandler extends SGChannel {
         sendConfig((EntityPlayerMP) player, te);
     }
 
-    private static void sendConfig(EntityPlayerMP player, AsgardObeliskTE te) {
+    private static void sendConfig(EntityPlayerMP player, ConfigurableTransport te) {
+        ObeliskConfig config = te.transportConfig();
         ChannelOutput data = obeliskChannel.openPlayer(player, "ObeliskConfig");
-        BaseBlockUtils.writeBlockPos(data, te.getPos());
-        data.writeBoolean(te.linked);
-        if (te.linked) {
-            data.writeUTF(AsgardObelisks.worldName(te.linkDimension));
-            BaseBlockUtils.writeBlockPos(data, te.linkPos);
+        BaseBlockUtils.writeBlockPos(data, config.pos);
+        data.writeUTF(config.titleKey);
+        data.writeBoolean(config.linked);
+        if (config.linked) {
+            data.writeUTF(config.linkWorld);
+            BaseBlockUtils.writeBlockPos(data, config.linkPos);
         }
-        data.writeUTF(te.ownerName == null ? "" : te.ownerName);
-        data.writeBoolean(te.allowEveryone);
-        data.writeInt(te.access.size());
-        for (ObeliskAccess entry : te.access) {
+        data.writeUTF(config.ownerName);
+        data.writeBoolean(config.allowEveryone);
+        data.writeInt(config.access.size());
+        for (ObeliskAccess entry : config.access) {
             data.writeUTF(entry.name);
             data.writeBoolean(entry.use);
             data.writeBoolean(entry.admin);
+        }
+        data.writeBoolean(config.hasPower);
+        if (config.hasPower) {
+            data.writeLong(config.energy);
+            data.writeLong(config.capacity);
+            data.writeLong(config.naquadah);
+            data.writeLong(config.naquadahEnergy);
+            data.writeLong(config.uses);
         }
         data.close();
     }
@@ -80,6 +104,7 @@ public class ObeliskNetworkHandler extends SGChannel {
     public void handleConfigFromServer(EntityPlayer player, ChannelInput data) {
         ObeliskConfig config = new ObeliskConfig();
         config.pos = BaseBlockUtils.readBlockPos(data);
+        config.titleKey = data.readUTF();
         config.linked = data.readBoolean();
         if (config.linked) {
             config.linkWorld = data.readUTF();
@@ -91,18 +116,26 @@ public class ObeliskNetworkHandler extends SGChannel {
         for (int i = 0; i < count; i++) {
             config.access.add(new ObeliskAccess(null, data.readUTF(), data.readBoolean(), data.readBoolean()));
         }
+        config.hasPower = data.readBoolean();
+        if (config.hasPower) {
+            config.energy = data.readLong();
+            config.capacity = data.readLong();
+            config.naquadah = data.readLong();
+            config.naquadahEnergy = data.readLong();
+            config.uses = data.readLong();
+        }
         ObeliskConfiguratorScreen.show(player, config);
     }
 
-    // The obelisk the player may configure at pos, if they're at it holding the Configurator
-    private static AsgardObeliskTE configurable(EntityPlayer player, BlockPos pos) {
+    // The transporter the player may configure at pos, if they're at it holding the Configurator
+    private static ConfigurableTransport configurable(EntityPlayer player, BlockPos pos) {
         if (!player.world.isBlockLoaded(pos) || SGCraft.configurator == null
                 || player.getHeldItemMainhand().getItem() != SGCraft.configurator
                 || player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5) > maxReach * maxReach) {
             return null;
         }
         TileEntity te = player.world.getTileEntity(pos);
-        return te instanceof AsgardObeliskTE && ((AsgardObeliskTE) te).mayConfigure(player) ? (AsgardObeliskTE) te : null;
+        return te instanceof ConfigurableTransport && ((ConfigurableTransport) te).mayConfigure(player) ? (ConfigurableTransport) te : null;
     }
 
     // Saves who may use it: everyone by default, or only those allowed; players by name, looked up on the server
@@ -121,7 +154,7 @@ public class ObeliskNetworkHandler extends SGChannel {
 
     @ServerMessageHandler("ObeliskConfigSave")
     public void handleConfigSaveFromClient(EntityPlayer player, ChannelInput data) {
-        AsgardObeliskTE te = configurable(player, BaseBlockUtils.readBlockPos(data));
+        ConfigurableTransport te = configurable(player, BaseBlockUtils.readBlockPos(data));
         boolean allowEveryone = data.readBoolean();
         int count = Math.min(data.readInt(), 256);
         List<ObeliskAccess> access = new ArrayList<>();
@@ -133,7 +166,7 @@ public class ObeliskNetworkHandler extends SGChannel {
                 continue;
             }
             // Someone already listed keeps their account; anyone new is looked up by name
-            ObeliskAccess known = te.access.stream().filter(e -> e.name.equalsIgnoreCase(name)).findFirst().orElse(null);
+            ObeliskAccess known = te.transportAccess().stream().filter(e -> e.name.equalsIgnoreCase(name)).findFirst().orElse(null);
             UUID uuid = known != null ? known.uuid : null;
             String realName = known != null ? known.name : name;
             if (uuid == null && player.getServer() != null) {
@@ -152,10 +185,7 @@ public class ObeliskNetworkHandler extends SGChannel {
         if (te == null) {
             return;
         }
-        te.allowEveryone = allowEveryone;
-        te.access.clear();
-        te.access.addAll(access);
-        te.markDirty();
+        te.setTransportAccess(allowEveryone, access);
         sendBasicMsg(player, "changesSaved");
         sendConfig((EntityPlayerMP) player, te);
     }
@@ -168,9 +198,9 @@ public class ObeliskNetworkHandler extends SGChannel {
 
     @ServerMessageHandler("ObeliskUnlink")
     public void handleUnlinkFromClient(EntityPlayer player, ChannelInput data) {
-        AsgardObeliskTE te = configurable(player, BaseBlockUtils.readBlockPos(data));
+        ConfigurableTransport te = configurable(player, BaseBlockUtils.readBlockPos(data));
         if (te != null) {
-            AsgardObelisks.unlinkPartner(te);
+            te.unlinkTransport();
             sendConfig((EntityPlayerMP) player, te);
         }
     }

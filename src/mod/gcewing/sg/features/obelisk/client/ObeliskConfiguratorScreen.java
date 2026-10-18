@@ -26,6 +26,7 @@ import net.minecraft.util.text.TextFormatting;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,10 +36,11 @@ import java.util.List;
 public class ObeliskConfiguratorScreen extends BasicScreen {
 
     private ObeliskConfig config;
+    private static final DecimalFormat whole = new DecimalFormat("###,###,###,##0");
     // The list as edited here, until saved
     private final List<ObeliskAccess> access = new ArrayList<>();
 
-    private UILabel linkLabel, ownerLabel, selectedLabel;
+    private UILabel linkLabel, ownerLabel, powerLabel, naquadahLabel, selectedLabel;
     private UIButton unlinkButton, removeButton;
     private BasicList<ObeliskAccess> playerList;
     private UITextField nameField;
@@ -68,7 +70,9 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
         this.guiscreenBackground = false;
         Keyboard.enableRepeatEvents(true);
 
-        final BasicForm form = new BasicForm(this, 360, 224, TextFormatting.WHITE + I18n.format("sgcraft.gui.obelisk.label.title"));
+        // A transporter with power (ring platforms) has a line for it under the owner, and the rest moves down to make room
+        final int powerRoom = this.config.hasPower ? 22 : 0;
+        final BasicForm form = new BasicForm(this, 360, 224 + powerRoom, TextFormatting.WHITE + I18n.format(this.config.titleKey));
         form.setMovable(true);
         form.setBackgroundAlpha(255);
 
@@ -77,6 +81,10 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
         this.linkLabel.setPosition(5, 2, Anchor.LEFT | Anchor.TOP);
         this.ownerLabel = new UILabel(this, "");
         this.ownerLabel.setPosition(5, 12, Anchor.LEFT | Anchor.TOP);
+        this.powerLabel = new UILabel(this, "");
+        this.powerLabel.setPosition(5, 22, Anchor.LEFT | Anchor.TOP);
+        this.naquadahLabel = new UILabel(this, "");
+        this.naquadahLabel.setPosition(5, 32, Anchor.LEFT | Anchor.TOP);
         this.unlinkButton = new UIButtonBuilder(this)
             .width(50)
             .anchor(Anchor.TOP | Anchor.RIGHT)
@@ -88,7 +96,7 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
 
         // ---- The players ----
         final BasicContainer players = new BasicContainer(this, 165, 160);
-        players.setPosition(0, 23, Anchor.LEFT | Anchor.TOP);
+        players.setPosition(0, 23 + powerRoom, Anchor.LEFT | Anchor.TOP);
         players.setBorder(FontColors.WHITE, 1, 185);
         players.setPadding(0, 3);
         players.setBackgroundAlpha(0);
@@ -133,7 +141,7 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
 
         // ---- The selected player's options, and the default ----
         final BasicContainer options = new BasicContainer(this, 180, 160);
-        options.setPosition(0, 23, Anchor.RIGHT | Anchor.TOP);
+        options.setPosition(0, 23 + powerRoom, Anchor.RIGHT | Anchor.TOP);
         options.setBorder(FontColors.WHITE, 1, 185);
         options.setPadding(0, 3);
         options.setBackgroundAlpha(0);
@@ -189,7 +197,7 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
             .listener(this)
             .build("button.obelisk.close");
 
-        form.add(this.linkLabel, this.ownerLabel, this.unlinkButton, players, options, saveButton, closeButton);
+        form.add(this.linkLabel, this.ownerLabel, this.powerLabel, this.naquadahLabel, this.unlinkButton, players, options, saveButton, closeButton);
         addToScreen(form);
         setConfig(this.config);
     }
@@ -227,6 +235,14 @@ public class ObeliskConfiguratorScreen extends BasicScreen {
         this.ownerLabel.setText(TextFormatting.GRAY + I18n.format("sgcraft.gui.obelisk.label.owner") + ": "
             + (config.ownerName.isEmpty() ? "-" : config.ownerName));
         this.unlinkButton.setEnabled(config.linked);
+        if (config.hasPower) {
+            // On two lines, which one would overrun the window
+            this.powerLabel.setText(TextFormatting.GRAY + I18n.format("sgcraft.gui.rings.label.energy") + ": " + TextFormatting.WHITE
+                + whole.format(config.energy) + TextFormatting.GRAY + " / " + whole.format(config.capacity) + " FE    "
+                + I18n.format("sgcraft.gui.rings.label.uses") + ": " + TextFormatting.YELLOW + whole.format(config.uses));
+            this.naquadahLabel.setText(TextFormatting.GRAY + I18n.format("sgcraft.gui.rings.label.naquadah") + ": " + TextFormatting.WHITE
+                + whole.format(config.naquadah) + TextFormatting.GRAY + " (" + whole.format(config.naquadahEnergy) + " FE)");
+        }
         (config.allowEveryone ? this.everyoneRadio : this.listedOnlyRadio).setSelected();
         refreshList(null);
     }

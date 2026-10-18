@@ -19,7 +19,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 // The bottom half of an Asgard obelisk: which obelisk it's linked to, in which dimension
-public class AsgardObeliskTE extends TileEntity {
+public class AsgardObeliskTE extends TileEntity implements ConfigurableTransport {
 
     public boolean linked;
     public int linkDimension;
@@ -63,7 +63,43 @@ public class AsgardObeliskTE extends TileEntity {
         return allowEveryone ? entry == null || entry.use : entry != null && entry.use;
     }
 
+    // ---- Its configurator screen (see ConfigurableTransport) ----
+
+    @Override
+    public ObeliskConfig transportConfig() {
+        ObeliskConfig config = new ObeliskConfig();
+        config.pos = pos;
+        config.linked = linked;
+        if (linked) {
+            config.linkWorld = AsgardObelisks.worldName(linkDimension);
+            config.linkPos = linkPos;
+        }
+        config.ownerName = ownerName == null ? "" : ownerName;
+        config.allowEveryone = allowEveryone;
+        config.access.addAll(access);
+        return config;
+    }
+
+    @Override
+    public List<ObeliskAccess> transportAccess() {
+        return access;
+    }
+
+    @Override
+    public void setTransportAccess(boolean allowEveryone, List<ObeliskAccess> access) {
+        this.allowEveryone = allowEveryone;
+        this.access.clear();
+        this.access.addAll(access);
+        markDirty();
+    }
+
+    @Override
+    public void unlinkTransport() {
+        AsgardObelisks.unlinkPartner(this);
+    }
+
     // One placed before it had an owner may be configured by anyone (with a Configurator)
+    @Override
     public boolean mayConfigure(EntityPlayer player) {
         if (owner == null || isOwner(player) || isServerAdmin(player)) {
             return true;
