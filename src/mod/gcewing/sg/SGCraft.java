@@ -903,7 +903,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         }
         SGBaseTE gate = GateUtil.gateLookedAt(e.getWorld(), player, GateUtil.reach(player));
         if (gate != null) {
-            GuiNetworkHandler.sendGateActivationToServer(gate);
+            SGChannel.sendGateActivationToServer(gate);
         }
     }
 

@@ -80,11 +80,19 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
         if (world != null && world.isRemote) {
             items.clear();
         }
-        super.readFromNBT(compound);
+        reading = true;
+        try {
+            super.readFromNBT(compound);
+        } finally {
+            reading = false;
+        }
         this.zpmLink.readFromNBT(compound);
-        this.source.readFromNBT(compound);
+        this.source.readFromNBT(compound); // the energy of the ZPM put back in its slot
 
     }
+
+    // Reading saved data, which puts the ZPM back in its slot; its energy is the source's own (see readFromNBT)
+    private boolean reading = false;
 
     @Override
     public NBTTagCompound writeToNBT(final NBTTagCompound compound) {
@@ -313,60 +321,17 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
 
     @Override
     public ItemStack removeStackFromSlot(final int index) {
-        final ItemStack item = ItemStackHelper.getAndSplit(this.items, 0, 1);
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
-        }
-
-        if(tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.source.setEnergyStored(0);
-        }
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other, 3);
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
-        return ItemStackHelper.getAndRemove(this.items, 0);
+        return decrStackSize(index, 1);
     }
 
+    // The ZPM, with what's left of its energy (see setInventorySlotContents)
     @Override
     public ItemStack decrStackSize(final int index, final int quantity) {
-        final ItemStack item = ItemStackHelper.getAndRemove(this.items, 0);
-
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
+        final ItemStack item = this.items.get(0);
+        if (item.isEmpty() || quantity <= 0) {
+            return ItemStack.EMPTY;
         }
-
-        if(tag != null && tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
-            tag.setBoolean(ZPMItem.LOADED, false);
-            this.source.setEnergyStored(0);
-        }
-
-        if (world != null) {
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, false);
-            world.setBlockState(pos, other, 3);
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
+        setInventorySlotContents(0, ItemStack.EMPTY);
         return item;
     }
 
@@ -381,32 +346,51 @@ public final class ZpmInterfaceCartTE extends BaseTileInventory implements ISGEn
         }
     }
 
+    // A ZPM's energy goes into the source as it goes into the slot, and what's left goes back onto it as it leaves,
+    // however it leaves: taken, shift-clicked, swapped with a hotbar key or for the stack on the cursor, or by another
+    // mod. Only one taken through decrStackSize used to get it back, so a ZPM swapped out kept the energy it went in
+    // with while the cart kept supplying it too: endless energy. (On a client the server's sync sets the source.)
     @Override
     public void setInventorySlotContents(final int index, final ItemStack item) {
-        this.items.set(0, item);
-        if (isValidFuelItem(item)) {
-            NBTTagCompound tag = item.getTagCompound();
-
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                item.setTagCompound(tag);
+        final ItemStack old = this.items.get(0);
+        final boolean server = world != null && !world.isRemote && !reading;
+        if (server && old != item) {
+            if (isValidFuelItem(old)) {
+                NBTTagCompound tag = old.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    old.setTagCompound(tag);
+                }
+                tag.setDouble(ZPMItem.ENERGY, this.source.getEnergyStored());
+                tag.setBoolean(ZPMItem.LOADED, false);
             }
-
-            tag.setBoolean(ZPMItem.LOADED, true);
-
-            if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
-                this.source.setCapacity(Integer.MAX_VALUE);
-                this.source.setEnergyStored(tag.getDouble(ZPMItem.ENERGY));
-            } else {
-                this.source.setEnergyStored(tag.getDouble(ZPMItem.ENERGY));
+            this.source.setEnergyStored(0);
+            if (isValidFuelItem(item)) {
+                NBTTagCompound tag = item.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    item.setTagCompound(tag);
+                }
+                if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
+                    tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
+                }
+                tag.setBoolean(ZPMItem.LOADED, true);
+                this.source.setCapacity(Math.max(this.source.getCapacity(), tag.getDouble(ZPMItem.ENERGY)));
+                this.source.setEnergyStored(Math.max(0, tag.getDouble(ZPMItem.ENERGY)));
             }
         }
+        this.items.set(0, item);
 
-        if (world != null){ // This will be null both on the server AND client at time, no idea why....
-            IBlockState other = world.getBlockState(pos).withProperty(ZPM_LOADED, isValidFuelItem(item));
-            world.setBlockState(pos, other, 3);
+        if (world != null) {
+            // Only while it's still a cart: this also runs as it's broken (see ZpmInterfaceCart.breakBlock)
+            IBlockState state = world.getBlockState(pos);
+            if (state.getBlock() instanceof ZpmInterfaceCart && state.getValue(ZPM_LOADED) != isValidFuelItem(item)) {
+                world.setBlockState(pos, state.withProperty(ZPM_LOADED, isValidFuelItem(item)), 3);
+            }
             markChanged();
+        }
+        if (server && item.isEmpty() && !old.isEmpty()) {
+            pingSGBaseTE();
         }
     }
 

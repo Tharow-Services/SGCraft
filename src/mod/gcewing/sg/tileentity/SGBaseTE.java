@@ -61,6 +61,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.effect.EntityLightningBolt;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.item.EntityEnderPearl;
 import net.minecraft.entity.projectile.EntityArrow;
 import net.minecraft.entity.projectile.EntityFishHook;
 import net.minecraft.init.Blocks;
@@ -369,6 +370,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.chevronsLockOnDial = cfg.getBoolean("stargate", "chevronsLockOnDial", this.chevronsLockOnDial);
         this.returnToPreviousIrisState = cfg.getBoolean("stargate", "returnToPreviousIrisState", this.returnToPreviousIrisState);
         this.requiresNoPower = cfg.getBoolean("stargate", "requiresNoPower", this.requiresNoPower);
+        this.transientDamage = cfg.getBoolean("stargate", "transientDamage", this.transientDamage); // was never read for a new gate
         this.transparency = cfg.getBoolean("stargate", "transparency", this.transparency);
         this.defaultAllowIncoming = cfg.getBoolean("gate-access", "defaultAllowIncoming", this.defaultAllowIncoming);
         this.defaultAllowOutgoing = cfg.getBoolean("gate-access", "defaultAllowOutgoing", this.defaultAllowOutgoing);
@@ -558,7 +560,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return localToGlobalTransformation().box(p0, p1);
     }
 
-    void updateChunkLoadingStatus() {
+    public void updateChunkLoadingStatus() {
         if (state != SGState.Idle) {
             int n = chunkLoadingRange;
             if (n < 0) {
@@ -649,7 +651,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             shape = null; // Looked up again with the new size
             ehGrid = null;
         }
-        this.state = SGState.values()[nbt.getInteger("state")];
+        // Out of range (bad data) as idle: thrown, the gate wasn't loaded at all, losing its upgrades and ZPMs
+        int stateIndex = nbt.getInteger("state");
+        this.state = stateIndex >= 0 && stateIndex < SGState.values().length ? SGState.values()[stateIndex] : SGState.Idle;
         SGState oldState = state;
         this.ringAngle = nbt.getDouble("ringAngle");
         this.startRingAngle = nbt.getDouble("startRingAngle");
@@ -676,7 +680,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         this.maxTimeout = nbt.getInteger("maxTimeout");
         this.energyInBuffer = nbt.hasKey("energyInBuffer") ? nbt.getDouble("energyInBuffer") : nbt.getInteger("fuelBuffer");
         this.distanceFactor = nbt.getDouble("distanceFactor");
-        this.irisState = IrisState.values()[nbt.getInteger("irisState")];
+        int irisIndex = nbt.getInteger("irisState");
+        this.irisState = irisIndex >= 0 && irisIndex < IrisState.values().length ? IrisState.values()[irisIndex] : IrisState.Open;
         this.irisPhase = nbt.getInteger("irisPhase");
         this.redstoneInput = nbt.getBoolean("redstoneInput");
         this.homeAddress = getStringOrNull(nbt, "address");
@@ -907,7 +912,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             this.isGenerated = nbt.getBoolean("isGenerated");
         } else {
             if (!world.isRemote) { // This lookup happens on the server first, then the client once it receives the packet.
-                if (GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) {
+                if (this.homeAddress != null && GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) { // none for a gate out of the address range
                     this.isGenerated = true;
                 }
             }
@@ -918,7 +923,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         // Special Hotfix for forcing reset of isGenerated on a stargate IF the address is in the generators address registry
         if (!world.isRemote) {
             if (SGBaseTE.resetIsGenerated) {
-                if (GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) {
+                if (this.homeAddress != null && GeneratorAddressRegistry.hasAddress(this.world, this.homeAddress)) { // none for a gate out of the address range
                     this.isGenerated = true;
                 }
             }
@@ -1130,12 +1135,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
-    // The energy in ZPMs it can draw on: near its base, and linked to it
+    // The energy in ZPMs it can draw on: near its base, linked to it, and in a supergate's own slots (left out before, so
+    // a supergate running on those alone couldn't dial a route that needs a ZPM)
     public double zpmPowerAvailable() {
-        List<ISGEnergySource> sources = new ArrayList<>(ZpmAddon.findZpmSources(world, pos, SGCraft.zpmSearchRange));
-        addLinkedZpms(sources);
         double power = 0;
-        for (ISGEnergySource source : sources) {
+        for (ISGEnergySource source : zpmSources()) {
             power += source.availableEnergy();
         }
         return power;
@@ -1470,6 +1474,18 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
+    // A chunk unloading doesn't invalidate its tile entities, and the chunk brings a new one (with an endpoint of its
+    // own) when it loads again: the old one's endpoint, holding the old gate, stayed in OpenComputers' wireless network
+    // for as long as the world was loaded
+    @Override
+    public void onChunkUnload() {
+        super.onChunkUnload();
+        if (!world.isRemote && ocWirelessEndpoint != null) {  //[OC]
+            ocWirelessEndpoint.remove();
+            ocWirelessEndpoint = null;
+        }
+    }
+
     public void onNeighborBlockChange() {
         if (!world.isRemote) {
             boolean newInput = BaseBlockUtils.blockIsGettingExternallyPowered(world, pos);
@@ -1618,6 +1634,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         debugEnergyUse = false;
         if (state != SGState.Idle) {
             return diallingFailure(player, "selfBusy");
+        }
+        // A base without its ring: it can't dial (its state never moves on), and would leave the gate it dialled waiting
+        // for good, its chunks loaded
+        if (!isMerged) {
+            return diallingFailure(player, "selfIncomplete");
         }
         String homeAddress = findHomeAddress();
         if (homeAddress.equals("")) {
@@ -1768,7 +1789,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             this.wasIrisClosed = this.irisIsClosed();
         }
 
-        if (targetGate.hasChevronUpgrade) {
+        if (targetGate.hasIrisUpgrade) { // was hasChevronUpgrade
             targetGate.wasIrisClosed = targetGate.irisIsClosed();
         }
 
@@ -2121,6 +2142,17 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public void immediateDialSymbol(String address, EntityPlayer player, int digit) {
         // This method is ony used for the PDD's progressive dialling when this.chevronsLockOnDial=true.
+        // Only an idle gate, and only the next symbol of its dial: one given to a gate in the middle of another dial wrote
+        // over that dial's address and chevrons, and the gate then crashed the server reading past the end of its address
+        if (state != SGState.Idle || digit < 0 || digit >= address.length()) {
+            return;
+        }
+        if (digit == 0) {
+            enteredAddress = ""; // dialling from the start again
+        }
+        if (digit != enteredAddress.length()) {
+            return;
+        }
         char currentSymbol = address.charAt(digit);
         String check = String.valueOf(currentSymbol);
 
@@ -2136,7 +2168,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
         if (address.length() <= this.getNumChevrons()) {
             enteredAddress += currentSymbol;
-            this.dialedDigit += 1;
+            this.dialedDigit = enteredAddress.length();
             boolean last = address.length() == this.dialedDigit;
             this.finishDiallingSymbol(Character.toString(currentSymbol), true, false, last);
             this.dialledAddress = enteredAddress;
@@ -2159,9 +2191,15 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (randomAddress != null) {
             if (this.allowOutgoingAddress(randomAddress, this.defaultAllowOutgoing)) {
                 SGBaseTE malfunctionDestinationGate = SGAddressing.findAddressedStargate(randomAddress, world, false);
-                if (malfunctionDestinationGate != null) {
+                // Only to a complete, idle gate that takes incoming wormholes: one already connected was taken over, its
+                // own other end left connected to it for good
+                if (malfunctionDestinationGate != null && malfunctionDestinationGate != this && malfunctionDestinationGate.isMerged
+                        && malfunctionDestinationGate.state == SGState.Idle && malfunctionDestinationGate.allowIncomingConnections) {
                     if (malfunctionDestinationGate.allowIncomingAddress(this.homeAddress, malfunctionDestinationGate.defaultAllowIncoming)) {
-                        this.getConnectedStargateTE().clearConnection();
+                        SGBaseTE dialled = this.getConnectedStargateTE();
+                        if (dialled != null) {
+                            dialled.clearConnection();
+                        }
                         this.connectedLocation = new SGLocation(malfunctionDestinationGate);
                         malfunctionDestinationGate.numEngagedChevrons = 7;
                         malfunctionDestinationGate.connectedLocation = new SGLocation(this);
@@ -2182,6 +2220,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             syncAwaitTime = dte.syncAwaitTime;
         }
         markDirty();
+        if (!immediate) {
+            // From its first symbol, whatever chevrons a DHD had locked as they were entered: the first symbol dialled
+            // used to be the one after them
+            numEngagedChevrons = 0;
+        }
         if (isInitiator && !immediate) {
             startDiallingNextSymbol();
         }
@@ -2193,8 +2236,6 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 playSGSoundEffect(m_chevronIncomingSound, 1F, 1F);
             }
             enterState(SGState.SyncAwait, syncAwaitTime);
-        } else {
-            numEngagedChevrons = 0;
         }
     }
 
@@ -2427,6 +2468,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     private void startDiallingNextSymbol() {
         if (debugState) {
             System.out.printf("SGBaseTE.startDiallingNextSymbol: %s of %s\n", numEngagedChevrons, dialledAddress);
+        }
+        // Past the end of the address, if something changed it under the dial: the dial stops, rather than the gate
+        // throwing every tick (a "Ticking block entity" crash)
+        if (numEngagedChevrons < 0 || numEngagedChevrons >= dialledAddress.length()) {
+            System.out.printf("SGCraft: gate at %s in dimension %d stopped dialling %s: it has no symbol %d\n",
+                pos, world.provider.getDimension(), dialledAddress, numEngagedChevrons + 1);
+            this.resetStargate(); // both ends
+            return;
         }
 
         startDiallingSymbol(dialledAddress.charAt(numEngagedChevrons));
@@ -2842,6 +2891,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return isItemValidForSlot(slot, stack) && super.canInsertItem(slot, stack, side);
     }
 
+    // Hoppers and pipes may fill its slots but not empty them: its screen, the way out, is for its admins only, and a
+    // hopper under any gate could otherwise take a supergate's ZPMs or a base's camouflage
+    @Override
+    public boolean canExtractItem(int slot, ItemStack stack, EnumFacing side) {
+        return false;
+    }
+
     boolean isCamouflageSlot(int slot) {
         return slot >= firstCamouflageSlot && slot < firstCamouflageSlot + numCamouflageSlots;
     }
@@ -3078,29 +3134,33 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return true;
     }
 
+    // Whether an entity, and all that rides it however far up, may go through: none of them a player without access to
+    // both gates, nor an ender pearl thrown by one (it takes its thrower where it lands). One denied anywhere keeps the
+    // whole stack here, as one riding the entity itself always did. A stack with one further up used to go through
+    // without them, and they were then put back on their mount on the far side: pulled through anyway, or, to another
+    // world, left riding in both worlds at once.
+    private boolean mayGoThrough(Entity entity) {
+        if (entity instanceof EntityPlayer && !playerHasTeleportAccess(entity)) {
+            return false;
+        }
+        if (entity instanceof EntityEnderPearl && ((EntityEnderPearl) entity).getThrower() instanceof EntityPlayer
+                && !playerHasTeleportAccess(((EntityEnderPearl) entity).getThrower())) {
+            return false;
+        }
+        for (Entity rider : entity.getPassengers()) {
+            if (!mayGoThrough(rider)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     Entity teleportEntityAndRiders(Entity entity, Trans3 t1, Trans3 t2, int dimension, boolean destBlocked) {
-        boolean canProceed = true;
         if (debugTeleport) {
             System.out.printf("SGBaseTE.teleportEntityAndRiders: destBlocked = %s\n", destBlocked);
         }
-
-        // Check if player is riding an entity.
         List<Entity> riders = entity.getPassengers();
-        for (int i = 0; i < riders.size(); i++) {
-            Entity rider = riders.get(i);
-            if (rider instanceof EntityPlayer) {
-                if (!playerHasTeleportAccess(rider)) {
-                    canProceed = false;
-                }
-            }
-        }
-
-        // Check if player has access
-        if (entity instanceof EntityPlayer) {
-            if (!playerHasTeleportAccess(entity)) {
-                canProceed = false;
-            }
-        }
+        boolean canProceed = mayGoThrough(entity);
 
         if (canProceed) {
             for (int i = 0; i < riders.size(); i++) {
@@ -3367,6 +3427,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             //Todo: the following was modified because the below should only fire if changing permissions, else an "entity already exists" is thrown.
             FakeTeleporter fakeTeleporter = new FakeTeleporter();
             Entity newEntity = entity.changeDimension(newWorld.provider.getDimension(), fakeTeleporter);
+            if (newEntity == null) {
+                return entity; // refused (by a plugin, say), or couldn't be made there: it stays where it was
+            }
             if (newEntity.dimension == newWorld.provider.getDimension()) {
                 //newEntity.setLocationAndAngles(p.x, p.y, p.z, (float) a, entity.rotationPitch);
                 // Todo:
@@ -3652,7 +3715,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                                 System.out.printf("SGCraft: gate at %s in dimension %d stopped dialling %s after %d symbols: %s\n",
                                     pos, world.provider.getDimension(), dialledAddress, numEngagedChevrons, e);
                                 e.printStackTrace();
-                                this.clearConnection();
+                                // Both ends: clearing this one first lost where the other was, leaving it waiting
+                                // (and its chunks loaded) for a dial that would never come
                                 this.resetStargate();
                             }
                         }

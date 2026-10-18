@@ -35,11 +35,11 @@ public class FeatureIgloo extends FeatureStargate {
     public FeatureIgloo(StructureComponent base) {
         this.base = base;
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.iglooAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.iglooChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.iglooZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.iglooAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.iglooChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.iglooZpmChestChance;
         generateTokra = FeatureGeneration.iglooSpawnTokra;
-        taintedZpm = rand.nextInt(100) <= 10;
+        taintedZpm = rand.nextInt(100) < 10;
 
         // Igloo's get Pegasus gates. I don't know why.
         gateType = 2;

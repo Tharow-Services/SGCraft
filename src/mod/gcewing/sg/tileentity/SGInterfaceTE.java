@@ -185,10 +185,15 @@ public class SGInterfaceTE extends BaseTileEntity {
             if (cached != null) {
                 return cached;
             }
+            if (ComputerLookupLimiter.knownMissing(te, address)) {
+                throw new IllegalArgumentException("unknownAddress");
+            }
             ComputerLookupLimiter.checkLookup(te, address);
             SGBaseTE dte = SGAddressing.findAddressedStargate(address, te.getWorld(), pending);
-            if (dte == null)
+            if (dte == null) {
+                ComputerLookupLimiter.cacheMissing(te, address);
                 throw new IllegalArgumentException("unknownAddress");
+            }
             double distanceFactor = dte.distanceFactorForCoordDifference(te, dte);
             double energy = te.energyToOpen * distanceFactor;
             ComputerLookupLimiter.cache(te, address, energy);
@@ -228,10 +233,16 @@ public class SGInterfaceTE extends BaseTileEntity {
         address = SGAddressing.normalizeAddress(address);
         // Dialling looks the gate up too, loading its chunk (see ComputerLookupLimiter)
         if (te.state == SGState.Idle) {
+            if (ComputerLookupLimiter.knownMissing(te, address)) {
+                throw new IllegalArgumentException("unknownAddress");
+            }
             ComputerLookupLimiter.checkLookup(te, address);
         }
         //System.out.printf("SGBaseTE.ciDial: dialling symbols %s\n", address);
         String error = te.connect(address, null, true, pending);
+        if ("unknownAddress".equals(error)) {
+            ComputerLookupLimiter.cacheMissing(te, address);
+        }
         if (error != null)
             throw new IllegalArgumentException(error);
     }
@@ -258,8 +269,51 @@ public class SGInterfaceTE extends BaseTileEntity {
     
     public void ciSendMessage(Object[] args) {
         SGBaseTE te = requireBaseTE();
+        if (args.length > maxMessageArgs || messageSize(args, 0) > maxMessageSize) {
+            throw new IllegalArgumentException("messageTooLarge");
+        }
         String error = te.sendMessage(args);
         if (error != null)
             throw new IllegalArgumentException(error);
+    }
+
+    // How much a message may carry. Every computer at the far gate is sent it as an event, kept until read, and
+    // OpenComputers logs a warning for each part of a kind it can't pass on: unlimited, a script could flood the far
+    // computers and the server log.
+    static final int maxMessageArgs = 32;
+    static final int maxMessageSize = 16384;
+
+    // Its size: the length of each string and byte array, and one for anything else, a table's keys and values included
+    private static int messageSize(Object value, int depth) {
+        if (depth > 8) {
+            return maxMessageSize + 1;
+        }
+        if (value instanceof String) {
+            return ((String) value).length();
+        }
+        if (value instanceof byte[]) {
+            return ((byte[]) value).length;
+        }
+        if (value instanceof Object[]) {
+            int size = 0;
+            for (Object part : (Object[]) value) {
+                size += 1 + messageSize(part, depth + 1);
+                if (size > maxMessageSize) {
+                    break;
+                }
+            }
+            return size;
+        }
+        if (value instanceof Map) {
+            int size = 0;
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+                size += 2 + messageSize(entry.getKey(), depth + 1) + messageSize(entry.getValue(), depth + 1);
+                if (size > maxMessageSize) {
+                    break;
+                }
+            }
+            return size;
+        }
+        return 1;
     }
 }

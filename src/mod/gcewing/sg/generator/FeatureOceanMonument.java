@@ -34,12 +34,12 @@ public class FeatureOceanMonument extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.oceanmonumentAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.oceanmonumentChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.oceanmonumentZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.oceanmonumentAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.oceanmonumentChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.oceanmonumentZpmChestChance;
         generateTokra = false;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureOceanMonument with GenerateStructure: " + generateStructure);

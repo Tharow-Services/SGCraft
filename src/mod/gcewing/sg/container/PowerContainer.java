@@ -32,4 +32,9 @@ public class PowerContainer extends BaseContainer {
         this.te = te;
     }
 
+    @Override
+    protected TileEntity tileEntity() {
+        return te;
+    }
+
 }

@@ -33,12 +33,12 @@ public class FeatureNetherFortress extends FeatureStargate {
 
         // Set up the options
         Random rand = new Random();
-        generateStructure = rand.nextInt(100) <= FeatureGeneration.netherAddonChance;
-        generateChevronUpgrade = rand.nextInt(100) <= FeatureGeneration.netherChevronUpgradeChance;
-        generateZpmChest = rand.nextInt(100) <= FeatureGeneration.netherZpmChestChance;
+        generateStructure = rand.nextInt(100) < FeatureGeneration.netherAddonChance;
+        generateChevronUpgrade = rand.nextInt(100) < FeatureGeneration.netherChevronUpgradeChance;
+        generateZpmChest = rand.nextInt(100) < FeatureGeneration.netherZpmChestChance;
         generateTokra = FeatureGeneration.netherSpawnTokra;
 
-        taintedZpm = rand.nextInt(100) <= FeatureGeneration.genericTaintedZpm;
+        taintedZpm = rand.nextInt(100) < FeatureGeneration.genericTaintedZpm;
 
         if (FeatureGeneration.debugStructures)
             System.out.println("SGCraft: Creating FeatureNetherFortress with GenerateStructure: " + generateStructure);

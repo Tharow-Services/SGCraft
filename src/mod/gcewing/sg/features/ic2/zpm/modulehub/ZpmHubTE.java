@@ -46,10 +46,11 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
     public static final int firstZpmSlot = 0;
     public static final int numZpmSlots = 3;
     public static final int numSlots = numZpmSlots; // future usage > 1
-    public int zpmSlot0Energy = 0;
-    public int zpmSlot1Energy = 0;
-    public int zpmSlot2Energy = 0;
-    public int zpmSlotsloaded = 0;
+    // The energy of the ZPM in each slot, which it takes back as it leaves (see setInventorySlotContents). The hub's
+    // source holds their sum.
+    private final double[] slotEnergy = new double[numZpmSlots];
+    // Reading saved data, which puts the ZPMs back in their slots with their energy already in slotEnergy
+    private boolean reading = false;
 
     private int update = 0;
 
@@ -83,13 +84,19 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
         if (world != null && world.isRemote) {
             items.clear();
         }
-        super.readFromNBT(compound);
+        reading = true;
+        try {
+            super.readFromNBT(compound);
+        } finally {
+            reading = false;
+        }
         this.zpmLink.readFromNBT(compound);
         this.hubSource.readFromNBT(compound);
-        this.zpmSlot0Energy = compound.getInteger("zpmSlot0Energy");
-        this.zpmSlot1Energy = compound.getInteger("zpmSlot1Energy");
-        this.zpmSlot2Energy = compound.getInteger("zpmSlot2Energy");
-        //System.out.println("Read: 0: " + this.zpmSlot0Energy);
+        for (int i = 0; i < numZpmSlots; i++) {
+            // Saved as whole numbers before; read either way
+            slotEnergy[i] = isValidFuelItem(items.get(i)) ? Math.max(0, compound.getDouble("zpmSlot" + i + "Energy")) : 0;
+        }
+        syncSource();
     }
 
     @Override
@@ -97,10 +104,43 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
         super.writeToNBT(compound);
         this.zpmLink.writeToNBT(compound);
         this.hubSource.writeToNBT(compound);
-        compound.setInteger("zpmSlot0Energy", zpmSlot0Energy);
-        compound.setInteger("zpmSlot1Energy", zpmSlot1Energy);
-        compound.setInteger("zpmSlot2Energy", zpmSlot2Energy);
+        for (int i = 0; i < numZpmSlots; i++) {
+            compound.setDouble("zpmSlot" + i + "Energy", slotEnergy[i]);
+        }
         return compound;
+    }
+
+    // The source holds what the ZPMs hold together
+    private void syncSource() {
+        double total = 0;
+        for (double e : slotEnergy) {
+            total += e;
+        }
+        this.hubSource.setEnergyStored(total);
+    }
+
+    // Takes energy (ZPM units) from the ZPMs that have any left, shared evenly as far as each has it
+    void drawFromZpms(double amount) {
+        for (int pass = 0; pass < numZpmSlots && amount > 0; pass++) {
+            int left = 0;
+            for (double e : slotEnergy) {
+                if (e > 0) {
+                    left++;
+                }
+            }
+            if (left == 0) {
+                break;
+            }
+            double share = amount / left;
+            for (int i = 0; i < numZpmSlots; i++) {
+                if (slotEnergy[i] > 0) {
+                    double take = Math.min(share, slotEnergy[i]);
+                    slotEnergy[i] -= take;
+                    amount -= take;
+                }
+            }
+        }
+        syncSource();
     }
 
     @Override
@@ -269,14 +309,10 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
     public int getZpmSlotsloaded() {
         int zpmCount = 0;
 
-        if (zpmSlot0Energy > 0) {
-            zpmCount = zpmCount + 1;
-        }
-        if (zpmSlot1Energy > 0) {
-            zpmCount = zpmCount + 1;
-        }
-        if (zpmSlot2Energy > 0) {
-            zpmCount = zpmCount + 1;
+        for (double e : slotEnergy) {
+            if (e > 0) {
+                zpmCount = zpmCount + 1;
+            }
         }
 
         if (zpmCount == 1) {
@@ -352,80 +388,20 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
 
     @Override
     public ItemStack removeStackFromSlot(final int index) {
-        final ItemStack item = ItemStackHelper.getAndSplit(this.items, index, 1);
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
-        }
-
-        if(tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            if (index == 0) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot0Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            } else if (index == 1) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot1Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            } else if (index == 2) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot2Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            }
-        }
-
-        if (world != null) {
-            validateSlotStatus();
-
-            IBlockState other = world.getBlockState(pos).withProperty(ZPMS, this.getZpmSlotsloaded());
-            world.setBlockState(pos, other, 3);
-
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
-        return ItemStackHelper.getAndRemove(this.items, index);
+        return decrStackSize(index, 1);
     }
 
+    // The ZPM, with what's left of its energy (see setInventorySlotContents)
     @Override
     public ItemStack decrStackSize(final int index, final int quantity) {
-        final ItemStack item = ItemStackHelper.getAndRemove(this.items, index);
-
-        NBTTagCompound tag = item.getTagCompound();
-
-        if(tag == null) {
-            tag = new NBTTagCompound();
-            item.setTagCompound(tag);
+        if (index < 0 || index >= numZpmSlots) {
+            return ItemStack.EMPTY;
         }
-
-        if(tag != null && tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-            if (index == 0) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot0Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            } else if (index == 1) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot1Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            } else if (index == 2) {
-                tag.setDouble(ZPMItem.ENERGY, this.zpmSlot2Energy);
-                tag.setBoolean(ZPMItem.LOADED, false);
-            }
+        final ItemStack item = this.items.get(index);
+        if (item.isEmpty() || quantity <= 0) {
+            return ItemStack.EMPTY;
         }
-
-        if (world != null) {
-            validateSlotStatus();
-
-            IBlockState other = world.getBlockState(pos).withProperty(ZPMS, this.getZpmSlotsloaded());
-            world.setBlockState(pos, other, 3);
-
-            markChanged();
-        }
-
-        if (this.isEmpty()) {
-            pingSGBaseTE();
-        }
-
+        setInventorySlotContents(index, ItemStack.EMPTY);
         return item;
     }
 
@@ -440,68 +416,56 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
         }
     }
 
+    // A ZPM's energy is the slot's as it goes in, and what's left goes back onto it as it leaves, however it leaves:
+    // taken, shift-clicked, swapped with a hotbar key or for the stack on the cursor, or by another mod. Only one taken
+    // through decrStackSize used to get it back, so a ZPM swapped out kept the energy it went in with, and one swapped
+    // in for another added its own without taking the other's away: endless energy. (On a client the server's sync sets
+    // the energies.)
     @Override
     public void setInventorySlotContents(final int index, final ItemStack item) {
-        this.items.set(index, item);
-        if (isValidFuelItem(item)) {
-            NBTTagCompound tag = item.getTagCompound();
-
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                item.setTagCompound(tag);
-            }
-
-            tag.setBoolean(ZPMItem.LOADED, true);
-
-            if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
-            }
-
-            if (index == 0) {
-                this.zpmSlot0Energy = (int)tag.getDouble(ZPMItem.ENERGY);
-            } else if (index == 1) {
-                this.zpmSlot1Energy = (int)tag.getDouble(ZPMItem.ENERGY);
-            } else if (index == 2) {
-                this.zpmSlot2Energy = (int)tag.getDouble(ZPMItem.ENERGY);
-            }
-
-            this.hubSource.setEnergyStored(this.hubSource.getEnergyStored() + tag.getDouble(ZPMItem.ENERGY));
+        if (index < 0 || index >= numZpmSlots) {
+            return;
         }
+        final ItemStack old = this.items.get(index);
+        final boolean server = world != null && !world.isRemote && !reading;
+        if (server && old != item) {
+            if (isValidFuelItem(old)) {
+                NBTTagCompound tag = old.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    old.setTagCompound(tag);
+                }
+                tag.setDouble(ZPMItem.ENERGY, slotEnergy[index]);
+                tag.setBoolean(ZPMItem.LOADED, false);
+            }
+            slotEnergy[index] = 0;
+            if (isValidFuelItem(item)) {
+                NBTTagCompound tag = item.getTagCompound();
+                if (tag == null) {
+                    tag = new NBTTagCompound();
+                    item.setTagCompound(tag);
+                }
+                if (!tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
+                    tag.setDouble(ZPMItem.ENERGY, Integer.MAX_VALUE);
+                }
+                tag.setBoolean(ZPMItem.LOADED, true);
+                slotEnergy[index] = Math.max(0, tag.getDouble(ZPMItem.ENERGY));
+            }
+            syncSource();
+        }
+        this.items.set(index, item);
 
         if (world != null) {
-            validateSlotStatus();
-
-            IBlockState other = world.getBlockState(pos).withProperty(ZPMS, this.getZpmSlotsloaded());
-            world.setBlockState(pos, other, 3);
-
+            // Only while it's still a hub: this also runs as it's broken (see ZpmHub.breakBlock)
+            IBlockState state = world.getBlockState(pos);
+            int zpms = this.getZpmSlotsloaded();
+            if (state.getBlock() instanceof ZpmHub && state.getValue(ZPMS) != zpms) {
+                world.setBlockState(pos, state.withProperty(ZPMS, zpms), 3);
+            }
             markChanged();
         }
-    }
-
-    public void validateSlotStatus() {
-        // This is to catch shenanigans by the server and client with shift-click insanity.
-        if (isValidFuelItem(this.getStackInSlot(0))) {
-            // good
-        } else {
-            this.hubSource.setEnergyStored(this.hubSource.getEnergyStored() - this.zpmSlot0Energy);
-            this.zpmSlot0Energy = 0;
-        }
-
-        if (isValidFuelItem(this.getStackInSlot(1))) {
-            // good
-        } else {
-            this.hubSource.setEnergyStored(this.hubSource.getEnergyStored() - this.zpmSlot1Energy);
-            this.zpmSlot1Energy = 0;
-        }
-        if (isValidFuelItem(this.getStackInSlot(2))) {
-            // good
-        } else {
-            this.hubSource.setEnergyStored(this.hubSource.getEnergyStored() - this.zpmSlot2Energy);
-            this.zpmSlot2Energy = 0;
-        }
-
-        if (getZpmSlotsloaded() == 0) {
-            this.hubSource.setEnergyStored(0);
+        if (server && this.isEmpty() && !old.isEmpty()) {
+            pingSGBaseTE();
         }
     }
 

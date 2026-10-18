@@ -166,6 +166,11 @@ public class BaseTEChunkManager implements ForgeChunkManager.LoadingCallback {
                 System.out.printf("BaseChunkLoadingTE: Reinstating chunk ticket %s\n", ticket);
             te.chunkTicket = ticket;
             forceChunkRangeOnTicket(te, ticket);
+            // Only while it needs them: a gate that was idle (or had gone idle) lets them go, where they used to stay
+            // loaded until its next dial
+            if (te instanceof gcewing.sg.tileentity.SGBaseTE) {
+                ((gcewing.sg.tileentity.SGBaseTE) te).updateChunkLoadingStatus();
+            }
             return true;
         }
         else

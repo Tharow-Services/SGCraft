@@ -31,32 +31,18 @@ public class GuiNetworkHandler extends SGChannel {
         data.close();
     }
 
-    // An empty handed click on a gate's drawn ring that hit no block (see SGCraft.onRightClickEmpty)
-    public static void sendGateActivationToServer(SGBaseTE te) {
-        ChannelOutput data = guiChannel.openServer("activateGate");
-        writeCoords(data, te);
-        data.close();
-    }
-
-    @ServerMessageHandler("activateGate")
-    public void handleGateActivationFromClient(EntityPlayer player, ChannelInput data) {
-        BlockPos pos = readCoords(data);
-        // Only if the player really is looking at that gate's ring
-        SGBaseTE gate = GateUtil.gateLookedAt(player.world, player, GateUtil.reach(player) + 1);
-        if (gate != null && gate.getPos().equals(pos)) {
-            GateUtil.activateGate(gate, player);
-        }
-    }
-
     @ServerMessageHandler("requestGUI")
     public void handleGUIRequestFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
+        SGBaseTE localGate = loadedGateAt(player, pos);
+        if (localGate == null || !playerAtGate(player, localGate)) {
+            return; // its screens are opened at the gate
+        }
         boolean canAccessLocal = localGate.allowGateAccess(player);
         boolean canEditRemote = false;
         if (localGate.isConnected() && localGate.state == SGState.Connected) {
             SGBaseTE remoteGate = localGate.getConnectedStargateTE();
-            canEditRemote = remoteGate.allowGateAccess(player);
+            canEditRemote = remoteGate != null && remoteGate.allowGateAccess(player);
         }
         int guiType = data.readInt();
         if (guiType == 1) {
@@ -64,7 +50,7 @@ public class GuiNetworkHandler extends SGChannel {
                 if (canAccessLocal) {
                     this.openGuiAtClient(localGate, player, 1, SGCraft.hasPermission(player, "sgcraft.admin"), canAccessLocal, canEditRemote);
                 } else {
-                    sendErrorMsg(player, "insufficientGatePermission");
+                    sendErrorMsg(player, "insufficientGateAccessPermission");
                 }
             } else {
                 sendErrorMsg(player, "configuratorPermission");
@@ -95,9 +81,9 @@ public class GuiNetworkHandler extends SGChannel {
         data.writeBoolean(canEditLocal);
         data.writeBoolean(canEditRemote);
         if (guiType == 2) {
-            data.writeBoolean(te.isConnected() && te.state == SGState.Connected);
-            if (te.isConnected() && te.state == SGState.Connected) {
-                SGBaseTE remoteGate = te.getConnectedStargateTE();
+            SGBaseTE remoteGate = te.isConnected() && te.state == SGState.Connected ? te.getConnectedStargateTE() : null;
+            data.writeBoolean(remoteGate != null);
+            if (remoteGate != null) {
                 data.writeBoolean(remoteGate.hasIrisUpgrade);
                 data.writeBoolean(remoteGate.hasChevronUpgrade);
                 data.writeBoolean(remoteGate.irisIsClosed());

@@ -1,5 +1,7 @@
 package gcewing.sg.features.pdd.network;
 
+import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
+
 import gcewing.sg.BaseDataChannel;
 import gcewing.sg.SGCraft;
 import gcewing.sg.features.edd.ExplorerData;
@@ -29,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public class PddNetworkHandler extends SGChannel {
 
@@ -105,53 +108,60 @@ public class PddNetworkHandler extends SGChannel {
     @ServerMessageHandler("PddInput") public void handlePddInputFromClient(EntityPlayer player, ChannelInput data) throws SGAddressing.AddressingError {
         BlockPos pos = readCoords(data);
         int setting = data.readInt();
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
         String origin = data.readUTF();
         String destination = data.readUTF();
 
-        if (!origin.isEmpty() && !destination.isEmpty()) {
+        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
+        if (!mayUseDialler(player)) {
+            System.err.println("SGCraft - Hacked Client detected!");
+            return;
+        }
+        SGBaseTE localGate = loadedGateAt(player, pos);
+        if (localGate == null || !playerAtGate(player, localGate)) {
+            return; // the PDD works the gate its player is at
+        }
+
+        if (!origin.isEmpty() && destination.length() >= 7) {
             if (SGAddressing.inSameDimension(origin, destination)) {
                 destination = destination.substring(0, 7);
             }
         }
 
-        boolean isPermissionsAdmin = SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"); // Fallback for a full permissions system override to the Access System
-
-        if (SGCraft.hasPermission(player, "sgcraft.gui.pdd") || SGCraft.hasPermission(player, "sgcraft.gui.edd") || isPermissionsAdmin) {
-
-            if (setting == 1) { // Connect / Dial / Double Click
-                if (!localGate.isConnected()) {
-                    if (localGate.allowGateAccess(player) || isPermissionsAdmin) {
-                        localGate.connect(destination, player, false, false);
-                    }
-                }
-            }
-            if (setting == 2) {
-                if (localGate.isConnected()) {
-                    if (localGate.allowGateAccess(player) || isPermissionsAdmin) {
-                        localGate.disconnect(player);
-                    }
-                }
-            }
-
-            if (setting == 3) {
-                // Reserved for testing purposes.
-            }
-
-            if (setting == 4) {
+        if (setting == 1) { // Connect / Dial / Double Click
+            if (!localGate.isConnected()) {
                 if (localGate.allowGateAccess(player) || isPermissionsAdmin) {
-                    if (localGate.state == SGState.Idle) {
-                        localGate.isInitiator = true;
-                    }
-                    localGate.connectOrDisconnect("", player);
-                    localGate.clearIdleConnection();
-                    localGate.errorState = false; // Force this on the servers' TE.
+                    localGate.connect(destination, player, false, false);
                 }
             }
-        } else {
-            System.err.println("SGCraft - Hacked Client detected!");
-            return;
         }
+        if (setting == 2) {
+            if (localGate.isConnected()) {
+                if (localGate.allowGateAccess(player) || isPermissionsAdmin) {
+                    localGate.disconnect(player);
+                }
+            }
+        }
+
+        if (setting == 3) {
+            // Reserved for testing purposes.
+        }
+
+        if (setting == 4) {
+            if (localGate.allowGateAccess(player) || isPermissionsAdmin) {
+                if (localGate.state == SGState.Idle) {
+                    localGate.isInitiator = true;
+                }
+                localGate.connectOrDisconnect("", player);
+                localGate.clearIdleConnection();
+                localGate.errorState = false; // Force this on the servers' TE.
+            }
+        }
+    }
+
+    // Whether the player may dial with a PDD or EDD
+    private static boolean mayUseDialler(EntityPlayer player) {
+        return SGCraft.hasPermission(player, "sgcraft.gui.pdd") || SGCraft.hasPermission(player, "sgcraft.gui.edd")
+            || (SGCraft.hasPermissionSystem() && SGCraft.hasPermission(player, "sgcraft.admin"));
     }
 
     public static void sendPddEntryUpdateToServer(String name, String address, int index, int unid, boolean locked, boolean autoClose) {
@@ -179,17 +189,45 @@ public class PddNetworkHandler extends SGChannel {
             return;
         }
 
+        // Only a PDD's own list, within limits: a client could otherwise grow any item's data without end, until every
+        // player sent the item (dropped, or in an item frame) was disconnected for a packet too big to read
         final ItemStack stack = player.getHeldItemMainhand();
-        if (stack != null) {
-            NBTTagCompound compound = stack.getTagCompound();
-            if (compound != null) {
-                AddressData.updateAddress(player, compound, unid, name, address, index, locked, autoClose);
-                stack.setTagCompound(compound);
-                player.inventoryContainer.detectAndSendChanges();
-                PddNetworkHandler.updatePdd(player, false, 1);
-            }
+        NBTTagCompound compound = stack.getItem() instanceof PddItem ? stack.getTagCompound() : null;
+        if (compound == null) {
+            return;
         }
+        name = name.trim();
+        if (name.length() > maxEntryNameLength) {
+            name = name.substring(0, maxEntryNameLength);
+        }
+        if (index != -1) { // -1 deletes the entry
+            String normalized = address.toUpperCase().replaceAll("-", "");
+            try {
+                SGAddressing.validateAddress(normalized);
+            } catch (SGAddressing.AddressingError e) {
+                sendErrorMsg(player, "malformedAddress");
+                return;
+            }
+            if (normalized.length() != SGAddressing.maxAddressLength) {
+                sendErrorMsg(player, "malformedAddress");
+                return;
+            }
+            address = SGAddressing.formatAddress(normalized, "-", "-");
+        }
+        if (unid == 0 && AddressData.getAddresses(compound).size() >= maxEntries) {
+            sendErrorMsg(player, "pddListFull", maxEntries);
+            return;
+        }
+        // Only the server's own entries are locked (see AddressData.updateAddress); a player's are never
+        AddressData.updateAddress(player, compound, unid, name, address, index, false, autoClose);
+        stack.setTagCompound(compound);
+        player.inventoryContainer.detectAndSendChanges();
+        PddNetworkHandler.updatePdd(player, false, 1);
     }
+
+    // How long an entry's name may be, and how many entries a PDD holds
+    private static final int maxEntryNameLength = 64;
+    private static final int maxEntries = 200;
 
     // Moves an address entry up (direction -1) or down (+1) the list on the PDD in the player's main hand
     public static void sendPddEntryMoveToServer(int unid, int direction) {
@@ -310,9 +348,19 @@ public class PddNetworkHandler extends SGChannel {
             return;
         }
         if (!hasRevision || knownRevision != ExplorerData.revisionFor(player)) {
+            // At most once a second: a client can ask over and over, and the server built and sent the whole list each time
+            long now = System.currentTimeMillis();
+            Long last = lastListSent.get(player.getUniqueID());
+            if (last != null && now - last >= 0 && now - last < 1000) {
+                return;
+            }
+            lastListSent.put(player.getUniqueID(), now);
             sendExplorerList(player);
         }
     }
+
+    // When each player was last sent the list of generated gates on asking for it
+    private static final Map<UUID, Long> lastListSent = new HashMap<>();
 
     // Every generated gate, ordered by world and then address
     private static void sendExplorerList(EntityPlayer player) {
@@ -398,15 +446,22 @@ public class PddNetworkHandler extends SGChannel {
     }
 
 
+    // The PDD dialling a gate that locks each chevron as it's entered, one symbol at a time. It used to take any
+    // player's word for any gate, in any state: one sent to a gate between two symbols of another dial crashed the
+    // server (see SGBaseTE.immediateDialSymbol)
     @ServerMessageHandler("EnterImmediateSymbol")
     public void handleEnterSymbolFromClient(EntityPlayer player, ChannelInput data) {
         BlockPos pos = readCoords(data);
         String address = data.readUTF();
         int digit = data.readInt();
 
-        SGBaseTE localGate = SGBaseTE.at(player.world, pos);
-        if (localGate != null) {
-            localGate.immediateDialSymbol(address, player, digit);
+        if (!mayUseDialler(player)) {
+            return;
         }
+        SGBaseTE localGate = loadedGateAt(player, pos);
+        if (localGate == null || !playerAtGate(player, localGate) || !localGate.allowGateAccess(player)) {
+            return;
+        }
+        localGate.immediateDialSymbol(address, player, digit);
     }
 }

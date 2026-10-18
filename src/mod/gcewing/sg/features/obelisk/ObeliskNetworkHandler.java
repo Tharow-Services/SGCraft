@@ -10,6 +10,7 @@ import gcewing.sg.SGCraft;
 import gcewing.sg.features.obelisk.client.ObeliskConfiguratorScreen;
 import gcewing.sg.features.obelisk.client.ObeliskBeamEffects;
 import gcewing.sg.network.SGChannel;
+import gcewing.sg.util.PlayerNames;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.tileentity.TileEntity;
@@ -127,11 +128,13 @@ public class ObeliskNetworkHandler extends SGChannel {
         ObeliskConfiguratorScreen.show(player, config);
     }
 
-    // The transporter the player may configure at pos, if they're at it holding the Configurator
+    // The transporter the player may configure at pos, if they're at it holding the Configurator, and may use it (as
+    // when opening its screen, see openConfigurator)
     private static ConfigurableTransport configurable(EntityPlayer player, BlockPos pos) {
         if (!player.world.isBlockLoaded(pos) || SGCraft.configurator == null
                 || player.getHeldItemMainhand().getItem() != SGCraft.configurator
-                || player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5) > maxReach * maxReach) {
+                || player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5) > maxReach * maxReach
+                || !SGCraft.hasPermission(player, "sgcraft.gui.configurator") && !AsgardObeliskTE.isServerAdmin(player)) {
             return null;
         }
         TileEntity te = player.world.getTileEntity(pos);
@@ -158,6 +161,7 @@ public class ObeliskNetworkHandler extends SGChannel {
         boolean allowEveryone = data.readBoolean();
         int count = Math.min(data.readInt(), 256);
         List<ObeliskAccess> access = new ArrayList<>();
+        PlayerNames names = new PlayerNames(player.getServer());
         for (int i = 0; i < count; i++) {
             String name = data.readUTF().trim();
             boolean use = data.readBoolean();
@@ -165,12 +169,13 @@ public class ObeliskNetworkHandler extends SGChannel {
             if (te == null || name.isEmpty() || access.stream().anyMatch(e -> e.name.equalsIgnoreCase(name))) {
                 continue;
             }
-            // Someone already listed keeps their account; anyone new is looked up by name
+            // Someone already listed keeps their account; anyone new is looked up by name, among the players who have
+            // been on the server (see PlayerNames: asking Mojang held the server up, for each name a packet sent)
             ObeliskAccess known = te.transportAccess().stream().filter(e -> e.name.equalsIgnoreCase(name)).findFirst().orElse(null);
             UUID uuid = known != null ? known.uuid : null;
             String realName = known != null ? known.name : name;
-            if (uuid == null && player.getServer() != null) {
-                GameProfile profile = player.getServer().getPlayerProfileCache().getGameProfileForUsername(name);
+            if (uuid == null) {
+                GameProfile profile = names.find(name);
                 if (profile != null) {
                     uuid = profile.getId();
                     realName = profile.getName();

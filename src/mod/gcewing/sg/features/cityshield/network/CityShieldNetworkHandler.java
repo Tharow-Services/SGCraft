@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.malisis.core.inventory.MalisisInventory;
+import net.malisis.core.inventory.MalisisInventoryContainer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 
@@ -128,7 +129,7 @@ public class CityShieldNetworkHandler extends SGChannel {
         int above = data.readInt();
         int below = data.readInt();
         boolean active = data.readBoolean();
-        if (te == null) {
+        if (te == null || !screenOpen(player, te)) {
             return;
         }
         te.setSize(width, above, below);
@@ -138,5 +139,20 @@ public class CityShieldNetworkHandler extends SGChannel {
             te.setActive(active);
         }
         sendStatus(player, te, "CityShieldStatus");
+    }
+
+    // Whether the player has the generator's screen open. It's worked only from there, where it was opened with a click
+    // on the generator, which claims and the like see: a client could otherwise drop any shield in reach, through walls,
+    // without that.
+    private static boolean screenOpen(EntityPlayer player, CityShieldTE te) {
+        if (!(player.openContainer instanceof MalisisInventoryContainer)) {
+            return false;
+        }
+        for (MalisisInventory inventory : ((MalisisInventoryContainer) player.openContainer).getInventories()) {
+            if (inventory.getProvider() == te) {
+                return true;
+            }
+        }
+        return false;
     }
 }

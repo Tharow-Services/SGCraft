@@ -98,10 +98,11 @@ public class AsgardObeliskTE extends TileEntity implements ConfigurableTransport
         AsgardObelisks.unlinkPartner(this);
     }
 
-    // One placed before it had an owner may be configured by anyone (with a Configurator)
+    // One with no owner (placed before they were kept, or pasted in from a schematic) only by server admins: anyone could
+    // otherwise take it over, lock everyone else out of it, or link it elsewhere
     @Override
     public boolean mayConfigure(EntityPlayer player) {
-        if (owner == null || isOwner(player) || isServerAdmin(player)) {
+        if (isOwner(player) || isServerAdmin(player)) {
             return true;
         }
         ObeliskAccess entry = accessFor(player);

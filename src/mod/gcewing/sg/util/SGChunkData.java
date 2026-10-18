@@ -82,7 +82,8 @@ public class SGChunkData {
         //if (data.oresGenerated)
         //  System.out.printf("SGChunkData.onChunkLoad: Ores already added to chunk (%d, %d)\n",
         //      chunk.xPosition, chunk.zPosition);
-        if (!data.oresGenerated && SGCraft.addOresToExistingWorlds) {
+        // No generator when naquadah ore is turned off (options.enableNaquadahOre)
+        if (!data.oresGenerated && SGCraft.addOresToExistingWorlds && SGCraft.naquadahOreGenerator != null) {
             if (debug)
                 System.out.printf("SGChunkData.onChunkLoad: Adding ores to chunk (%d, %d)\n", chunk.x, chunk.z);
             SGCraft.naquadahOreGenerator.regenerate(chunk);

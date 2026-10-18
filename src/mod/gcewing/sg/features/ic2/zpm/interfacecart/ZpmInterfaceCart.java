@@ -55,25 +55,16 @@ public class ZpmInterfaceCart extends BlockContainer {
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
         if (!world.isRemote) {
             ZpmLinks.unlink(world, pos); // off its gate's list too, not just gone from the world
-        }
-        ZpmInterfaceCartTE zpmCart = ZpmInterfaceCartTE.at(world, pos);
-        ItemStack zpm = zpmCart.getStackInSlot(0);
-        NBTTagCompound tag = zpm.getTagCompound();
-
-        if (zpmCart != null) {
-            if (tag == null) {
-                tag = new NBTTagCompound();
-                zpm.setTagCompound(tag);
+            // Taken out of its slot, with its energy, before it's dropped: left in, a screen still open on the cart could
+            // take it a second time
+            ZpmInterfaceCartTE zpmCart = ZpmInterfaceCartTE.at(world, pos);
+            if (zpmCart != null) {
+                ItemStack zpm = zpmCart.removeStackFromSlot(0);
+                if (!zpm.isEmpty()) {
+                    Block.spawnAsEntity(world, pos, zpm);
+                }
             }
-
-            if (tag.hasKey(ZPMItem.ENERGY, 99 /* number */)) {
-                tag.setDouble(ZPMItem.ENERGY, zpmCart.source.getEnergyStored());
-                tag.setBoolean(ZPMItem.LOADED, false);
-                zpmCart.source.setEnergyStored(0);
-            }
-
         }
-        Block.spawnAsEntity(world, pos, zpm);
         super.breakBlock(world, pos, state);
     }
 
