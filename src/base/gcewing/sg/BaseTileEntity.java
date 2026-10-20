@@ -24,12 +24,18 @@ import net.minecraft.server.management.PlayerChunkMapEntry;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.ForgeChunkManager.Ticket;
+import valkyrienwarfare.api.IPhysicsEntity;
+import valkyrienwarfare.api.IPhysicsEntityManager;
+import valkyrienwarfare.api.TransformType;
 
 import java.lang.reflect.Field;
+import java.util.Optional;
 
 public class BaseTileEntity extends TileEntity
     implements BaseMod.ITileEntity
@@ -57,6 +63,13 @@ public class BaseTileEntity extends TileEntity
     }
 
     public Trans3 localToGlobalTransformation() {
+        if (IPhysicsEntityManager.INSTANCE.isBlockPosManagedByPhysicsEntity(world, pos)) {
+            IPhysicsEntity inst = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(world, pos);
+            if (inst!=null) {
+                return new Trans3(inst.transformVector(Vector3.blockCenter(pos).toVec3d(), TransformType.SUBSPACE_TO_GLOBAL));
+            }
+        }
+
         return localToGlobalTransformation(Vector3.blockCenter(pos));
     }
 

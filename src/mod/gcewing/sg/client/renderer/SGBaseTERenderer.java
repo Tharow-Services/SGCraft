@@ -6,6 +6,13 @@
 
 package gcewing.sg.client.renderer;
 
+import gcewing.sg.*;
+import gcewing.sg.block.SGBaseBlock;
+import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.SGState;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockDirectional;
+import net.minecraft.client.Minecraft;
 import gcewing.sg.BaseGLUtils;
 import gcewing.sg.BaseTileEntityRenderer;
 import gcewing.sg.tileentity.SGBaseTE;
@@ -16,8 +23,16 @@ import gcewing.sg.util.SGState;
 import gcewing.sg.Vector3;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.client.MinecraftForgeClient;
 import org.lwjgl.opengl.GL11;
+import org.valkyrienskies.mod.common.ships.ship_world.PhysicsObject;
+import org.valkyrienskies.mod.common.util.ValkyrienUtils;
+import valkyrienwarfare.api.TransformType;
+
+import java.util.Optional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +58,6 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
 
     @Override
     public void render(TileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
-
         SGBaseTE gate = (SGBaseTE)te;
         if (gate.isMerged) {
             glPushMatrix();
@@ -94,6 +108,29 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glTranslated(0, shape.centreY, 0);
         renderGate(gate, shape, partialTicks);
     }
+
+    void renderEventHorizonGrid(SGBaseTE gate, float partialTicks) {
+        Trans3 t = gate.localToGlobalTransformation();
+        Vector3 p0 = null;
+        Vector3 p1 = null;
+
+        if (gate.gateOrientation == 1) {
+            p0 = new Vector3(-1.5, 0.5, -1.5);
+            p1 = new Vector3(1.5, 3.5, 1.5);
+        }
+
+        if (gate.gateOrientation == 2 || gate.gateOrientation == 3) {
+            p0 = new Vector3(1.5, -1.5, -0.5);
+            p1 = new Vector3(-1.5, 1.5, -3.5);
+        }
+        AxisAlignedBB box = t.box(p0, p1);
+        RenderGlobal.drawSelectionBoundingBox(ValkyrienUtils.getAABBInGlobal(box, gate.getWorld(), gate.getPos()), 255, 255, 255, 0);
+    }
+    
+    void renderInnerRing(SGBaseTE te, float partialTicks) {
+        glPushMatrix();
+        glRotatef((float)(te.interpolatedRingAngle(partialTicks) + SGBaseTE.ringSymbolAngle / 2), 0, 0, 1);
+        renderRing(ringInnerRadius, ringMidRadius, RingType.Inner, 0);
 
     // The gate in its own frame, centred on the origin, its front towards +z, with whatever its
     // ring, chevrons, iris and event horizon are doing. Also draws the live gate on the GDO's screen.

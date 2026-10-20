@@ -12,10 +12,7 @@ import static gcewing.sg.BaseUtils.max;
 import static gcewing.sg.BaseUtils.min;
 
 import com.google.common.collect.Sets;
-import gcewing.sg.BaseBlockUtils;
-import gcewing.sg.BaseConfiguration;
-import gcewing.sg.BaseTileInventory;
-import gcewing.sg.BaseUtils;
+import gcewing.sg.*;
 import gcewing.sg.event.SGMergeEvent;
 import gcewing.sg.features.ic2.zpm.modulehub.ZpmHubTE;
 import gcewing.sg.features.zpm.console.ZpmConsoleTE;
@@ -51,7 +48,6 @@ import gcewing.sg.interfaces.IGatePowerSource;
 import gcewing.sg.util.IrisState;
 import gcewing.sg.util.OriGate;
 import gcewing.sg.interfaces.LoopingSoundSource;
-import gcewing.sg.util.FakeTeleporter;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockSlab;
 import net.minecraft.block.state.IBlockState;
@@ -101,6 +97,9 @@ import gcewing.sg.network.SGChannel;
 import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.valkyrienskies.mod.common.util.ValkyrienUtils;
+import valkyrienwarfare.api.IPhysicsEntityManager;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -112,11 +111,11 @@ import java.util.UUID;
 
 public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSoundSource {
 
-    static boolean debugState = false;
+    static boolean debugState = true;
     public static boolean debugEnergyUse = false;
     static boolean debugConnect = false;
     static boolean debugTransientDamage = false;
-    static boolean debugTeleport = false;
+    static boolean debugTeleport = true;
     static boolean debugZPM = false;
     final static DecimalFormat dFormat = new DecimalFormat("###,###,###,##0");
 
@@ -340,6 +339,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public boolean invulnerable = false;
     public boolean displayGateAddress = true;
     public boolean isGenerated = false;
+
+    public BlockPos renderPos = null;
 
     // Access Control Lists
     private List<PlayerAccessData> playerAccessData;
@@ -637,7 +638,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     @Override
-    protected void setWorldCreate(World world) {
+    protected void setWorldCreate(@NonNull World world) {
         this.world = world;
     }
 
@@ -1870,6 +1871,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     public void resetStargate() { // Specifically for usage with PDD.
         disconnect();
         markChanged();
+
     }
 
     public static void sendErrorMsg(EntityPlayer player, String msg, Object... args) {
@@ -2071,6 +2073,14 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     // *********************************************************************************************
     // Dialing Subsystem
     // *********************************************************************************************
+
+    public String HomeAddress() {
+        try {
+            return getHomeAddress();
+        } catch (SGAddressing.AddressingError e) {
+            return e.getMessage();
+        }
+    }
 
     String findHomeAddress() {
         try {
@@ -3045,7 +3055,26 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 entityInPortal(trk.entity, trk.lastPos);
             }
             trackedEntities.clear();
-            List<Entity> ents = world.getEntitiesWithinAABB(Entity.class, portalTrackingBox());
+            // Todo:  setup vectors for horizontal gates
+            Vector3 p0 = null;
+            Vector3 p1 = null;
+
+            if (this.gateOrientation == 1) {
+                p0 = new Vector3(-1.5, 0.5, -1.5);
+                p1 = new Vector3(1.5, 3.5, 1.5);
+            }
+
+            if (this.gateOrientation == 2 || this.gateOrientation == 3) {
+                p0 = new Vector3(1.5, -1.5, -0.5);
+                p1 = new Vector3(-1.5, 1.5, -3.5);
+            }
+
+            Trans3 t = localToGlobalTransformation(Vector3.blockCenter(pos));
+            if (IPhysicsEntityManager.INSTANCE.isBlockPosManagedByPhysicsEntity(world, pos)) {
+
+            }
+            AxisAlignedBB box = ValkyrienUtils.getAABBInGlobal(t.box(p0, p1), world, pos);
+            List<Entity> ents = world.getEntitiesWithinAABB(Entity.class, box);
             for (Entity entity : ents) {
                 if (entity instanceof EntityFishHook || entity instanceof EntityStargateIris) {
                     continue;
@@ -3074,6 +3103,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 && portalTrackingBox().grow(maxPortalApproach).intersects(entity.getEntityBoundingBox());
         if (!entity.isDead && state == SGState.Connected && atGate) {
             Trans3 t = localToGlobalTransformation();
+
             double vx = entity.posX - prevPos.x;
             double vy = entity.posY - prevPos.y;
             double vz = entity.posZ - prevPos.z;
@@ -3095,11 +3125,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 entity.motionX = vx;
                 entity.motionY = vy;
                 entity.motionZ = vz;
-                //System.out.printf("SGBaseTE.entityInPortal: %s pos (%.2f, %.2f, %.2f) prev (%.2f, %.2f, %.2f) motion (%.2f, %.2f, %.2f)\n",
-                //  repr(entity),
-                //  entity.posX, entity.posY, entity.posZ,
-                //  prevPos.x, prevPos.y, prevPos.z,
-                //  entity.motionX, entity.motionY, entity.motionZ);
+                System.out.printf("SGBaseTE.entityInPortal: Passing %s pos (%.2f, %.2f, %.2f) prev (%.2f, %.2f, %.2f) motion (%.2f, %.2f, %.2f)\n",
+                  repr(entity),
+                  entity.posX, entity.posY, entity.posZ,
+                  prevPos.x, prevPos.y, prevPos.z,
+                  entity.motionX, entity.motionY, entity.motionZ);
 
                 SGBaseTE dte = getConnectedStargateTE();
                 if (dte != null) {
@@ -3441,6 +3471,24 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             return newEntity;
         }
     }
+
+    // Todo: not all transport methods are set to use this.
+    private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw) {
+        float pitch = entity.rotationPitch;
+        if (this.getConnectedStargateTE().gateOrientation == 2) {
+            pitch = pitch - 90;
+        }
+        if (this.getConnectedStargateTE().gateOrientation == 3) {
+            pitch = pitch + 90;
+        }
+
+        double x = p.x;
+        double y = p.y;
+        double z = p.z;
+
+        if (this.getConnectedStargateTE().gateOrientation == 3) {
+            y = y - 4;
+        }
 
     // Puts the entity where it comes out of the gate, facing the way it does (see teleportEntity)
     private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw, double pitch) {
@@ -4069,8 +4117,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 v[j][0] = v0;
             }
         }
-        //dumpGrid("u", u);
-        //dumpGrid("v", v);
+        dumpGrid("u", u);
+        dumpGrid("v", v);
     }
 
     void dumpGrid(String label, double g[][]) {
@@ -4203,7 +4251,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 ((IComputerInterface)te).postEvent(this, name, args);
             }
         }
-        this.debugCCInterface = false;
+        this.debugCCInterface = true;
     }
 
     public String sgStateDescription() {
@@ -4243,5 +4291,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public double getBaseMaxEnergyBuffer() {
         return this.maxEnergyBuffer;
+    }
+    public ChunkPos getChunkPos() {
+        return new ChunkPos(getPos(), getWorld().provider.getDimension());
     }
 }

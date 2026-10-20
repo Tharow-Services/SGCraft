@@ -17,7 +17,7 @@ import net.minecraft.world.storage.*;
 
 public class SGDimensionMap extends WorldSavedData {
 
-    public static boolean debugDimensionMap = false;
+    public static boolean debugDimensionMap = true;
 
     protected List<Integer> indexToDimension = new ArrayList<>();
     protected Map<Integer, Integer> dimensionToIndex = new HashMap<>();

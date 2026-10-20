@@ -23,6 +23,8 @@ import gcewing.sg.container.PowerContainer;
 import gcewing.sg.container.SGBaseContainer;
 import gcewing.sg.entity.EntityStargateIris;
 import gcewing.sg.entity.SGEntity;
+import gcewing.sg.features.commands.SGCommands;
+import gcewing.sg.features.commands.StargateCommands;
 import gcewing.sg.features.configurator.ConfiguratorItem;
 import gcewing.sg.features.configurator.network.ConfiguratorNetworkHandler;
 import gcewing.sg.features.gdo.GdoItem;
@@ -350,6 +352,14 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         new ZpmLinkNetworkHandler(Info.modID + "-zpmlink");
         new ZatNetworkHandler(Info.modID + "-zat");
         chunkManager = new BaseTEChunkManager(this);
+
+    }
+
+    @Mod.EventHandler
+    public void serverStart(FMLServerStartingEvent event)
+    {
+        event.registerServerCommand(new SGCommands());
+        event.registerServerCommand(new StargateCommands());
     }
 
     @Mod.EventHandler
@@ -995,4 +1005,6 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
         return false; // Fallback
     }
+
+
 }
