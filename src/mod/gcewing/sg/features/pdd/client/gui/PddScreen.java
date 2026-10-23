@@ -22,6 +22,7 @@ import net.malisis.core.client.gui.GuiTexture;
 import net.malisis.core.client.gui.component.decoration.UIImage;
 import net.malisis.core.client.gui.component.interaction.UIButton;
 import net.malisis.core.client.gui.component.interaction.UICheckBox;
+import net.malisis.core.client.gui.component.interaction.UITextField;
 import net.malisis.core.client.gui.component.interaction.button.builder.UIButtonBuilder;
 import net.malisis.core.renderer.font.FontOptions;
 import net.malisis.core.util.FontColors;
@@ -42,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -58,6 +60,11 @@ public class PddScreen extends BasicScreen {
     private UILabel localGateAddressLabel, gateStatusLabel, availableAddressesLabel, addressTextureLabel, userFeedbackLabel;
     private UISeparator valuesSeparator;
     private UICheckBox autoCloseChk;
+    private UILabel searchLabel;
+    private UITextField searchField;
+    private UIButton searchClearButton; // the red x after the search field, which empties it
+    private static final int SEARCH_CLEAR_SIZE = 12;
+    private String searchText = ""; // what the list is narrowed to, as last applied
     private BlockPos location;
     private BlockPos gatePos;
     private World world;
@@ -112,7 +119,7 @@ public class PddScreen extends BasicScreen {
         }
 
         // Master Panel
-        this.form = new BasicForm(this, BASE_FORM_WIDTH, 225, TextFormatting.WHITE + I18n.format(this.explorer
+        this.form = new BasicForm(this, BASE_FORM_WIDTH, 241, TextFormatting.WHITE + I18n.format(this.explorer
             ? "sgcraft.gui.edd.label.explorerDialerDevice" : "sgcraft.gui.pdd.label.personalDialerDevice"));
         this.form.setMovable(true);
         this.form.setBackgroundAlpha(255);
@@ -120,7 +127,7 @@ public class PddScreen extends BasicScreen {
         // ****************************************************************************************************************************
         // Address List Area
         // ****************************************************************************************************************************
-        this.addressContainer = new BasicContainer(this, BASE_CONTAINER_WIDTH, 185);
+        this.addressContainer = new BasicContainer(this, BASE_CONTAINER_WIDTH, 201);
         this.addressContainer.setPosition(0, 0, Anchor.LEFT | Anchor.MIDDLE);
         this.addressContainer.setBorder(FontColors.WHITE, 1, 185);
         this.addressContainer.setPadding(0, 3);
@@ -129,6 +136,20 @@ public class PddScreen extends BasicScreen {
         availableAddressesLabel = new UILabel(this, TextFormatting.WHITE + I18n.format(this.explorer
             ? "sgcraft.gui.edd.label.generatedAddresses" : "sgcraft.gui.pdd.label.availableAddresses")+":");
         availableAddressesLabel.setPosition(5, 1, Anchor.LEFT | Anchor.TOP);
+
+        // Narrows the list to the entries whose name, world or address has what's typed in it
+        this.searchLabel = new UILabel(this, TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.search") + ":");
+        this.searchLabel.setPosition(5, BasicScreen.getPaddedY(availableAddressesLabel, 4), Anchor.LEFT | Anchor.TOP);
+        this.searchField = new UITextField(this, "", false);
+        this.searchField.setPosition(BasicScreen.getPaddedX(this.searchLabel, 4), this.searchLabel.getY() - 2, Anchor.LEFT | Anchor.TOP);
+        this.searchField.setFontOptions(FontOptions.builder().from(FontColors.WHITE_FO).shadow(false).build());
+        this.searchClearButton = new UIButtonBuilder(this)
+            .text(TextFormatting.RED + "x")
+            .size(SEARCH_CLEAR_SIZE, SEARCH_CLEAR_SIZE)
+            .anchor(Anchor.LEFT | Anchor.TOP)
+            .onClick(() -> this.searchField.setText(""))
+            .build("button.pdd.search.clear");
+        layoutSearchRow(BASE_CONTAINER_WIDTH);
 
         localGateAddressLabel = new UILabel(this, "gateAddress");
         localGateAddressLabel.setFontOptions(FontOptions.builder().from(FontColors.BLUE_FO).shadow(true).scale(1.0F).build());
@@ -148,8 +169,8 @@ public class PddScreen extends BasicScreen {
         valuesSeparator.setSize(this.addressContainer.getWidth() - 55, 1);
         valuesSeparator.setPosition(0, 70, Anchor.TOP | Anchor.CENTER);
 
-        this.addressList = new BasicList<>(this, UIComponent.INHERITED, this.addressContainer.getHeight() - 14);
-        this.addressList.setPosition(0, BasicScreen.getPaddedY(availableAddressesLabel, 2));
+        this.addressList = new BasicList<>(this, UIComponent.INHERITED, this.addressContainer.getHeight() - 30);
+        this.addressList.setPosition(0, BasicScreen.getPaddedY(this.searchField, 2));
         this.addressList.setItemComponentFactory(AddressItemComponent::new);
         this.addressList.setItemComponentSpacing(1);
         this.addressList.setPadding(2);
@@ -158,7 +179,7 @@ public class PddScreen extends BasicScreen {
         this.addressList.setName("List");
         this.addressList.register(this);
 
-        this.addressContainer.add(availableAddressesLabel, localGateAddressLabel, gateStatusLabel, addressTextureLabel, this.addressList);
+        this.addressContainer.add(availableAddressesLabel, this.searchLabel, this.searchField, this.searchClearButton, localGateAddressLabel, gateStatusLabel, addressTextureLabel, this.addressList);
 
         // ****************************************************************************************************************************
 
@@ -298,6 +319,12 @@ public class PddScreen extends BasicScreen {
             unlockMouse = false; // Only unlock once per session.
         }
 
+        if (this.searchField != null && !this.searchField.getText().equals(this.searchText)) {
+            this.searchText = this.searchField.getText();
+            if (this.clonedList != null) {
+                fillList(this.clonedList);
+            }
+        }
         this.refresh();
         this.detectChange();
 
@@ -433,6 +460,9 @@ public class PddScreen extends BasicScreen {
                 this.editAddressButton.setVisible(this.addressList.isVisible());
                 this.availableAddressesLabel.setVisible(this.addressList.isVisible());
                 this.localGateAddressLabel.setVisible(this.addressList.isVisible());
+                this.searchLabel.setVisible(this.addressList.isVisible());
+                this.searchField.setVisible(this.addressList.isVisible());
+                this.searchClearButton.setVisible(this.addressList.isVisible());
                 this.valuesSeparator.setVisible(!this.addressList.isVisible());
                 this.userFeedbackLabel.setVisible(!this.buttonDial.isVisible() && !this.buttonReset.isVisible() && !this.buttonDisconnect.isVisible() && !(localGate.state == SGState.Disconnecting));
                 this.gateStatusLabel.setVisible(!this.addressList.isVisible());
@@ -543,10 +573,8 @@ public class PddScreen extends BasicScreen {
         if (compound != null) {
             List<AddressData> comparedList = AddressData.getAddresses(compound);
             if (!comparedList.equals(clonedList)) {
-                this.addressList.clearItems();
-                resetAddressLineWidth();
                 this.clonedList = AddressData.getAddresses(compound);
-                this.addressList.addItems(AddressData.getAddresses(compound));
+                fillList(this.clonedList);
                 this.availableAddressesLabel.setText(TextFormatting.WHITE + I18n.format("sgcraft.gui.pdd.label.availableAddresses")
                     + ": (" + this.clonedList.size() + ")");
 
@@ -584,19 +612,8 @@ public class PddScreen extends BasicScreen {
 
     // Shows the generated gates, keeping the selected one selected
     private void showAddresses(final List<AddressData> addresses) {
-        final AddressData selected = this.addressList.getSelectedItem();
-        this.addressList.clearItems();
-        resetAddressLineWidth();
         this.clonedList = new ArrayList<>(addresses);
-        this.addressList.addItems(new ArrayList<>(addresses));
-        if (selected != null) {
-            for (AddressData data : addresses) {
-                if (data.getAddress().equals(selected.getAddress())) {
-                    this.addressList.setSelectedItem(data);
-                    break;
-                }
-            }
-        }
+        fillList(this.clonedList);
         int visitedCount = 0;
         for (AddressData data : addresses) {
             if (this.visitedAddresses.contains(data.getAddress())) {
@@ -610,20 +627,50 @@ public class PddScreen extends BasicScreen {
     public void setWorldNames(final Map<String, String> names) {
         this.worldNames.putAll(names);
         if (this.clonedList != null) {
-            // Rebuild the entries so their address lines pick up the names, keeping the selection
-            final AddressData selected = this.addressList.getSelectedItem();
-            this.addressList.clearItems();
-            resetAddressLineWidth();
-            this.addressList.addItems(new ArrayList<>(this.clonedList));
-            if (selected != null) {
-                for (AddressData data : this.clonedList) {
+            fillList(this.clonedList); // so their address lines pick up the names (and a search by world finds them)
+        }
+    }
+
+    // Shows the entries that match the search (all of them with none), keeping the selected one selected if it's shown
+    private void fillList(final List<AddressData> all) {
+        final AddressData selected = this.addressList.getSelectedItem();
+        final List<AddressData> shown = matching(all);
+        this.addressList.clearItems();
+        resetAddressLineWidth();
+        this.addressList.addItems(new ArrayList<>(shown));
+        if (selected != null) {
+            AddressData same = null;
+            for (AddressData data : shown) {
+                if (data.getAddress().equals(selected.getAddress())) {
+                    same = data;
                     if (data.getUnid() == selected.getUnid()) {
-                        this.addressList.setSelectedItem(data);
-                        break;
+                        break; // the very entry, not just one with the same address
                     }
                 }
             }
+            if (same != null) {
+                this.addressList.setSelectedItem(same);
+            }
         }
+    }
+
+    // The entries whose name, world name or address has the search text in it, ignoring case (and dashes, for addresses)
+    private List<AddressData> matching(final List<AddressData> all) {
+        final String query = this.searchText.trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty()) {
+            return all;
+        }
+        final String querySymbols = query.replace("-", "");
+        final List<AddressData> shown = new ArrayList<>();
+        for (AddressData data : all) {
+            final String world = this.worldNames.get(data.getAddress());
+            if ((data.getName() != null && data.getName().toLowerCase(Locale.ROOT).contains(query))
+                    || (world != null && world.toLowerCase(Locale.ROOT).contains(query))
+                    || (!querySymbols.isEmpty() && data.getAddress().replace("-", "").toLowerCase(Locale.ROOT).contains(querySymbols))) {
+                shown.add(data);
+            }
+        }
+        return shown;
     }
 
     private void dialRandom() {
@@ -826,6 +873,17 @@ public class PddScreen extends BasicScreen {
         resizeToAddressLines();
     }
 
+    // The search field fills the row but for the clear button after it, which is exactly as tall as the field and level
+    // with it (a button sizes itself to at least its text plus 6 pixels unless told not to, which made it taller)
+    private void layoutSearchRow(int containerWidth) {
+        int fieldWidth = containerWidth - this.searchField.getX() - 6 - SEARCH_CLEAR_SIZE - 2;
+        this.searchField.setSize(fieldWidth, 0);
+        this.searchClearButton.setAutoSize(false);
+        this.searchClearButton.setSize(SEARCH_CLEAR_SIZE, this.searchField.getHeight());
+        this.searchClearButton.setPosition(this.searchField.getX() + fieldWidth + 2, this.searchField.getY(),
+            Anchor.LEFT | Anchor.TOP);
+    }
+
     private void resizeToAddressLines() {
         // An entry's width at the normal size: the list's inner width, less room for its scroll bar whether or not it shows
         int baseEntryWidth = BASE_CONTAINER_WIDTH - this.addressList.getLeftPadding() - this.addressList.getRightPadding()
@@ -834,6 +892,9 @@ public class PddScreen extends BasicScreen {
         this.form.setWidth(BASE_FORM_WIDTH + extra);
         this.addressContainer.setWidth(BASE_CONTAINER_WIDTH + extra);
         this.valuesSeparator.setSize(BASE_CONTAINER_WIDTH + extra - 55, 1);
+        if (this.searchField != null) {
+            layoutSearchRow(BASE_CONTAINER_WIDTH + extra);
+        }
     }
 
     private class AddressItemComponent extends BasicList.ItemComponent<AddressData> {
@@ -925,8 +986,10 @@ public class PddScreen extends BasicScreen {
             final List<AddressData> order = clonedList;
             final boolean first = order == null || order.isEmpty() || order.get(0).getUnid() == this.item.getUnid();
             final boolean last = order == null || order.isEmpty() || order.get(order.size() - 1).getUnid() == this.item.getUnid();
-            this.moveUpButton = arrowButton("pdd_arrow_up", -1, Anchor.TOP | Anchor.RIGHT, !first);
-            this.moveDownButton = arrowButton("pdd_arrow_down", 1, Anchor.BOTTOM | Anchor.RIGHT, !last);
+            // Not while searching: an entry would swap places with a neighbour that isn't shown
+            final boolean searching = !searchText.trim().isEmpty();
+            this.moveUpButton = arrowButton("pdd_arrow_up", -1, Anchor.TOP | Anchor.RIGHT, !first && !searching);
+            this.moveDownButton = arrowButton("pdd_arrow_down", 1, Anchor.BOTTOM | Anchor.RIGHT, !last && !searching);
 
             this.update();
 
