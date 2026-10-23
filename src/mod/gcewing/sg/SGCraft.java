@@ -104,6 +104,7 @@ import net.minecraft.world.storage.loot.functions.LootFunctionManager;
 import gcewing.sg.util.Info;
 import gcewing.sg.util.PermissionsUtil;
 import gcewing.sg.util.SGChunkData;
+import gcewing.sg.util.WorldNames;
 import gcewing.sg.util.Sound;
 import net.minecraft.block.Block;
 import net.minecraft.util.NonNullList;
@@ -859,6 +860,12 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             }
             SGChunkData.onChunkUnload(chunk);
         }
+    }
+
+    // Each world's name, kept to name it by while it isn't loaded (see WorldNames)
+    @SubscribeEvent
+    public void onWorldLoad(WorldEvent.Load e) {
+        WorldNames.record(e.getWorld());
     }
 
     @SubscribeEvent
