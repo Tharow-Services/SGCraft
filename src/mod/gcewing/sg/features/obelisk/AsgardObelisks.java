@@ -128,13 +128,7 @@ public final class AsgardObelisks {
 
     // The name of a world, as players know it: under Sponge each has its own; otherwise the dimension's name
     public static String worldName(int dimension) {
-        WorldServer world = DimensionManager.getWorld(dimension);
-        WorldServer overworld = DimensionManager.getWorld(0);
-        if (world != null && (dimension == 0 || overworld == null
-                || !world.getWorldInfo().getWorldName().equals(overworld.getWorldInfo().getWorldName()))) {
-            return world.getWorldInfo().getWorldName();
-        }
-        return DimensionManager.isDimensionRegistered(dimension) ? DimensionManager.getProviderType(dimension).getName() : "dimension " + dimension;
+        return gcewing.sg.util.WorldNames.nameOf(dimension); // known even while that world isn't loaded
     }
 
     // ---- Beaming ----

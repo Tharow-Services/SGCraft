@@ -104,6 +104,7 @@ import net.minecraft.world.storage.loot.functions.LootFunctionManager;
 import gcewing.sg.util.Info;
 import gcewing.sg.util.PermissionsUtil;
 import gcewing.sg.util.SGChunkData;
+import gcewing.sg.util.WorldNames;
 import gcewing.sg.util.Sound;
 import net.minecraft.block.Block;
 import net.minecraft.util.NonNullList;
@@ -138,6 +139,7 @@ import net.minecraftforge.event.world.ChunkDataEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.event.world.WorldEvent;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -840,6 +842,13 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     }
 
     @SubscribeEvent
+    public void onWorldTick(TickEvent.WorldTickEvent e) {
+        if (e.phase == TickEvent.Phase.END && e.world instanceof WorldServer) {
+            SGChunkData.onWorldTick((WorldServer) e.world);
+        }
+    }
+
+    @SubscribeEvent
     public void onChunkUnload(ChunkEvent.Unload e) {
         Chunk chunk = e.getChunk();
         if (!chunk.getWorld().isRemote) {
@@ -851,6 +860,12 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             }
             SGChunkData.onChunkUnload(chunk);
         }
+    }
+
+    // Each world's name, kept to name it by while it isn't loaded (see WorldNames)
+    @SubscribeEvent
+    public void onWorldLoad(WorldEvent.Load e) {
+        WorldNames.record(e.getWorld());
     }
 
     @SubscribeEvent

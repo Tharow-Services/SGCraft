@@ -15,6 +15,7 @@ import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.SGAddressing;
 import gcewing.sg.util.SGDimensionMap;
 import gcewing.sg.util.SGState;
+import gcewing.sg.util.WorldNames;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -317,15 +318,7 @@ public class PddNetworkHandler extends SGChannel {
         if (dimension == null || !DimensionManager.isDimensionRegistered(dimension)) {
             return null;
         }
-        // Under Sponge each world has its own name; under plain Forge every dimension shares the save's name, so
-        // fall back to the dimension's own name (the_nether, the_end...) for any but the overworld
-        World world = DimensionManager.getWorld(dimension);
-        World overworld = DimensionManager.getWorld(0);
-        if (world != null && (dimension == 0 || overworld == null
-                || !world.getWorldInfo().getWorldName().equals(overworld.getWorldInfo().getWorldName()))) {
-            return world.getWorldInfo().getWorldName();
-        }
-        return DimensionManager.getProviderType(dimension).getName();
+        return WorldNames.nameOf(dimension); // known even while that world isn't loaded
     }
 
     // ---- Explorer Dialer Device: the server's generated gates ----
