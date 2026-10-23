@@ -1662,6 +1662,53 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         } catch (SGAddressing.AddressingError e) {
             return diallingFailure(player, e.getMessage());
         }
+        String fullAddress = SGAddressing.fullAddress(address, world.provider.getDimension()); // a local one is in this world
+        if (targetGate != null && !targetGate.isMerged && GeneratorAddressRegistry.isGenerated(fullAddress)) {
+            // A generated gate whose ring is whole can still have been left unmerged: its blocks are placed as the world is
+            // made, which needn't let each one look for the rest. Look again now.
+            World targetWorld = targetGate.getWorld();
+            BlockPos targetPos = targetGate.getPos();
+            Block targetBlock = targetWorld.getBlockState(targetPos).getBlock();
+            if (targetBlock instanceof SGBaseBlock) {
+                ((SGBaseBlock) targetBlock).checkForMerge(targetWorld, targetPos);
+                SGBaseTE merged = SGBaseTE.at(targetWorld, targetPos);
+                if (merged != null) {
+                    targetGate = merged;
+                }
+                if (targetGate.isMerged) {
+                    System.out.printf("SGCraft: generated stargate %s at %s in %s wasn't merged; merged it\n", fullAddress,
+                        targetPos, targetWorld.getWorldInfo().getWorldName());
+                } else if (SGBaseBlock.repairGeneratedGates) {
+                    // Its ring is broken or was only half built (earlier versions could leave one so): put it back
+                    int placed = ((SGBaseBlock) targetBlock).repairRing(targetWorld, targetPos);
+                    merged = SGBaseTE.at(targetWorld, targetPos);
+                    if (merged != null) {
+                        targetGate = merged;
+                    }
+                    if (placed >= 0 && targetGate.isMerged) {
+                        System.out.printf("SGCraft: repaired generated stargate %s at %s in %s: put back %d ring blocks\n",
+                            fullAddress, targetPos, targetWorld.getWorldInfo().getWorldName(), placed);
+                    } else {
+                        System.out.printf("SGCraft: couldn't repair generated stargate %s at %s in %s: a ring position is in "
+                            + "a chunk never generated or holds something that can't be replaced\n",
+                            fullAddress, targetPos, targetWorld.getWorldInfo().getWorldName());
+                    }
+                }
+            }
+        }
+        if (targetGate != null && !targetGate.isMerged && GeneratorAddressRegistry.isGenerated(fullAddress)) {
+            System.out.printf("SGCraft: generated stargate %s at %s in %s isn't complete (its ring isn't whole), so it "
+                + "can't be dialled\n", fullAddress, targetGate.getPos(), targetGate.getWorld().getWorldInfo().getWorldName());
+        }
+        if (targetGate == null) {
+            // A generated gate that's gone (broken some way that didn't take it off the list, or its world reset) is
+            // taken off the list (generator.yml, and so the EDD's), so it isn't offered again
+            if (GeneratorAddressRegistry.isGenerated(fullAddress) && SGAddressing.noGateAt(fullAddress)
+                    && GeneratorAddressRegistry.removeEverywhere(fullAddress)) {
+                System.out.printf("SGCraft: generated stargate %s is gone; removed it from generator.yml\n", fullAddress);
+                return diallingFailure(player, "generatedGateGone", address);
+            }
+        }
         if (targetGate == null || !targetGate.isMerged) {
             return diallingFailure(player, "unknownAddress", address);
         }

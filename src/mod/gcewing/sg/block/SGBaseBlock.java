@@ -61,6 +61,56 @@ public class SGBaseBlock extends SGBlock<SGBaseTE> {
         explosionRadius = config.getInteger("stargate", "explosionRadius", explosionRadius);
         fieryExplosion = config.getBoolean("stargate", "explosionFlame", fieryExplosion);
         smokyExplosion = config.getBoolean("stargate", "explosionSmoke", smokyExplosion);
+        net.minecraftforge.common.config.Property repair = config.get("stargate", "repairGeneratedGates", true);
+        repair.setComment("When a generated stargate (one listed in generator.yml) is dialled with its ring broken or "
+            + "half built, put back the missing ring blocks so the dial goes through. Each repair is logged.");
+        repairGeneratedGates = repair.getBoolean(true);
+    }
+
+    // Whether a generated gate dialled with its ring broken is repaired (see repairRing)
+    public static boolean repairGeneratedGates = true;
+
+    // Puts back whatever is missing from the ring of the vertical gate on the base at pos, then merges it. Returns how many
+    // blocks it placed, or -1 (placing none) if it can't: a ring position in a chunk never generated (it isn't made just
+    // for this), holding something with a tile entity (a chest, say, or another gate's ring), or the base not this kind.
+    public int repairRing(World world, BlockPos pos) {
+        if (world.isRemote || world.getBlockState(pos).getBlock() != this || isMerged(world, pos)) {
+            return -1;
+        }
+        GateShape shape = getShape(world, pos);
+        Trans3 t = localToGlobalTransformation(world, pos);
+        SGRingBlock ringBlock = getRingBlock();
+        List<BlockPos> positions = new ArrayList<>();
+        List<IBlockState> states = new ArrayList<>();
+        for (int x = -shape.halfWidth; x <= shape.halfWidth; x++) {
+            for (int y = 0; y < shape.height; y++) {
+                int pat = shape.cellAt(x, y);
+                if (pat == GateShape.EMPTY || (x == 0 && y == 0)) {
+                    continue;
+                }
+                BlockPos rp = t.p(x, y, 0).blockPos();
+                // Loaded straight from disk if need be (under Sponge the world can hand back an empty stand-in for a chunk
+                // not loaded, which would take no blocks); never generated
+                if (!world.isBlockLoaded(rp)
+                        && ((net.minecraft.world.gen.ChunkProviderServer) world.getChunkProvider()).loadChunk(rp.getX() >> 4, rp.getZ() >> 4) == null) {
+                    return -1;
+                }
+                if (getRingBlockType(world, rp) == pat) {
+                    continue;
+                }
+                IBlockState current = world.getBlockState(rp);
+                if (current.getBlock() == ringBlock ? ringBlock.isMerged(world, rp) : current.getBlock().hasTileEntity(current)) {
+                    return -1; // another gate's ring, or something holding things; a ring block of the wrong kind is swapped
+                }
+                positions.add(rp);
+                states.add(ringBlock.getDefaultState().withProperty(SGRingBlock.VARIANT, pat == GateShape.CHEVRON ? 1 : 0));
+            }
+        }
+        for (int i = 0; i < positions.size(); i++) {
+            world.setBlockState(positions.get(i), states.get(i), 3);
+        }
+        checkForMerge(world, pos);
+        return positions.size();
     }
     
     public SGBaseBlock() {

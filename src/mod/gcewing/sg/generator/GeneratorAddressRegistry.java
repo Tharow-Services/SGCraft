@@ -90,6 +90,23 @@ public final class GeneratorAddressRegistry {
         return removed;
     }
 
+    // Takes an address out of every world's generated gates, whatever its dashes or case, and saves the file if it was in
+    // any: for a generated gate that's gone (see SGAddressing.noGateAt)
+    public static boolean removeEverywhere(final String address) {
+        checkNotNull(address);
+
+        final String normalized = address.replace("-", "");
+        boolean removed = false;
+        for (final Set<String> worldAddresses : addresses.values()) {
+            removed |= worldAddresses.removeIf(s -> s.replace("-", "").equalsIgnoreCase(normalized));
+        }
+        if (removed) {
+            revision++;
+            GeneratorAddressRegistry.writeAddresses();
+        }
+        return removed;
+    }
+
     public static boolean hasAddress(final World world, final String homeAddress) {
         checkNotNull(world);
 
