@@ -86,8 +86,11 @@ public class SGChunkData {
         if (pending == null || pending.isEmpty()) {
             return;
         }
+        // One at a time off the front, with no iterator kept across adding ore: that can load a neighbouring chunk (for its
+        // light, say), which joins the queue while this goes through it
         int done = 0;
-        for (Iterator<ChunkPos> it = pending.iterator(); it.hasNext() && done < oreChunksPerTick; ) {
+        while (done < oreChunksPerTick && !pending.isEmpty()) {
+            Iterator<ChunkPos> it = pending.iterator();
             ChunkPos pos = it.next();
             it.remove();
             Chunk chunk = world.getChunkProvider().getLoadedChunk(pos.x, pos.z);
