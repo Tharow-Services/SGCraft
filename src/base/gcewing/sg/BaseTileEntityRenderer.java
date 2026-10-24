@@ -6,21 +6,22 @@
 
 package gcewing.sg;
 
+import net.minecraft.client.renderer.RenderGlobal;
+import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.client.renderer.tileentity.*;
 import net.minecraft.tileentity.*;
 
 import gcewing.sg. BaseModClient.IRenderTarget;
 
-public abstract class BaseTileEntityRenderer extends TileEntitySpecialRenderer {
+public abstract class BaseTileEntityRenderer extends TileEntitySpecialRenderer<BaseTileEntity> {
 
     protected static BaseGLRenderTarget target = new BaseGLRenderTarget();
 
     @Override
-    public void render(TileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
-        BaseTileEntity bte = (BaseTileEntity)te;
-        Trans3 t = bte.localToGlobalTransformation(Vector3.blockCenter(x, y, z));
+    public void render(BaseTileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
+        Trans3 t = te.localToGlobalTransformation(Vector3.blockCenter(x, y, z));
         target.start(true);
-        render(bte, partialTicks, destroyStage, t, target);
+        render(te, partialTicks, destroyStage, t, target);
         target.finish();
     }
     

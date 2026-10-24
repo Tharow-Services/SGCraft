@@ -82,7 +82,7 @@ public class BaseMod<CLIENT extends BaseModClient<? extends BaseMod>>
         String[] getTextureNames();
     }
     
-    interface IBlock extends ITextureConsumer {
+    public interface IBlock extends ITextureConsumer {
         String getQualifiedRendererClassName();
         ModelSpec getModelSpec(IBlockState state);
         int getNumSubtypes();
@@ -695,10 +695,10 @@ public class BaseMod<CLIENT extends BaseModClient<? extends BaseMod>>
      * On the client side, this needs to return a instance of GuiScreen
      * On the server side, this needs to return a instance of Container
      *
-     * @param ID The Gui ID Number
+     * @param id The Gui ID Number
      * @param player The player viewing the Gui
      * @param world The current world
-     * @param pos Position in world
+     * @param x,y,z Position in world
      * @return A GuiScreen/Container to be displayed to the user, null if none.
      */
 

@@ -7,33 +7,21 @@
 package gcewing.sg.client.renderer;
 
 import gcewing.sg.*;
-import gcewing.sg.block.SGBaseBlock;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.SGState;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockDirectional;
-import net.minecraft.client.Minecraft;
 import gcewing.sg.BaseGLUtils;
 import gcewing.sg.BaseTileEntityRenderer;
-import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.SGCraft;
 import gcewing.sg.util.GateShape;
 import gcewing.sg.util.GateType;
-import gcewing.sg.util.SGState;
 import gcewing.sg.Vector3;
 import net.minecraft.client.renderer.GLAllocation;
 import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.client.MinecraftForgeClient;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.lwjgl.opengl.GL11;
-import org.valkyrienskies.mod.common.ships.ship_world.PhysicsObject;
-import org.valkyrienskies.mod.common.util.ValkyrienUtils;
-import valkyrienwarfare.api.TransformType;
-
-import java.util.Optional;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,7 +49,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     final OriGateRenderer oriGate = new OriGateRenderer();
 
     @Override
-    public void render(TileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
+    public void render(BaseTileEntity te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
         SGBaseTE gate = (SGBaseTE)te;
         if (gate.isMerged) {
             glPushMatrix();
@@ -71,13 +59,11 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
             } else {
                 glDisable(GL_BLEND);
             }
-
             glEnable(GL_RESCALE_NORMAL);
             glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
             // Lit by the light round the gate, not the light inside its solid base block, which is always dark
             int light = gate.lightAroundGate();
             OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light & 0xFFFF, light >> 16);
-
             // The middle of the base block; renderStargate turns from there to the gate's frame
             glTranslated(x + 0.5, y + 0.5, z + 0.5);
 
@@ -93,7 +79,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
     // view instead. All gates are global so that changing a gate's type or size never leaves it
     // with the wrong kind of renderer.
     @Override
-    public boolean isGlobalRenderer(TileEntity te) {
+    public boolean isGlobalRenderer(@NonNull BaseTileEntity te) {
         return te instanceof SGBaseTE;
     }
 
@@ -112,29 +98,6 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glTranslated(0, shape.centreY, 0);
         renderGate(gate, shape, partialTicks);
     }
-
-    void renderEventHorizonGrid(SGBaseTE gate, float partialTicks) {
-        Trans3 t = gate.localToGlobalTransformation();
-        Vector3 p0 = null;
-        Vector3 p1 = null;
-
-        if (gate.gateOrientation == 1) {
-            p0 = new Vector3(-1.5, 0.5, -1.5);
-            p1 = new Vector3(1.5, 3.5, 1.5);
-        }
-
-        if (gate.gateOrientation == 2 || gate.gateOrientation == 3) {
-            p0 = new Vector3(1.5, -1.5, -0.5);
-            p1 = new Vector3(-1.5, 1.5, -3.5);
-        }
-        AxisAlignedBB box = t.box(p0, p1);
-        RenderGlobal.drawSelectionBoundingBox(ValkyrienUtils.getAABBInGlobal(box, gate.getWorld(), gate.getPos()), 255, 255, 255, 0);
-    }
-    
-    void renderInnerRing(SGBaseTE te, float partialTicks) {
-        glPushMatrix();
-        glRotatef((float)(te.interpolatedRingAngle(partialTicks) + SGBaseTE.ringSymbolAngle / 2), 0, 0, 1);
-        renderRing(ringInnerRadius, ringMidRadius, RingType.Inner, 0);
 
     // The gate in its own frame, centred on the origin, its front towards +z, with whatever its
     // ring, chevrons, iris and event horizon are doing. Also draws the live gate on the GDO's screen.
@@ -160,6 +123,8 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         if (gate.isConnected() && gate.state != SGState.SyncAwait) {
             renderEventHorizon(gate, renderer, partialTicks);
         }
+        RenderGlobal.drawSelectionBoundingBox(gate.portalTrackingBox(), 1.0F, 1.0F, 1.0F, 0.5F);
+        RenderGlobal.drawSelectionBoundingBox(gate.getRenderBoundingBox(), 1.0F, 1.0F, 1.0F, 0.5F);
         // See-through, so drawn over the event horizon behind it
         if (gate.hasIrisUpgrade && gate.hasShield && pass != 0)
             renderShield(gate, renderer, partialTicks);
@@ -192,7 +157,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glDisable(GL_CULL_FACE);
         glNormal3d(0, 0, 1);
         GateShape shape = te.getShape();
-        double grid[][] = te.getEventHorizonGrid()[0];
+        double[][] grid = te.getEventHorizonGrid()[0];
         // While the iris is anything but fully open, its blades are across the opening: the horizon is flattened
         // outside the gap they leave, and its ripples kept behind the blades everywhere, so none show through them.
         // (Cut back only once the iris was half closed, the horizon came through the blades for the rest of each swing.)
@@ -224,6 +189,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
         ehHole = 0;
         ehSqueeze = 1;
+        RenderGlobal.renderFilledBox(te.portalTrackingBox(), 1.0F, 1.0F, 1.0F, 0.5F);
         glDepthMask(true);
         glEnable(GL_CULL_FACE);
         GL11.glEnable(GL_LIGHTING);

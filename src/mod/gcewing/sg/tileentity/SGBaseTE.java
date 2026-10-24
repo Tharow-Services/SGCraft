@@ -20,13 +20,8 @@ import gcewing.sg.features.edd.ExplorerData;
 import gcewing.sg.generator.GeneratorAddressRegistry;
 import gcewing.sg.tileentity.data.GateAccessData;
 import gcewing.sg.tileentity.data.PlayerAccessData;
-import gcewing.sg.util.GateShape;
-import gcewing.sg.util.GateType;
-import gcewing.sg.util.GeneralAddressRegistry;
-import gcewing.sg.util.SGAddressing;
+import gcewing.sg.util.*;
 import gcewing.sg.SGCraft;
-import gcewing.sg.util.SGLocation;
-import gcewing.sg.util.SGState;
 import gcewing.sg.Trans3;
 import gcewing.sg.Vector3;
 import gcewing.sg.block.DHDBlock;
@@ -45,8 +40,6 @@ import gcewing.sg.features.oc.OCWirelessEndpoint;
 import gcewing.sg.interfaces.IComputerInterface;
 import gcewing.sg.interfaces.ISGEnergySource;
 import gcewing.sg.interfaces.IGatePowerSource;
-import gcewing.sg.util.IrisState;
-import gcewing.sg.util.OriGate;
 import gcewing.sg.interfaces.LoopingSoundSource;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockSlab;
@@ -108,6 +101,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSoundSource {
 
@@ -3108,7 +3102,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     // Where entities are watched for going through the gate: its opening, either side of its
     // event horizon
-    AxisAlignedBB portalTrackingBox() {
+    public @NonNull AxisAlignedBB portalTrackingBox() {
         GateShape shape = getShape();
         double h = shape.apertureHalfWidth;
         double d = GateShape.PORTAL_TRACKING_DEPTH;
@@ -3148,10 +3142,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             }
 
             Trans3 t = localToGlobalTransformation(Vector3.blockCenter(pos));
-            if (IPhysicsEntityManager.INSTANCE.isBlockPosManagedByPhysicsEntity(world, pos)) {
-
-            }
-            AxisAlignedBB box = ValkyrienUtils.getAABBInGlobal(t.box(p0, p1), world, pos);
+            AxisAlignedBB box = portalTrackingBox();
             List<Entity> ents = world.getEntitiesWithinAABB(Entity.class, box);
             for (Entity entity : ents) {
                 if (entity instanceof EntityFishHook || entity instanceof EntityStargateIris) {
@@ -3212,7 +3203,6 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 SGBaseTE dte = getConnectedStargateTE();
                 if (dte != null) {
                     Trans3 dt = dte.localToGlobalTransformation();
-
                     while (entity.getRidingEntity() != null)
                         entity = entity.getRidingEntity();
                     teleportEntityAndRiders(entity, t, dt, connectedLocation.dimension, dte.irisIsClosed());
@@ -3464,11 +3454,13 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     Entity teleportWithinDimension(Entity entity, Vector3 p, Vector3 v, double a, double pitch, boolean destBlocked) {
-        if (entity instanceof EntityPlayerMP) {
-            return teleportPlayerWithinDimension((EntityPlayerMP) entity, p, v, a, pitch);
-        } else {
-            return teleportEntityToWorld(entity, p, v, a, pitch, (WorldServer) entity.world, destBlocked);
-        }
+            return VSUtil.subToGlobalTransform(entity.world, p, v, (pos, rot)-> {
+                if (entity instanceof EntityPlayerMP) {
+                    return teleportPlayerWithinDimension((EntityPlayerMP) entity, pos, rot, a, pitch);
+                } else {
+                    return teleportEntityToWorld(entity, pos, rot, a, pitch, (WorldServer) entity.world, destBlocked);
+                }
+            });
     }
 
     Entity teleportPlayerWithinDimension(EntityPlayerMP entity, Vector3 p, Vector3 v, double a, double pitch) {
@@ -3550,24 +3542,6 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
     }
 
-    // Todo: not all transport methods are set to use this.
-    private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw) {
-        float pitch = entity.rotationPitch;
-        if (this.getConnectedStargateTE().gateOrientation == 2) {
-            pitch = pitch - 90;
-        }
-        if (this.getConnectedStargateTE().gateOrientation == 3) {
-            pitch = pitch + 90;
-        }
-
-        double x = p.x;
-        double y = p.y;
-        double z = p.z;
-
-        if (this.getConnectedStargateTE().gateOrientation == 3) {
-            y = y - 4;
-        }
-
     // Puts the entity where it comes out of the gate, facing the way it does (see teleportEntity)
     private void setEntityLocationAndPitch(Entity entity, Vector3 p, double yaw, double pitch) {
         if (entity instanceof EntityPlayerMP) {
@@ -3613,7 +3587,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return isConnected() && connectedLocation != null ? connectedLocation.getStargateTE() : null;
     }
 
-    static void copyMoreEntityData(EntityLiving oldEntity, EntityLiving newEntity) {
+    static void copyMoreEntityData(@NonNull EntityLiving oldEntity, EntityLiving newEntity) {
         float s = oldEntity.getAIMoveSpeed();
         if (s != 0)
             newEntity.setAIMoveSpeed(s);
@@ -3631,7 +3605,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     }
 
     boolean hasIrisEntity() {
-        return findIrisEntities().size() != 0;
+        return !findIrisEntities().isEmpty();
     }
 
     // The iris bodies of this gate, round the middle of its ring however it stands

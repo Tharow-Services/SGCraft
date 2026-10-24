@@ -9,14 +9,12 @@ package gcewing.sg;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.block.model.IBakedModel;
-import net.minecraft.client.renderer.BlockModelShapes;
-import net.minecraft.client.renderer.BlockModelRenderer;
-import net.minecraft.client.renderer.BlockRendererDispatcher;
-import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 
@@ -24,9 +22,9 @@ import net.minecraftforge.client.MinecraftForgeClient;
 
 import static gcewing.sg.BaseModClient.*;
 
-public class BaseAORenderingManager extends BaseRenderingManager {
+public class BaseAORenderingManager extends BaseRenderingManager<SGCraft> {
 
-    public BaseAORenderingManager(BaseModClient client) {
+    public BaseAORenderingManager(BaseModClient<SGCraft> client) {
         super(client);
     }
 

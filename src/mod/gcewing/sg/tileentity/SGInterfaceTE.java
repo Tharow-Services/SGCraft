@@ -246,7 +246,15 @@ public class SGInterfaceTE extends BaseTileEntity {
         if (error != null)
             throw new IllegalArgumentException(error);
     }
-    
+
+    public void ciSetAngle(double angle) {
+        SGBaseTE te = requireBaseTE();
+        te.isInitiator = true;
+        te.lastRingAngle = 0.0;
+        te.ringAngle = angle;
+        //te.targetRingAngle = angle;
+    }
+
     public void ciDisconnect() {
         SGBaseTE te = requireBaseTE();
         String error = te.disconnect(null);

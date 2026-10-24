@@ -182,7 +182,7 @@ public class DHDTE extends BaseTileInventory implements ISGEnergySource {
             System.out.printf("DHDTE.checkForLink at %s: isLinkedToStargate = %s\n", pos, isLinkedToStargate);
         }
         if (!isLinkedToStargate) {
-            Trans3 t = localToGlobalTransformation();
+            Trans3 t = localToGlobalTransformation(Vector3.blockCenter(pos));
             for (int i = -linkRangeX; i <= linkRangeX; i++) {
                 for (int j = -linkRangeY; j <= linkRangeY; j++) {
                     for (int k = -linkRangeZ; k <= linkRangeZ; k++) {

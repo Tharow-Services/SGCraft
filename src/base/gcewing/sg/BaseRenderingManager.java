@@ -12,13 +12,13 @@ import gcewing.sg.BaseMod.IItem;
 import gcewing.sg.BaseMod.ITextureConsumer;
 import gcewing.sg.BaseMod.ModelSpec;
 import gcewing.sg.BaseModClient.*;
+import gcewing.sg.util.VSUtil;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockModelShapes;
 import net.minecraft.client.renderer.BlockRendererDispatcher;
 import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.block.model.*;
 import net.minecraft.client.renderer.block.statemap.DefaultStateMapper;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -40,14 +40,8 @@ import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import org.lwjgl.opengl.GLContext;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.lwjgl.opengl.GL11.GL_SMOOTH;
+import java.util.*;
 
 public class BaseRenderingManager<MOD extends BaseMod<? extends BaseModClient>> implements IRenderingManager {
 
@@ -476,11 +470,11 @@ public class BaseRenderingManager<MOD extends BaseMod<? extends BaseModClient>> 
             return block.getActualState(state, world, pos);
     }
     
-    public static boolean renderAlternateBlock(BaseModClient client,
-        IBlockAccess world, BlockPos pos, IBlockState state, IRenderTarget target)
+    public static void renderAlternateBlock(BaseModClient client,
+                                            IBlockAccess world, BlockPos pos, IBlockState state, IRenderTarget target)
     {
-        return ((BaseRenderingManager)client.renderingManager).renderAlternateBlock(
-            world, pos, state, target);
+        ((BaseRenderingManager) client.renderingManager).renderAlternateBlock(
+                world, pos, state, target);
     }
 
     public boolean renderAlternateBlock(IBlockAccess world, BlockPos pos, IBlockState state, IRenderTarget target)
@@ -489,7 +483,7 @@ public class BaseRenderingManager<MOD extends BaseMod<? extends BaseModClient>> 
         if (!block.hasTileEntity(state)) {
             try {
                 BufferBuilder tess = ((BaseWorldRenderTarget)target).getWorldRenderer();
-                return blockRendererDispatcher.renderBlock(state, pos, world, tess);
+                return blockRendererDispatcher.renderBlock(state, VSUtil.localToGlobalTransformation(world, pos).offset.blockPos(), world, tess);
             }
             catch (Exception e) {
                 // Some blocks are averse to being abused this way. Try to avoid crashing in that case.

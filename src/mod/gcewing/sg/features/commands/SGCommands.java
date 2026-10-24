@@ -10,6 +10,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -18,12 +19,6 @@ import java.util.*;
 
 public final class SGCommands extends CommandBase {
 
-    private final StargateCommands Stargate;
-
-    public SGCommands() {
-        super();
-        this.Stargate=new StargateCommands();
-    }
     @Override
     @NonNull
     public String getName() {
@@ -35,39 +30,81 @@ public final class SGCommands extends CommandBase {
     public String getUsage(@NonNull ICommandSender sender) {
         return "Sub Commands" + String.join(", ", subcommands);
     }
-
-    private static final List<String> subcommands = new ArrayList<>();
+    private static final List<String> subcommands = new ArrayList<String>();
 
     static {
         subcommands.add("clear");
-        subcommands.add("gate");
         subcommands.add("link");
         subcommands.add("unlink");
-        subcommands.add("checklink");
+        subcommands.add("cklink");
         subcommands.add("address");
-        subcommands.add("currentaddress");
+        subcommands.add("ca");
         subcommands.add("location");
         subcommands.add("locate");
         subcommands.add("teleport");
+        subcommands.add("teleport");
+        subcommands.add("addressing");
+        subcommands.add("vs");
+        subcommands.add("vss");
     }
 
     @Override
-    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
+    @NonNull
+    public List<String> getTabCompletions(@NonNull MinecraftServer server, @NonNull ICommandSender sender, String @NonNull [] args, @Nullable BlockPos targetPos) {
         if (args.length<=1) {
             return subcommands;
         }
-        if (args.length<=2) {
-            return Stargate.getTabCompletions(server, sender, args, targetPos);
-        }
         return super.getTabCompletions(server, sender, args, targetPos);
     }
-    public static void sendMessage(ICommandSender sender, String key, Object ... args) {sender.sendMessage(new TextComponentTranslation(key, args));}
-    public static void sendMessage(ICommandSender sender, String key) {sender.sendMessage(new TextComponentTranslation(key));}
-    private boolean HelpArgs(ICommandSender sender, String[] args, String message) {
-        if (args.length<=1) {sendMessage(sender, message); return false;}
-        if (args[1].equalsIgnoreCase("?")) {sendMessage(sender, message); return false;}
-        if (args[1].equalsIgnoreCase("help")) {sendMessage(sender, message); return false;}
-        return true;
+    public static void sendMessage(@NonNull ICommandSender sender, String key, Object ... args) {sender.sendMessage(new TextComponentTranslation(key, args));}
+    public static void sendMessage(@NonNull ICommandSender sender, String key) {sender.sendMessage(new TextComponentTranslation(key));}
+
+    private void setAddressingValues(MinecraftServer server, ICommandSender sender, String @NonNull [] args) throws CommandException {
+        if (args[1].equalsIgnoreCase("Set")) {
+            int input=0;
+            try {
+                input = Integer.parseInt(args[3]);
+            } catch (NumberFormatException ignored) {}
+            switch (args[2].toLowerCase()) {
+                // Coords block
+                case "mc": SGAddressing.mc=input; break;
+                case "pc": SGAddressing.pc=input; break;
+                case "qc": SGAddressing.qc=input; break;
+                // Dim Block
+                case "md": SGAddressing.md=input; break;
+                case "pd": SGAddressing.pd=input; break;
+                case "qd": SGAddressing.qd=input; break;
+                // Other Stuff Block
+                case "max-coord": SGAddressing.maxCoord=input;
+                case "min-coord": SGAddressing.minCoord=-input;
+                case "coord-range": SGAddressing.coordRange= input*2 + 1; break;
+                case "min-dim": SGAddressing.minDirectDimension=input; break;
+                case "max-dim": SGAddressing.maxDimensionIndex=input; break;
+                case "38-preset": SGAddressing.setup38Symbols(); break;
+                case "36-preset": SGAddressing.setup36Symbols(); break;
+                default: {
+                    sender.sendMessage(new TextComponentString("invited: mc, pc, qc, md, pd, qd, maxcoord, mindim, maxdim"));
+                }
+            }
+            sender.sendMessage(new TextComponentString("Value Updated"));
+            return;
+        }
+
+        if (args[1].equalsIgnoreCase("Get")) {
+            sender.sendMessage(new TextComponentString(
+                    "Current Values: " +
+                            "\n  MC: "+SGAddressing.mc+
+                            "\n  PC: "+SGAddressing.pc+
+                            "\n  QC: "+SGAddressing.qc+
+                            "\n\n  MD: "+SGAddressing.md+
+                            "\n  PD: "+SGAddressing.pd+
+                            "\n  QD: "+SGAddressing.qd+
+                            "\n  Max Coord: "+SGAddressing.maxCoord+
+                            "\n  Coord Range: "+SGAddressing.coordRange+
+                            "\n  Min Dim: "+SGAddressing.minDirectDimension+
+                            "\n  Max Dim: "+SGAddressing.maxDimensionIndex
+            ));
+        }
     }
 
     @Override
@@ -231,6 +268,9 @@ public final class SGCommands extends CommandBase {
                 }
                 sendMessage(s, "sgcraft.command.teleport:Usage"); break;
             }
+            case "addressing": setAddressingValues(server, s, args); break;
+            case "vs": sendMessage(s, "message.sgcraft:AddressingError", VSUtil.ENABLED); break;
+            case "vss": VSUtil.ENABLED=!VSUtil.ENABLED; break;
             default: {
                 sendMessage(s, "sgcraft.command:Usage");
             }

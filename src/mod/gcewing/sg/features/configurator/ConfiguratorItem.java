@@ -8,6 +8,7 @@ import gcewing.sg.features.configurator.network.ConfiguratorNetworkHandler;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateUtil;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
@@ -83,7 +84,9 @@ public class ConfiguratorItem extends Item {
   public ActionResult<ItemStack> onItemRightClick(World worldIn, EntityPlayer player, EnumHand handIn) {
       if (!worldIn.isRemote && !player.isSneaking()) {
           TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, SGCraft.toolSearchRange);
-
+          if (localGateTE==null) {
+              localGateTE = GateUtil.locateLocalGate(worldIn, Minecraft.getMinecraft().objectMouseOver.getBlockPos(), SGCraft.toolSearchRange, false);
+          }
           if (localGateTE instanceof SGBaseTE) {
               SGBaseTE localGate = (SGBaseTE) localGateTE;
 

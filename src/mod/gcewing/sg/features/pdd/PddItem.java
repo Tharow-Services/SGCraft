@@ -6,6 +6,7 @@ import gcewing.sg.network.GuiNetworkHandler;
 import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.util.GateUtil;
 import gcewing.sg.util.SGState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
@@ -53,7 +54,9 @@ public class PddItem extends Item {
             }
 
             TileEntity localGateTE = GateUtil.locateGateFor(worldIn, player, SGCraft.toolSearchRange);
-
+            if (localGateTE==null) {
+                localGateTE = GateUtil.locateLocalGate(worldIn, Minecraft.getMinecraft().objectMouseOver.getBlockPos(), SGCraft.toolSearchRange, false);
+            }
             if (localGateTE instanceof SGBaseTE) {
                 SGBaseTE localGate = (SGBaseTE) localGateTE;
 

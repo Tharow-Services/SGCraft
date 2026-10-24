@@ -12,6 +12,7 @@ import gcewing.sg.tileentity.SGBaseTE;
 import gcewing.sg.SGCraft;
 import gcewing.sg.Trans3;
 import gcewing.sg.interfaces.ISGBlock;
+import gcewing.sg.util.VSUtil;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.*;
 import net.minecraft.world.*;

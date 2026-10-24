@@ -97,12 +97,8 @@ import gcewing.sg.network.SGChannel;
 import gcewing.sg.generator.NaquadahOreWorldGen;
 import gcewing.sg.tileentity.DHDTE;
 import gcewing.sg.tileentity.SGBaseTE;
-import gcewing.sg.util.GateType;
-import gcewing.sg.util.GateUtil;
-import gcewing.sg.util.ComputerLookupLimiter;
-import gcewing.sg.util.GeneralAddressRegistry;
+import gcewing.sg.util.*;
 import gcewing.sg.generator.GateAddressBookFunction;
-import gcewing.sg.util.LootTableConfig;
 import net.minecraft.world.storage.loot.functions.LootFunctionManager;
 import gcewing.sg.util.Info;
 import gcewing.sg.util.PermissionsUtil;
@@ -171,7 +167,7 @@ import java.util.Collections;
 import java.util.List;
 
 @Mod(modid = Info.modID, name = Info.modName, version = Info.versionNumber,
-    acceptableRemoteVersions = Info.versionBounds, dependencies = "after:opencomputers;after:ic2;after:computercraft;after:malisiscore")
+    acceptableRemoteVersions = Info.versionBounds, dependencies = "after:opencomputers;after:ic2;after:computercraft;after:malisiscore;after:valkyrienskies")
 
 public class SGCraft extends BaseMod<SGCraftClient> {
 
@@ -334,6 +330,8 @@ public class SGCraft extends BaseMod<SGCraftClient> {
             GameRegistry.registerTileEntity(NaquadahGeneratorTE.class, new ResourceLocation(this.modID + ":" + "tile_naquadah_generator"));
         }
 
+        VSUtil.ENABLED = isModLoaded("valkyrienskies");
+
         LootFunctionManager.registerFunction(new GateAddressBookFunction.Serializer());
         MinecraftForge.EVENT_BUS.register(LootTableConfig.class);
         MinecraftForge.EVENT_BUS.register(AsgardObelisks.class); // beams players a moment after they touch the crystal
@@ -359,12 +357,6 @@ public class SGCraft extends BaseMod<SGCraftClient> {
 
     }
 
-    @Mod.EventHandler
-    public void serverStart(FMLServerStartingEvent event)
-    {
-        event.registerServerCommand(new SGCommands());
-        event.registerServerCommand(new StargateCommands());
-    }
 
     @Mod.EventHandler
     @Override
@@ -378,7 +370,9 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     }
 
     @Mod.EventHandler
-    public void serverStarting(FMLServerStartingEvent e) {
+    public void serverStart(FMLServerStartingEvent e) {
+        e.registerServerCommand(new SGCommands());
+        e.registerServerCommand(new StargateCommands());
         e.registerServerCommand(new SGSpawnCommand());
     }
 
@@ -781,7 +775,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
     @Override
     protected void registerWorldGenerators() {
         if (config.getBoolean("options", "enableNaquadahOre", true)) {
-            System.out.printf("SGCraft: Registering NaquadahOreWorldGen\n");
+            System.out.print("SGCraft: Registering NaquadahOreWorldGen\n");
             naquadahOreGenerator = new NaquadahOreWorldGen();
             GameRegistry.registerWorldGenerator(naquadahOreGenerator, 0);
         }
@@ -823,7 +817,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         RingTransports.registerSounds(this);
         Zat.fireSound = newSound("zat_fire");
     }
-
+/*
     @SubscribeEvent
     public void onChunkLoad(ChunkDataEvent.Load e) {
         Chunk chunk = e.getChunk();
@@ -835,6 +829,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         Chunk chunk = e.getChunk();
         SGChunkData.onChunkSave(e);
     }
+*/
 
     @SubscribeEvent
     public void onInitMapGen(InitMapGenEvent e) {

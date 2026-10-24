@@ -1,6 +1,7 @@
 package gcewing.sg.features.gdo.client.gui;
 
 import com.google.common.eventbus.Subscribe;
+import gcewing.sg.BaseTileEntity;
 import gcewing.sg.client.renderer.SGBaseTERenderer;
 import gcewing.sg.features.gdo.network.GdoNetworkHandler;
 import gcewing.sg.util.GateShape;
@@ -484,7 +485,7 @@ public class GdoScreen extends BasicScreen {
     // The renderer that draws gates in the world, used to show the local gate as it really is: ring
     // spinning, chevrons locking, event horizon forming and the iris opening and closing
     private static SGBaseTERenderer liveGateRenderer() {
-        TileEntitySpecialRenderer<TileEntity> renderer = TileEntityRendererDispatcher.instance.getRenderer(SGBaseTE.class);
+        TileEntitySpecialRenderer<BaseTileEntity> renderer = TileEntityRendererDispatcher.instance.getRenderer(SGBaseTE.class);
         return renderer instanceof SGBaseTERenderer ? (SGBaseTERenderer) renderer : null;
     }
 

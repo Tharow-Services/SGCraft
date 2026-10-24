@@ -12,22 +12,17 @@ import net.minecraft.block.Block;
 import net.minecraft.block.properties.*;
 import net.minecraft.block.state.*;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.tileentity.*;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.world.*;
 
 import gcewing.sg.BaseBlock.IOrientationHandler;
-import org.valkyrienskies.mod.common.ships.ship_world.PhysicsObject;
-import org.valkyrienskies.mod.common.util.ValkyrienUtils;
-import valkyrienwarfare.api.TransformType;
 
 public class BaseOrientation {
 
     public static boolean debugPlacement = false;
 
     public static IOrientationHandler orient4WaysByState = new Orient4WaysByState();
-    public static IOrientationHandler orient24WaysByTE = new Orient24WaysByTE();
 
     //------------------------------------------------------------------------------------------------
 
@@ -37,7 +32,7 @@ public class BaseOrientation {
             EnumFacing.WEST, EnumFacing.EAST, EnumFacing.SOUTH, EnumFacing.NORTH
         };
         
-        protected static Collection valueList = Arrays.asList(values);
+        protected static Collection<EnumFacing> valueList = Arrays.asList(values);
         
         public PropertyTurn(String name) {
             super(name, EnumFacing.class, valueList);
@@ -49,7 +44,7 @@ public class BaseOrientation {
 
     public static class Orient4WaysByState implements IOrientationHandler {
     
-        public static IProperty FACING = new PropertyTurn("facing");
+        public static IProperty<EnumFacing> FACING = new PropertyTurn("facing");
     
         public void defineProperties(BaseBlock block) {
             block.addProperty(FACING);
@@ -65,7 +60,7 @@ public class BaseOrientation {
         }
         
         public Trans3 localToGlobalTransformation(IBlockAccess world, BlockPos pos, IBlockState state, Vector3 origin) {
-            EnumFacing f = (EnumFacing)state.getValue(FACING);
+            EnumFacing f = state.getValue(FACING);
             int i;
             switch (f) {
                 case NORTH: i = 0; break;
@@ -80,19 +75,5 @@ public class BaseOrientation {
     }
 
 //------------------------------------------------------------------------------------------------
-
-    public static class Orient24WaysByTE extends BaseBlock.Orient1Way {
-    
-        public Trans3 localToGlobalTransformation(IBlockAccess world, BlockPos pos, IBlockState state, Vector3 origin) {
-            TileEntity te = world.getTileEntity(pos);
-            if (te instanceof BaseTileEntity) {
-                BaseTileEntity bte = (BaseTileEntity)te;
-                return Trans3.sideTurn(origin, bte.side, bte.turn);
-            }
-            else
-                return super.localToGlobalTransformation(world, pos, state, origin);
-        }
-        
-    }
 
 }

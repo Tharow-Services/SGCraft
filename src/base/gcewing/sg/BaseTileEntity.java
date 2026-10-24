@@ -13,6 +13,7 @@ import static gcewing.sg.BaseReflectionUtils.setIntField;
 
 import gcewing.sg.BaseMod.IBlock;
 import gcewing.sg.tileentity.SGBaseTE;
+import gcewing.sg.util.VSUtil;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.ItemStack;
@@ -63,14 +64,7 @@ public class BaseTileEntity extends TileEntity
     }
 
     public Trans3 localToGlobalTransformation() {
-        if (IPhysicsEntityManager.INSTANCE.isBlockPosManagedByPhysicsEntity(world, pos)) {
-            IPhysicsEntity inst = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(world, pos);
-            if (inst!=null) {
-                return new Trans3(inst.transformVector(Vector3.blockCenter(pos).toVec3d(), TransformType.SUBSPACE_TO_GLOBAL));
-            }
-        }
-
-        return localToGlobalTransformation(Vector3.blockCenter(pos));
+        return VSUtil.localToGlobalTransformation(world, localToGlobalTransformation(Vector3.blockCenter(pos)));
     }
 
      public Trans3 localToGlobalTransformation(double x, double y, double z) {

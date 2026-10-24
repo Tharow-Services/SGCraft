@@ -30,7 +30,7 @@ public class Matrix3 {
                 sideTurnRotations[side][turn] = sideRotations[side].mul(turnRotations[turn]);
     }
     
-    public double m[][] = new double[][] {
+    public double[][] m = new double[][] {
         {1, 0, 0},
         {0, 1, 0},
         {0, 0, 1}

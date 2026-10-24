@@ -175,6 +175,12 @@ public class OCInterfaceTE extends SGInterfaceTE
         try {ciDial(args.checkString(0), true); return success;}
         catch (Exception e) {return failure(e);}
     }
+
+    @Callback
+    public Object[] setAngle(Context ctx, Arguments args) {
+        try {ciSetAngle(args.checkDouble(0)); return success;}
+        catch (Exception e) {return failure(e);}
+    }
     
     @Callback
     public Object[] disconnect(Context ctx, Arguments args) {

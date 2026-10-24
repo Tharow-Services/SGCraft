@@ -20,7 +20,7 @@ public class Trans3 {
     public static Trans3 ident = new Trans3(Vector3.zero);
     public static Trans3 blockCenter = new Trans3(Vector3.blockCenter);
     
-    public static Trans3 sideTurnRotations[][] = new Trans3[6][4];
+    public static Trans3[][] sideTurnRotations = new Trans3[6][4];
     static {
         for (int side = 0; side < 6; side++)
             for (int turn = 0; turn < 4; turn++)
@@ -76,7 +76,11 @@ public class Trans3 {
     public Trans3(BlockPos pos) {
         this(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
     }
-    
+
+    public Trans3 translate(Vec3d vec) {
+        return translate(vec.x, vec.y, vec.z);
+    }
+
     public Trans3 translate(Vector3 v) {
         if (v == Vector3.zero)
             return this;
