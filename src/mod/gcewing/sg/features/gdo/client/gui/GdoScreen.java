@@ -154,6 +154,7 @@ public class GdoScreen extends BasicScreen {
             .width(40)
             .anchor(Anchor.BOTTOM | Anchor.CENTER)
             .text(TextFormatting.WHITE + I18n.format("sgcraft.gui.button.disconnect"))
+            .visible(false) // until refresh finds the gate connected
             .onClick(() -> {
                 GdoNetworkHandler.sendGdoInputToServer((SGBaseTE)localGate, 3);
             })
@@ -269,6 +270,20 @@ public class GdoScreen extends BasicScreen {
         setButtonLabel(this.localIrisCloseButton, localShield ? "sgcraft.gui.button.activateShield" : "sgcraft.gui.button.closeIris");
         setButtonLabel(this.remoteIrisOpenButton, remoteShield ? "sgcraft.gui.button.deactivateShield" : "sgcraft.gui.button.openIris");
         setButtonLabel(this.remoteIrisCloseButton, remoteShield ? "sgcraft.gui.button.activateShield" : "sgcraft.gui.button.closeIris");
+        // Each panel's two side buttons as wide as each other, so Disconnect is in the middle of the gap between them
+        // ("Deactivate Shield" is longer than "Activate Shield")
+        matchWidths(this.localIrisOpenButton, this.localIrisCloseButton);
+        matchWidths(this.remoteIrisOpenButton, this.remoteIrisCloseButton);
+    }
+
+    private static void matchWidths(UIButton a, UIButton b) {
+        int width = Math.max(a.getWidth(), b.getWidth());
+        if (a.getWidth() != width) {
+            a.setSize(width, a.getHeight());
+        }
+        if (b.getWidth() != width) {
+            b.setSize(width, b.getHeight());
+        }
     }
 
     private void setButtonLabel(UIButton button, String key) {
@@ -328,6 +343,9 @@ public class GdoScreen extends BasicScreen {
                     }
                 }
             }
+            // Disconnect is only shown while the gate is connected
+            this.localGateCloseButton.setVisible(localGate.isConnected() && localGate.state != SGState.Dialling
+                && localGate.state != SGState.Disconnecting);
             if (!localGate.isConnected() || localGate.state == SGState.Dialling || localGate.state == SGState.Disconnecting) {
                 this.remoteGateImage.setVisible(false);
                 this.localGateCloseButton.setEnabled(false);

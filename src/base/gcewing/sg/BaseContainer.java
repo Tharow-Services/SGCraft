@@ -99,12 +99,32 @@ public class BaseContainer extends Container {
             && player.getDistanceSq(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= max * max;
     }
 
+    // A tile entity that changes items on the server as they go into or out of its slots (a ZPM is given what's left of
+    // its energy as it leaves), counting each change. A player's client works out what a click does itself, and the
+    // server then sends none of the stacks it moved, so the client would keep the item as it was before the change.
+    public interface ChangesSlotItems {
+        int slotItemChanges();
+    }
+
+    int seenSlotItemChanges = -1;
+
     @Override
     public void detectAndSendChanges() {
         super.detectAndSendChanges();
         for (int i = 0; i < listeners.size(); i++) {
             IContainerListener listener = listeners.get(i);
             sendStateTo(listener);
+        }
+        TileEntity te = tileEntity();
+        if (te instanceof ChangesSlotItems) {
+            int changes = ((ChangesSlotItems) te).slotItemChanges();
+            if (seenSlotItemChanges != -1 && changes != seenSlotItemChanges) {
+                // Every slot and the stack on the cursor, as the server has them
+                for (IContainerListener listener : listeners) {
+                    listener.sendAllContents(this, getInventory());
+                }
+            }
+            seenSlotItemChanges = changes;
         }
     }
 

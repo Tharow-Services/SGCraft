@@ -75,19 +75,17 @@ class PegasusScreens {
         return screens;
     }
 
-    // How far round (degrees, clockwise from the top) a Pegasus gate being dialled has lit its
-    // ring, or -1 if it isn't one
+    // How far round (degrees, clockwise from the top) a Pegasus gate being dialled by another Pegasus gate has lit its
+    // ring, or -1 if it isn't one: dialled by any other kind, no fill is scheduled (see SGBaseTE.schedulePegasusFill) and
+    // its chevrons light as they lock
     static double fill(SGBaseTE te, float partialTicks) {
-        if (te.getGateType() != GateType.PEGASUS || te.isInitiator
+        if (te.getGateType() != GateType.PEGASUS || te.isInitiator || te.pegasusFillEnd <= 0
                 || te.state == SGState.Idle || te.state == SGState.Disconnecting) {
             return -1;
         }
         int length = te.dialledAddress.length();
         if (length > 0 && te.numEngagedChevrons >= length) {
             return 360;
-        }
-        if (te.pegasusFillEnd <= 0) {
-            return 0;
         }
         double now = te.getWorld().getTotalWorldTime() + partialTicks;
         double p = (now - te.pegasusFillStart) / Math.max(1, te.pegasusFillEnd - te.pegasusFillStart);
@@ -135,14 +133,17 @@ class PegasusScreens {
         float a = te.angleBetweenChevrons();
         int length = te.dialledAddress.length();
         int locked = Math.min(te.numEngagedChevrons, length);
-        if (te.isInitiator || GateRenderer.lockingOnDial(te)) {
+        // Dialling out, dialled a symbol at a time, or dialled by a gate that isn't a Pegasus one (no fill): the glyph under
+        // each locked chevron
+        boolean litByLocks = te.isInitiator || GateRenderer.lockingOnDial(te);
+        if (litByLocks || fill(te, partialTicks) < 0) {
             for (int e = 0; e < locked; e++) {
                 int i = chevronPosition(te, row, e);
                 if (i >= 0) {
                     lit[at(chevronAngle(te, i, a))] = any = true;
                 }
             }
-            if (te.state == SGState.Dialling && locked < length) {
+            if (litByLocks && te.state == SGState.Dialling && locked < length) { // the light running to the next
                 int i = chevronPosition(te, row, locked);
                 int previous = locked == 0 ? 4 : chevronPosition(te, row, locked - 1);
                 double travel = te.targetRingAngle - te.startRingAngle;

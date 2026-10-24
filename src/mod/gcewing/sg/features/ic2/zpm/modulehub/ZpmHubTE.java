@@ -40,7 +40,15 @@ import net.minecraftforge.energy.IEnergyStorage;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergySource, IInventory, ITickable {
+public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource, ILinkableZpm, IEnergySource, IInventory, ITickable, gcewing.sg.BaseContainer.ChangesSlotItems {
+
+    // Changes made to items going into or out of its slots, for open screens to send (see BaseContainer.ChangesSlotItems)
+    private int slotItemChanges = 0;
+
+    @Override
+    public int slotItemChanges() {
+        return slotItemChanges;
+    }
     private NonNullList<ItemStack> items = NonNullList.withSize(3, ItemStack.EMPTY);
     public final BasicSource hubSource;
     public static final int firstZpmSlot = 0;
@@ -429,6 +437,7 @@ public final class ZpmHubTE extends BaseTileInventory implements ISGEnergySource
         final ItemStack old = this.items.get(index);
         final boolean server = world != null && !world.isRemote && !reading;
         if (server && old != item) {
+            slotItemChanges++;
             if (isValidFuelItem(old)) {
                 NBTTagCompound tag = old.getTagCompound();
                 if (tag == null) {

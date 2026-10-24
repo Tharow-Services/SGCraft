@@ -1265,6 +1265,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (world.isRemote) {
             clientUpdate();
         } else {
+            lockIncomingChevrons();
             serverUpdate();
             checkForEntitiesInPortal();
             clearKawooshBlocks();
@@ -1662,6 +1663,53 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
             targetGate = SGAddressing.findAddressedStargate(address, world, pending);
         } catch (SGAddressing.AddressingError e) {
             return diallingFailure(player, e.getMessage());
+        }
+        String fullAddress = SGAddressing.fullAddress(address, world.provider.getDimension()); // a local one is in this world
+        if (targetGate != null && !targetGate.isMerged && GeneratorAddressRegistry.isGenerated(fullAddress)) {
+            // A generated gate whose ring is whole can still have been left unmerged: its blocks are placed as the world is
+            // made, which needn't let each one look for the rest. Look again now.
+            World targetWorld = targetGate.getWorld();
+            BlockPos targetPos = targetGate.getPos();
+            Block targetBlock = targetWorld.getBlockState(targetPos).getBlock();
+            if (targetBlock instanceof SGBaseBlock) {
+                ((SGBaseBlock) targetBlock).checkForMerge(targetWorld, targetPos);
+                SGBaseTE merged = SGBaseTE.at(targetWorld, targetPos);
+                if (merged != null) {
+                    targetGate = merged;
+                }
+                if (targetGate.isMerged) {
+                    System.out.printf("SGCraft: generated stargate %s at %s in %s wasn't merged; merged it\n", fullAddress,
+                        targetPos, targetWorld.getWorldInfo().getWorldName());
+                } else if (SGBaseBlock.repairGeneratedGates) {
+                    // Its ring is broken or was only half built (earlier versions could leave one so): put it back
+                    int placed = ((SGBaseBlock) targetBlock).repairRing(targetWorld, targetPos);
+                    merged = SGBaseTE.at(targetWorld, targetPos);
+                    if (merged != null) {
+                        targetGate = merged;
+                    }
+                    if (placed >= 0 && targetGate.isMerged) {
+                        System.out.printf("SGCraft: repaired generated stargate %s at %s in %s: put back %d ring blocks\n",
+                            fullAddress, targetPos, targetWorld.getWorldInfo().getWorldName(), placed);
+                    } else {
+                        System.out.printf("SGCraft: couldn't repair generated stargate %s at %s in %s: a ring position is in "
+                            + "a chunk never generated or holds something that can't be replaced\n",
+                            fullAddress, targetPos, targetWorld.getWorldInfo().getWorldName());
+                    }
+                }
+            }
+        }
+        if (targetGate != null && !targetGate.isMerged && GeneratorAddressRegistry.isGenerated(fullAddress)) {
+            System.out.printf("SGCraft: generated stargate %s at %s in %s isn't complete (its ring isn't whole), so it "
+                + "can't be dialled\n", fullAddress, targetGate.getPos(), targetGate.getWorld().getWorldInfo().getWorldName());
+        }
+        if (targetGate == null) {
+            // A generated gate that's gone (broken some way that didn't take it off the list, or its world reset) is
+            // taken off the list (generator.yml, and so the EDD's), so it isn't offered again
+            if (GeneratorAddressRegistry.isGenerated(fullAddress) && SGAddressing.noGateAt(fullAddress)
+                    && GeneratorAddressRegistry.removeEverywhere(fullAddress)) {
+                System.out.printf("SGCraft: generated stargate %s is gone; removed it from generator.yml\n", fullAddress);
+                return diallingFailure(player, "generatedGateGone", address);
+            }
         }
         if (targetGate == null || !targetGate.isMerged) {
             return diallingFailure(player, "unknownAddress", address);
@@ -2241,12 +2289,43 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         postEvent(initiator ? "sgDialOut" : "sgDialIn", address);
 
         if (immediate) {
-            numEngagedChevrons = dialledAddress.length();
-            if (!initiator) {
-                playSGSoundEffect(m_chevronIncomingSound, 1F, 1F);
+            // Its chevrons locked as each symbol went in, but the gate it dials can't be found until the last one is in:
+            // that gate locks its own then, one after another, each with its sound (and its glyph, on a Pegasus gate),
+            // and both wait for it before opening. It used to be given them all at once.
+            int locking = dialledAddress.length() * incomingLockGap;
+            if (initiator) {
+                numEngagedChevrons = dialledAddress.length();
+            } else {
+                numEngagedChevrons = 0;
+                incomingLockAt = world.getTotalWorldTime() + incomingLockGap;
             }
-            enterState(SGState.SyncAwait, syncAwaitTime);
+            enterState(SGState.SyncAwait, syncAwaitTime + locking);
         }
+    }
+
+    // A gate dialled by one whose chevrons lock as they're entered: how many ticks apart it locks its own, and when
+    // (world time) it locks the next, or 0 (server only)
+    static final int incomingLockGap = 4;
+    private long incomingLockAt = 0;
+
+    private void lockIncomingChevrons() {
+        if (incomingLockAt <= 0) {
+            return;
+        }
+        if (isInitiator || state != SGState.SyncAwait) {
+            incomingLockAt = 0; // the dial was called off
+            return;
+        }
+        if (world.getTotalWorldTime() < incomingLockAt) {
+            return;
+        }
+        int n = dialledAddress.length();
+        if (numEngagedChevrons < n) {
+            finishDiallingSymbol(String.valueOf(dialledAddress.charAt(numEngagedChevrons)), false, false,
+                numEngagedChevrons + 1 >= n);
+            markChanged();
+        }
+        incomingLockAt = numEngagedChevrons < n ? incomingLockAt + incomingLockGap : 0;
     }
 
     // For each chevron position (0 to 8, 4 being the top), which symbol of the address it locks
@@ -2295,20 +2374,19 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return (int) Math.round(Math.abs(pegasusLightTravel(e)) / ringSymbolAngle * pegasusTicksPerGlyph);
     }
 
-    // Tells a Pegasus gate being dialled when the last chevron will lock, so it can light its
-    // ring in time. Called as each symbol starts dialling, taking the given number of ticks.
+    // Tells a Pegasus gate being dialled by another Pegasus gate when the last chevron will lock, so it can light its ring
+    // in time. Called as each symbol starts dialling, taking the given number of ticks. Dialled by any other kind, whose
+    // ring's timing isn't known until its last symbol, it lights each chevron as it locks instead (see
+    // PegasusScreens.fill): filling then lit the whole ring in one sweep at the end, its chevrons dark until then.
     void schedulePegasusFill(int delay) {
         SGBaseTE target = connectedLocation != null ? connectedLocation.getStargateTE() : null;
-        if (target == null || target.getGateType() != GateType.PEGASUS) {
+        if (target == null || target.getGateType() != GateType.PEGASUS || getGateType() != GateType.PEGASUS) {
             return;
         }
         int n = dialledAddress.length();
         // A state lasts a tick longer than its timeout
         long ticks = delay + 1;
         if (numEngagedChevrons < n - 1) {
-            if (getGateType() != GateType.PEGASUS) {
-                return; // How long a Milky Way ring will take isn't known until its last symbol
-            }
             for (int e = numEngagedChevrons + 1; e < n; e++) {
                 ticks += interDiallingTime + 1 + pegasusDialTicks(e) + 1;
             }

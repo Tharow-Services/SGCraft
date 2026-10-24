@@ -14,6 +14,7 @@ import gcewing.sg.features.obelisk.client.AsgardObeliskRenderer;
 import gcewing.sg.features.rings.RingPlatformTE;
 import gcewing.sg.features.rings.client.RingPlatformRenderer;
 import gcewing.sg.features.rings.client.RingFuelScreen;
+import gcewing.sg.features.rings.client.RingHoldInput;
 import net.minecraftforge.common.MinecraftForge;
 import gcewing.sg.features.cityshield.client.CityShieldRenderer;
 import gcewing.sg.features.naquadahgenerator.NaquadahGeneratorTE;
@@ -48,6 +49,7 @@ public class SGCraftClient extends BaseModClient<SGCraft> {
     protected void registerScreens() {
         // The white-out and sound of an Asgard obelisk beaming the player
         MinecraftForge.EVENT_BUS.register(ObeliskBeamEffects.class);
+        MinecraftForge.EVENT_BUS.register(RingHoldInput.class); // a ring transport's player can't move
         // The zat's bolts of lightning
         MinecraftForge.EVENT_BUS.register(ZatBolts.class);
         //System.out.printf("SGCraft: ProxyClient.registerScreens\n");

@@ -77,17 +77,27 @@ public class RingPlatformTE extends BaseTileEntity implements ITickable, ISidedI
 
     // ---- Running ----
 
+    // Busy from the moment a run is started until its own part is over: the sender's through both halves (it runs the
+    // transport), the receiver's to the end of its half, which starts once the sender's is over (so before then too)
     public boolean isActive() {
-        return activeStart >= 0 && world.getTotalWorldTime() - activeStart < RingTransports.doneTicks;
+        return activeStart >= 0
+            && world.getTotalWorldTime() - activeStart < (initiator ? RingTransports.doneTicks : RingTransports.halfTicks);
     }
 
-    void start(long now, boolean initiator) {
-        this.activeStart = now;
+    // Sets its rings off at the given world time (the receiver's half later than the sender's)
+    void start(long at, boolean initiator) {
+        this.activeStart = at;
         this.initiator = initiator;
         this.floorY = findFloor();
+        if (initiator) {
+            playRingSound();
+        }
+        markChanged();
+    }
+
+    void playRingSound() {
         Vec3d c = centre();
         world.playSound(null, c.x, c.y, c.z, RingTransports.transportSound, SoundCategory.BLOCKS, 1.5F, 1F);
-        markChanged();
     }
 
     // The energy last sent to clients, which show it on its screen
@@ -106,19 +116,34 @@ public class RingPlatformTE extends BaseTileEntity implements ITickable, ISidedI
             return;
         }
         long t = world.getTotalWorldTime() - activeStart;
-        if (initiator && linked && (t == RingTransports.transportTick - RingTransports.whiteOutTicks || t == RingTransports.transportTick)) {
+        // The sender runs the whole transport, so it goes on even with nobody near the receiver to keep it ticking
+        int half = RingTransports.halfTicks;
+        int flashAt = half - RingTransports.returnFlashTicks;
+        if (initiator && linked && (t == RingTransports.departTick || t == flashAt || t == half
+                || t == half + RingTransports.arriveTick)) {
             RingPlatformTE partner = RingTransports.platformAt(world, linkPos);
             if (partner != null) {
-                if (t == RingTransports.transportTick) {
+                if (t == RingTransports.departTick) {
+                    // As its light snaps on, those inside go white, then black while in transit, and white again as they
+                    // arrive (RingTransports.transitScreen)
+                    RingTransports.transitScreen(this);
+                } else if (t == flashAt) {
+                    // Anyone in the receiver's rings is held as the sender's were, and flashes white as they're sent back
+                    RingHolds.hold(partner, activeStart + RingTransports.doneTicks);
+                    RingTransports.returnScreen(partner);
+                } else if (t == half) {
+                    // The receiver's half: its rings set off with the sound again, the sender's sound stopped, and those in
+                    // transit are moved into them while their screens are black, to hear it from the start
+                    RingTransports.stopSound(this);
                     RingTransports.swap(this, partner);
+                    partner.playRingSound();
                 } else {
-                    // Those inside either set of rings see the world go white, as the obelisks' beam does
-                    RingTransports.whiteOut(this);
-                    RingTransports.whiteOut(partner);
+                    // Its light snaps on round those who arrived, their screens clearing to show it
+                    RingTransports.flash(partner);
                 }
             }
         }
-        if (t >= RingTransports.doneTicks) {
+        if (t >= (initiator ? RingTransports.doneTicks : half)) {
             activeStart = -1;
             markChanged();
         }

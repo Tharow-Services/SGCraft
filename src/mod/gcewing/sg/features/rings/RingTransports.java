@@ -6,11 +6,15 @@ import static gcewing.sg.tileentity.SGBaseTE.sendErrorMsg;
 import gcewing.sg.BaseConfiguration;
 import gcewing.sg.SGCraft;
 import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
+import io.netty.buffer.Unpooled;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.network.PacketBuffer;
+import net.minecraft.network.play.server.SPacketCustomPayload;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
@@ -30,16 +34,20 @@ import java.util.UUID;
 // inside the other. The platform that starts it pays in Forge Energy, more the further it sends.
 public final class RingTransports {
 
-    // Timed to the ring sound (ring_transport, 8.9 seconds): the rings rise and lock over its first 3.2 seconds (stackTicks),
-    // the energy builds, the transport happens with its flash at 6.7 seconds (transportTick), and the rings are back as it
-    // fades out (doneTicks)
-    public static final int stackTicks = 64, transportTick = 134, doneTicks = 178;
-    // How long before the transport those inside are told, for their screens to go white in time (the white-out fades
-    // in over 0.7 seconds before the beam: see ObeliskBeamEffects)
-    public static final int whiteOutTicks = 16;
-    // How far (blocks) a panel or a remote reaches to find a platform, and how far below a ceiling platform the floor
-    // can be
-    public static final double controlReach = 8;
+    // A transport runs in two halves, one after the other, each timed to the ring sound (ring_transport), which plays at
+    // each in turn. The sender's rings rise and lock over 3.2 seconds (stackTicks); 0.25 seconds later a column of white
+    // light snaps on and those inside go white (departTick); it holds, fades (lightFadeTick to lightEndTick) and the rings
+    // drop, home by halfTicks. Then the receiver's rings do the same, and those in transit arrive in its light (arriveTick),
+    // their screens clearing, before its rings drop too. Ticks are from the start of each half; the whole run is doneTicks.
+    public static final int stackTicks = 64, departTick = stackTicks + 5, lightFadeTick = departTick + 28,
+        lightEndTick = lightFadeTick + 12, halfTicks = lightEndTick + 32, doneTicks = 2 * halfTicks;
+    // Those in transit are moved in the dark, as the receiver's rings set off (halfTicks), so they hear its sound from the
+    // start; their screens clear in its light, once it has snapped on (arriveTick, see transitScreen). Those in the
+    // receiver's rings, sent the other way, are held and flash white for returnFlashTicks before the swap.
+    public static final int arriveTick = departTick + 2, returnFlashTicks = 14;
+    // How far (blocks) a remote and a control panel reach to find a platform, and how far below a ceiling platform the
+    // floor can be
+    public static final double controlReach = 8, panelReach = 16;
     public static final int maxDrop = 12;
 
     public static int energyPerUse = 20000;
@@ -141,10 +149,10 @@ public final class RingTransports {
     // ---- Starting: from a control panel or a ring remote ----
 
     // The platform a panel or remote at pos controls: the one whose rings the player is standing in, else the nearest
-    // within reach
-    public static RingPlatformTE platformNear(World world, Vec3d at, EntityPlayer player) {
+    // within the given reach
+    public static RingPlatformTE platformNear(World world, Vec3d at, EntityPlayer player, double reach) {
         RingPlatformTE nearest = null;
-        double best = controlReach * controlReach;
+        double best = reach * reach;
         for (TileEntity te : new ArrayList<>(world.loadedTileEntityList)) {
             if (te instanceof RingPlatformTE && !te.isInvalid()) {
                 RingPlatformTE platform = (RingPlatformTE) te;
@@ -197,15 +205,48 @@ public final class RingTransports {
         platform.energy -= cost;
         long now = platform.getWorld().getTotalWorldTime();
         platform.start(now, true);
-        partner.start(now, false);
+        partner.start(now + halfTicks, false); // its half once the sender's is over
+        // Those inside are held still and safe from the moment its rings set off until the receiver's are home
+        RingHolds.hold(platform, now + doneTicks);
     }
 
     // ---- The transport itself ----
 
-    // The players inside a platform's rings see the world go white (see ObeliskBeamEffects)
-    static void whiteOut(RingPlatformTE platform) {
+    // What those leaving see, from the sender's light snapping on (departTick): the screen fades to white, holds, fades to
+    // black and stays so in transit, fades back to white as they arrive in the receiver's light, and clears to show it
+    static void transitScreen(RingPlatformTE platform) {
+        int arrive = (halfTicks + arriveTick - departTick) * 50; // millis from now
+        int[] at = {0, 700, 950, 1950, arrive - 800, arrive, arrive + 200, arrive + 1100};
+        float[] cover = {0, 1, 1, 1, 1, 1, 1, 0};
+        float[] light = {1, 1, 1, 0, 0, 1, 1, 1};
+        screen(platform, at, cover, light);
+    }
+
+    // What those in the receiver's rings see as they're sent the other way, from returnFlashTicks before the swap: a white
+    // flash, full as they go
+    static void returnScreen(RingPlatformTE platform) {
+        int go = returnFlashTicks * 50;
+        screen(platform, new int[] {0, go, go + 200, go + 1100}, new float[] {0, 1, 1, 0}, new float[] {1, 1, 1, 1});
+    }
+
+    private static void screen(RingPlatformTE platform, int[] at, float[] cover, float[] light) {
         for (EntityPlayerMP player : platform.getWorld().getEntitiesWithinAABB(EntityPlayerMP.class, platform.volume())) {
-            ObeliskNetworkHandler.whiteOutOnClient(player, whiteOutTicks);
+            ObeliskNetworkHandler.screenFadeOnClient(player, at, cover, light);
+        }
+    }
+
+    // Stops the ring sound for those within hearing of a platform, whose half is over as the other's starts: the sound
+    // runs on past it. Sent as /stopsound sends it.
+    static void stopSound(RingPlatformTE platform) {
+        if (transportSound == null || transportSound.getRegistryName() == null) {
+            return;
+        }
+        Vec3d c = platform.centre();
+        for (EntityPlayerMP player : platform.getWorld().getPlayers(EntityPlayerMP.class, p -> p.getDistanceSq(c.x, c.y, c.z) < 64 * 64)) {
+            PacketBuffer buf = new PacketBuffer(Unpooled.buffer());
+            buf.writeString(SoundCategory.BLOCKS.getName());
+            buf.writeString(transportSound.getRegistryName().toString());
+            player.connection.sendPacket(new SPacketCustomPayload("MC|StopSound", buf));
         }
     }
 
@@ -225,8 +266,11 @@ public final class RingTransports {
         World world = a.getWorld();
         List<Entity> fromA = world.getEntitiesWithinAABB(Entity.class, a.volume(), e -> e != null && e.isEntityAlive() && !e.isRiding());
         List<Entity> fromB = world.getEntitiesWithinAABB(Entity.class, b.volume(), e -> e != null && e.isEntityAlive() && !e.isRiding());
-        flash(a);
-        flash(b);
+        // Done in the dark, as the receiver's rings set off: those going there sparkle as its light comes on (see
+        // RingPlatformTE.update); anything sent back to the sender, whose rings are home, sparkles as it lands
+        if (!fromB.isEmpty()) {
+            flash(a);
+        }
         Vec3d offsetAB = b.floorCentre().subtract(a.floorCentre());
         for (Entity e : fromA) {
             move(e, offsetAB);
@@ -245,6 +289,7 @@ public final class RingTransports {
             e.setPositionAndUpdate(x, y, z);
         }
         e.fallDistance = 0;
+        RingHolds.moved(e); // a held player is held where they arrive
     }
 
     // The space the rings close round, from floorY up

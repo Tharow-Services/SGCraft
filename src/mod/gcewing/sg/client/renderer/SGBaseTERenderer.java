@@ -21,6 +21,7 @@ import gcewing.sg.util.GateShape;
 import gcewing.sg.util.GateType;
 import gcewing.sg.util.SGState;
 import gcewing.sg.Vector3;
+import net.minecraft.client.renderer.GLAllocation;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -35,7 +36,10 @@ import valkyrienwarfare.api.TransformType;
 import java.util.Optional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static gcewing.sg.client.renderer.GateRenderer.setLightingDisabled;
 import static gcewing.sg.client.renderer.GateRenderer.textureFolder;
@@ -314,10 +318,18 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         glVertex3d(radius * f * Math.cos(angle), radius * f * Math.sin(angle), z);
     }
 
+    // A closed iris, by its gate's scale, depth and clip radius: the same every frame, so built once into a display list
+    // and drawn from that. Working out every swirled, clipped piece of every blade each frame took most of a frame with
+    // a few gates in view.
+    private final Map<List<Double>, Integer> closedIrisLists = new HashMap<>();
+
     // Draws the iris at the depth the gate's renderer gives, cut off where its ring hides it
     void renderIris(SGBaseTE te, GateRenderer renderer, double t) {
-        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/iris.png"));
         double a = te.getIrisAperture(t);
+        if (a >= 1) {
+            return; // fully open, every blade is behind the ring (see irisBladeSwing)
+        }
+        bindTexture(SGCraft.mod.resourceLocation("textures/tileentity/" + textureFolder(te) + "/iris.png"));
         // The blades are sized for a standard gate; stretch them across a bigger opening but
         // keep them at the same depth
         GateShape shape = te.getShape();
@@ -325,6 +337,24 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         double z0 = renderer.irisDepth(shape), clip = renderer.irisClipRadius(shape) / s;
         glPushMatrix();
         glScaled(s, s, 1);
+        if (a <= 0) {
+            List<Double> key = Arrays.asList(s, z0, clip);
+            Integer list = closedIrisLists.get(key);
+            if (list == null) {
+                list = GLAllocation.generateDisplayLists(1);
+                glNewList(list, GL_COMPILE);
+                drawIris(0, s, z0, clip);
+                glEndList();
+                closedIrisLists.put(key, list);
+            }
+            glCallList(list);
+        } else {
+            drawIris(a, s, z0, clip); // opening or closing: different every frame, for the few seconds it takes
+        }
+        glPopMatrix();
+    }
+
+    void drawIris(double a, double s, double z0, double clip) {
         glNormal3f(0, 0, 1);
         glBegin(GL_TRIANGLES);
         for (int i = 0; i < numIrisBlades; i++) {
@@ -332,7 +362,6 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         }
         glEnd();
         renderIrisHub(a, s, z0, clip);
-        glPopMatrix();
     }
 
     // The shape of an iris blade (blocks, on a standard gate): how far out from the centre its

@@ -158,6 +158,18 @@ public class SGAddressing {
         }
     }
 
+    // The full address of a local one (as dialled within one dimension) in that dimension. Its dimension symbols can't be
+    // copied from another address in the same dimension: they're mixed with each address's own coordinates.
+    public static String fullAddress(String address, int dimension) {
+        address = address.replace("-", "").toUpperCase();
+        if (address.length() != numCoordSymbols) {
+            return address;
+        }
+        long c = longFromSymbols(address);
+        int d = hash(permuteDimension(c, SGDimensionMap.indexForDimension(dimension)), pd, md);
+        return address + intToSymbols(d, numDimensionSymbols);
+    }
+
     public static String addressForLocation(SGLocation loc) throws AddressingError {
         if (debugAddressing)
             System.out.printf("SGAddressing.addressForLocation: coord range = %d to %d\n",
@@ -300,6 +312,67 @@ public class SGAddressing {
         }
     }
     
+    // Whether there's certainly no stargate at a full address: its world is there, and the chunk it names either was never
+    // generated or holds no stargate base at all. False whenever that can't be told (an unknown or unloaded world, or a
+    // shorter address), and for a base whose ring isn't whole yet, as the rest may still come with a chunk not generated yet.
+    public static boolean noGateAt(String address) {
+        address = address.replace("-", "").toUpperCase();
+        try {
+            validateAddress(address);
+        } catch (AddressingError e) {
+            return false;
+        }
+        if (address.length() != maxAddressLength) {
+            return false;
+        }
+        long c = longFromSymbols(address.substring(0, numCoordSymbols));
+        int[] xz = uninterleaveCoords(c);
+        int chunkX = minCoord + hash(xz[0], qc, mc);
+        int chunkZ = minCoord + hash(xz[1], qc, mc);
+        int d = intFromSymbols(address.substring(numCoordSymbols));
+        Integer dimension = SGDimensionMap.dimensionForIndex(unpermuteDimension(c, hash(d, qd, md)));
+        int dimOld = minDirectDimension + hash(d, qdOld, mdOld); // the old meaning of the dimension symbols, as above
+        if (dimension == null || getWorld(dimension) == null) {
+            return false;
+        }
+        return !hasBaseAt(chunkX, chunkZ, dimension) && !hasBaseAt(chunkX, chunkZ, dimOld);
+    }
+
+    // Whether the chunk holds any stargate base, loading it from disk if need be (never generating it), and letting it go
+    // again unless something else holds it. A dimension that isn't registered has no world, so no gate (getWorld loads
+    // any that is).
+    private static boolean hasBaseAt(int chunkX, int chunkZ, int dimension) {
+        WorldServer world = getWorld(dimension);
+        if (world == null) {
+            return false;
+        }
+        ChunkProviderServer provider = world.getChunkProvider();
+        Chunk chunk = provider.loadedChunks.get(ChunkPos.asLong(chunkX, chunkZ));
+        boolean wasLoaded = chunk != null;
+        if (!wasLoaded) {
+            if (!provider.isChunkGeneratedAt(chunkX, chunkZ)) {
+                return false;
+            }
+            // Straight from disk: under Sponge, World.getChunk can hand back an empty stand-in for a chunk not loaded,
+            // which would look like one without the gate
+            chunk = provider.loadChunk(chunkX, chunkZ);
+        }
+        if (chunk == null || chunk.isEmpty()) {
+            return true; // can't be looked in: say there may be one, so nothing is taken off any list
+        }
+        boolean found = false;
+        for (TileEntity te : chunk.getTileEntityMap().values()) {
+            if (te instanceof SGBaseTE) {
+                found = true;
+                break;
+            }
+        }
+        if (!wasLoaded && !world.getPlayerChunkMap().contains(chunkX, chunkZ)) {
+            provider.queueUnload(chunk);
+        }
+        return found;
+    }
+
     // The stargate in the chunk an address names: a complete one first, as a lone base block put in the same chunk would
     // otherwise take the gate's dials, or hide it. Looking leaves the chunk as it was: one never generated isn't made
     // just to look in (no gate can be there), and one loaded only to look in is let go again, unless a dial keeps it (the
@@ -318,7 +391,11 @@ public class SGAddressing {
             if (!provider.isChunkGeneratedAt(chunkX, chunkZ)) {
                 return null;
             }
-            chunk = toWorld.getChunk(chunkX, chunkZ);
+            // Straight from disk: under Sponge, World.getChunk can hand back an empty stand-in for a chunk not loaded
+            chunk = provider.loadChunk(chunkX, chunkZ);
+            if (chunk == null) {
+                return null;
+            }
         }
         SGBaseTE found = null;
         for (TileEntity te : chunk.getTileEntityMap().values()) {
