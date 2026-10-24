@@ -15,7 +15,7 @@ import net.minecraft.util.math.BlockPos;
 
 // A ring platform's five rings. At rest they lie on the floor round the platform (or flat under the ceiling). Set off,
 // they rise one after another, the first highest, and stack round those inside (a ceiling platform's drop, the first to
-// the floor); bands of blue-white light sweep through them as they transport; then they go back.
+// the floor); a column of white light fills them as those inside leave, and again as they arrive; then they go back.
 public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatformTE> {
 
     private static final ResourceLocation TOP = new ResourceLocation("sgcraft", "textures/blocks/ring_top.png");
@@ -29,19 +29,21 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
     // Ticks between rings setting off, and each one's travel; when they start back, and how long that takes
     // Going back, one at a time, the one nearest its resting place first (the last out), each taking returnTravel; all
     // back before the sound ends
-    private static final int launchGap = 12, travel = 16, returnStart = RingTransports.transportTick + 8, returnGap = 5,
-        returnTravel = 12;
-    // The light: a glow building inside the rings once they're stacked, as the sound's energy builds, then the bands of the
-    // transport round its moment
-    private static final int glowStart = RingTransports.stackTicks + 6, columnStart = RingTransports.transportTick - 10,
-        columnEnd = RingTransports.transportTick + 12, afterglowEnd = returnStart + 4; // (gone as the rings move off)
+    // The light, as in the show: in each platform's half of a transport (see RingTransports), a column of solid white lines
+    // snaps on 0.25 seconds after the last ring is in place (departTick), holds, and fades (lightFadeTick to lightEndTick);
+    // the rings go back once it has gone, the last of them home as the half ends (halfTicks)
+    private static final int departStart = RingTransports.departTick, departOn = departStart + 2,
+        departFade = RingTransports.lightFadeTick, departEnd = RingTransports.lightEndTick;
+    private static final int launchGap = 12, travel = 16, returnStart = departEnd, returnGap = 5, returnTravel = 12;
+    private static final int afterglowEnd = returnStart + 8; // the rims' glow gone as the rings move off
 
     @Override
     public void render(RingPlatformTE te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
         boolean ceiling = te.isCeiling();
         long start = te.activeStart;
         double t = start >= 0 ? te.getWorld().getTotalWorldTime() - start + partialTicks : -1;
-        if (t > RingTransports.doneTicks) {
+        // At rest outside its own half: a receiver waits for the sender's half to end, and a sender's ends before the run
+        if (t < 0 || t > RingTransports.halfTicks) {
             t = -1;
         }
         BlockPos pos = te.getPos();
@@ -78,7 +80,7 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
                 double out = go * (1 - back);
                 drawRing(rest + (stacked - rest) * out);
             }
-            if (t >= glowStart && t <= afterglowEnd) {
+            if (t >= departStart && t <= afterglowEnd) {
                 drawLight(t, floor);
             }
         }
@@ -137,24 +139,24 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
         buf.pos(x3, y3, z3).tex(u3, v3).color(shade, shade, shade, 1F).endVertex();
     }
 
-    // How bright the column of light inside the rings is (0 to 1): swelling to the transport, then fading
+    // How bright the column of light inside the rings is (0 to 1): snapping on, holding, fading before the rings drop
     static double columnStrength(double t) {
-        if (t < columnStart || t > columnEnd) {
+        if (t < departStart || t > departEnd) {
             return 0;
         }
-        int peak = RingTransports.transportTick;
-        return t <= peak ? ease((t - columnStart) / (double) (peak - columnStart)) : 1 - ease((t - peak) / (double) (columnEnd - peak));
+        if (t < departOn) {
+            return ease((t - departStart) / (double) (departOn - departStart));
+        }
+        return t <= departFade ? 1 : 1 - ease((t - departFade) / (double) (departEnd - departFade));
     }
 
-    // The transport's light, as in the show: a white glow growing along the rings' inner edges as they charge; a column of
-    // white light filling them at the transport, streaky at its edges; then a fading blue glow on their inner edges
+    // The transport's light, as in the show: the rings' inner rims shining a steady white; a column of solid white lines
+    // filling them, from the floor to the top ring
     private void drawLight(double t, double floor) {
-        int peak = RingTransports.transportTick;
         double column = columnStrength(t);
-        // The edge glow: building once they're stacked, full through the column, then blue and fading
-        double edge = t < columnStart ? ease((t - glowStart) / (double) (columnStart - glowStart)) : t <= peak ? 1
-            : 1 - ease((t - peak) / (double) (afterglowEnd - peak));
-        double blue = t > peak ? 1 - column : 0; // how far the edge glow has gone blue
+        // The rims: on with the departure, steady through the transport, fading as the rings drop
+        double edge = t < departOn ? ease((t - departStart) / (double) (departOn - departStart)) : t <= returnStart ? 1
+            : 1 - ease((t - returnStart) / (double) (afterglowEnd - returnStart));
         double top = floor + (rings - 1) * spacing + height;
 
         OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240);
@@ -169,16 +171,14 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
 
         // Along each ring's inner edge, and in the gaps between them: a band of light, brightest at its middle
         if (edge > 0) {
-            float r = (float) (1 - 0.6 * blue), g = (float) (1 - 0.25 * blue), b = 1F;
+            float r = 0.85F, g = 0.93F, b = 1F; // a bluish white, steady (they don't flicker)
             double rr = inner - 0.03;
             buf.begin(GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
             for (int k = 0; k < rings; k++) {
                 double y0 = floor + k * spacing, y1 = y0 + spacing;
-                float a = (float) (0.55 * edge);
+                float am = (float) (0.55 * edge);
                 for (int i = 0; i < segments; i++) {
                     double a0 = 2 * Math.PI * i / segments, a1 = 2 * Math.PI * (i + 1) / segments;
-                    double flicker = 0.75 + 0.25 * Math.sin(i * 2.3 + k * 1.7 + t * 0.8);
-                    float am = (float) (a * flicker);
                     double ym = (y0 + y1) / 2;
                     // Lower half, rising to the middle; upper half, falling from it
                     buf.pos(rr * Math.cos(a0), y0, rr * Math.sin(a0)).color(r, g, b, 0F).endVertex();
@@ -194,24 +194,24 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
             tess.draw();
         }
 
-        // The column: nested walls of light filling the rings, warm white, streaked up and down, bright in the middle
+        // The column: solid white lines shooting up from the floor in a fifth of a second to the top ring, in nested
+        // circles that fill the rings; every line evenly bright from end to end, some brighter than others, shimmering a
+        // little. Drawn adding light, so where they overlap they're pure white.
         if (column > 0) {
-            double mid = (floor + top) / 2;
+            double rise = ease((t - departStart) / 4.0);
+            double y1 = floor + (top - floor) * rise; // no higher than the rings
             buf.begin(GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
-            for (int layer = 0; layer < 5; layer++) {
-                double rr = (inner - 0.08) * (0.25 + 0.75 * layer / 4.0);
+            for (int layer = 0; layer < 4; layer++) {
+                double rr = (inner - 0.08) * (0.2 + 0.8 * layer / 3.0);
                 for (int i = 0; i < segments; i++) {
                     double a0 = 2 * Math.PI * i / segments, a1 = 2 * Math.PI * (i + 1) / segments;
-                    double streak = 0.55 + 0.45 * Math.sin(i * 3.1 + layer * 2.2 + t * 1.3) * Math.sin(i * 1.7 - t * 0.7);
-                    float am = (float) (0.32 * column * streak), ae = am * 0.35F;
-                    buf.pos(rr * Math.cos(a0), floor, rr * Math.sin(a0)).color(1F, 0.95F, 0.9F, ae).endVertex();
-                    buf.pos(rr * Math.cos(a1), floor, rr * Math.sin(a1)).color(1F, 0.95F, 0.9F, ae).endVertex();
-                    buf.pos(rr * Math.cos(a1), mid, rr * Math.sin(a1)).color(1F, 0.96F, 0.92F, am).endVertex();
-                    buf.pos(rr * Math.cos(a0), mid, rr * Math.sin(a0)).color(1F, 0.96F, 0.92F, am).endVertex();
-                    buf.pos(rr * Math.cos(a0), mid, rr * Math.sin(a0)).color(1F, 0.96F, 0.92F, am).endVertex();
-                    buf.pos(rr * Math.cos(a1), mid, rr * Math.sin(a1)).color(1F, 0.96F, 0.92F, am).endVertex();
-                    buf.pos(rr * Math.cos(a1), top, rr * Math.sin(a1)).color(1F, 0.95F, 0.9F, ae).endVertex();
-                    buf.pos(rr * Math.cos(a0), top, rr * Math.sin(a0)).color(1F, 0.95F, 0.9F, ae).endVertex();
+                    double line = 0.5 + 0.5 * Math.sin(i * 2.7 + layer * 1.9); // each line's own brightness
+                    double shimmer = 0.85 + 0.15 * Math.sin(t * 1.1 + i * 0.9 + layer);
+                    float am = (float) (column * (0.45 + 0.55 * line) * shimmer);
+                    buf.pos(rr * Math.cos(a0), floor, rr * Math.sin(a0)).color(1F, 1F, 1F, am).endVertex();
+                    buf.pos(rr * Math.cos(a1), floor, rr * Math.sin(a1)).color(1F, 1F, 1F, am).endVertex();
+                    buf.pos(rr * Math.cos(a1), y1, rr * Math.sin(a1)).color(1F, 1F, 1F, am).endVertex();
+                    buf.pos(rr * Math.cos(a0), y1, rr * Math.sin(a0)).color(1F, 1F, 1F, am).endVertex();
                 }
             }
             tess.draw();

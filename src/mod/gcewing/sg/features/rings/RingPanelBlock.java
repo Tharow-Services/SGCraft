@@ -64,7 +64,7 @@ public class RingPanelBlock extends Block {
             EnumFacing side, float hitX, float hitY, float hitZ) {
         if (!world.isRemote && hand == EnumHand.MAIN_HAND) {
             Vec3d at = new Vec3d(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-            RingTransports.activate(player, RingTransports.platformNear(world, at, null));
+            RingTransports.activate(player, RingTransports.platformNear(world, at, null, RingTransports.panelReach));
         }
         return true;
     }

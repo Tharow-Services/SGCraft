@@ -42,6 +42,7 @@ import gcewing.sg.features.obelisk.AsgardObeliskTE;
 import gcewing.sg.features.obelisk.AsgardObelisks;
 import gcewing.sg.features.obelisk.ObeliskNetworkHandler;
 import gcewing.sg.features.rings.RingFuelContainer;
+import gcewing.sg.features.rings.RingHolds;
 import gcewing.sg.features.rings.RingPanelBlock;
 import gcewing.sg.features.rings.RingPlatformMalisis;
 import gcewing.sg.features.rings.RingPlatformBlock;
@@ -336,6 +337,7 @@ public class SGCraft extends BaseMod<SGCraftClient> {
         MinecraftForge.EVENT_BUS.register(AsgardObelisks.class); // beams players a moment after they touch the crystal
         MinecraftForge.EVENT_BUS.register(Zat.class); // fires zats once they've charged
         MinecraftForge.EVENT_BUS.register(ZpmLinks.class); // linking ZPM devices to stargates by sneak-clicking
+        MinecraftForge.EVENT_BUS.register(RingHolds.class); // ring transport players held still and unharmed
 
         super.preInit(e);
     }

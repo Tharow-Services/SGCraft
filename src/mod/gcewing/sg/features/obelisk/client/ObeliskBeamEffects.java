@@ -8,13 +8,15 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.SoundCategory;
-import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 // What the player being beamed by an Asgard obelisk sees and hears: the beam's sound, played to them alone and not from
-// anywhere, so it carries on through the beam; and their screen fading to white as the beam comes, then back
+// anywhere, so it carries on through the beam; and their screen fading to white as the beam comes, then back. Also a ring
+// transport's screen, which goes white, black and white again (screenFade).
 @SideOnly(Side.CLIENT)
 public final class ObeliskBeamEffects {
 
@@ -26,6 +28,12 @@ public final class ObeliskBeamEffects {
     private static long beamAt = 2500;
     // How long the screen takes to go white before the beam, stays white, and takes to clear after it
     private static final long fadeIn = 700, hold = 250, fadeOut = 900;
+    // A ring transport's screen instead (see RingTransports.transitScreen): from when it started, at each of these times
+    // (millis) how covered the screen is (0 to 1) and how light its cover (0 black, 1 white), going smoothly from each to
+    // the next; or null
+    private static long fadeStart = 0;
+    private static int[] fadeAt;
+    private static float[] fadeCover, fadeLight;
 
     private ObeliskBeamEffects() {}
 
@@ -39,15 +47,18 @@ public final class ObeliskBeamEffects {
         }
     }
 
-    // Just the white-out, the beam coming in delayTicks, for transports with sounds of their own (ring transporters)
-    public static void whiteOut(int delayTicks) {
-        start = System.currentTimeMillis();
-        beamAt = delayTicks * 50L;
+    // A ring transport's screen: white, black and back, as the server gives it (see fadeAt)
+    public static void screenFade(int[] at, float[] cover, float[] light) {
+        fadeStart = System.currentTimeMillis();
+        fadeAt = at;
+        fadeCover = cover;
+        fadeLight = light;
     }
 
     // The player moved, so the beam was called off: the sound stops and the screen clears
     public static void cancel() {
         start = 0;
+        fadeAt = null;
         if (sound != null) {
             Minecraft.getMinecraft().getSoundHandler().stopSound(sound);
             sound = null;
@@ -73,18 +84,59 @@ public final class ObeliskBeamEffects {
         return 0;
     }
 
-    @SubscribeEvent
-    public static void onRenderOverlay(RenderGameOverlayEvent.Post event) {
-        if (event.getType() != RenderGameOverlayEvent.ElementType.ALL) {
-            return;
+    // The screen's cover now, as {how covered, how light} (see fadeAt), or null when there is none
+    private static float[] cover() {
+        int[] at = fadeAt;
+        if (at != null) {
+            long t = System.currentTimeMillis() - fadeStart;
+            if (t >= at[at.length - 1]) {
+                fadeAt = null;
+            } else {
+                for (int k = 1; k < at.length; k++) {
+                    if (t < at[k]) {
+                        float f = at[k] == at[k - 1] ? 1 : (float) (t - at[k - 1]) / (at[k] - at[k - 1]);
+                        f = Math.max(0, f);
+                        return new float[] {fadeCover[k - 1] + (fadeCover[k] - fadeCover[k - 1]) * f,
+                            fadeLight[k - 1] + (fadeLight[k] - fadeLight[k - 1]) * f};
+                    }
+                }
+            }
         }
         float white = whiteness();
-        if (white <= 0) {
+        return white > 0 ? new float[] {white, 1} : null;
+    }
+
+    // Over everything once the frame is drawn, the HUD included: drawn with the HUD, it was under the hotbar's items (drawn
+    // further forward) and other mods' HUD drawn after it
+    @SubscribeEvent
+    public static void onRenderTick(TickEvent.RenderTickEvent event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (event.phase == TickEvent.Phase.END && mc.world != null && mc.currentScreen == null) {
+            drawWhite(mc);
+        }
+    }
+
+    // With a screen open (the pause menu, say), under it, so it can still be used
+    @SubscribeEvent
+    public static void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Pre event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.world != null) {
+            drawWhite(mc);
+        }
+    }
+
+    private static void drawWhite(Minecraft mc) {
+        float[] cover = cover();
+        if (cover == null || cover[0] <= 0) {
             return;
         }
-        ScaledResolution screen = event.getResolution();
+        int alpha = (int) (Math.min(1, cover[0]) * 255), grey = (int) (Math.max(0, Math.min(1, cover[1])) * 255);
+        ScaledResolution screen = new ScaledResolution(mc);
+        mc.entityRenderer.setupOverlayRendering();
+        GlStateManager.disableDepth();
         GlStateManager.enableBlend();
-        Gui.drawRect(0, 0, screen.getScaledWidth(), screen.getScaledHeight(), ((int) (white * 255) << 24) | 0xFFFFFF);
+        Gui.drawRect(0, 0, screen.getScaledWidth(), screen.getScaledHeight(), alpha << 24 | grey << 16 | grey << 8 | grey);
         GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.enableDepth();
     }
 }

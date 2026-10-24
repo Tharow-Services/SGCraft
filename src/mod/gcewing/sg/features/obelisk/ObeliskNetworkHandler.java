@@ -9,6 +9,7 @@ import gcewing.sg.BaseDataChannel;
 import gcewing.sg.SGCraft;
 import gcewing.sg.features.obelisk.client.ObeliskConfiguratorScreen;
 import gcewing.sg.features.obelisk.client.ObeliskBeamEffects;
+import gcewing.sg.features.rings.client.RingHoldInput;
 import gcewing.sg.network.SGChannel;
 import gcewing.sg.util.PlayerNames;
 import net.minecraft.entity.player.EntityPlayer;
@@ -37,17 +38,44 @@ public class ObeliskNetworkHandler extends SGChannel {
         data.close();
     }
 
-    // Just the white-out, for transports with sounds of their own: the screen is white delayTicks from now (ring
-    // transporters, for those inside the rings)
-    public static void whiteOutOnClient(EntityPlayerMP player, int delayTicks) {
-        ChannelOutput data = obeliskChannel.openPlayer(player, "WhiteOut");
-        data.writeInt(delayTicks);
+    // A ring transport's screen (see ObeliskBeamEffects.screenFade): at each time (millis from now), how covered the
+    // screen is and how light its cover, white or black
+    public static void screenFadeOnClient(EntityPlayerMP player, int[] at, float[] cover, float[] light) {
+        ChannelOutput data = obeliskChannel.openPlayer(player, "RingScreen");
+        data.writeInt(at.length);
+        for (int k = 0; k < at.length; k++) {
+            data.writeInt(at[k]);
+            data.writeFloat(cover[k]);
+            data.writeFloat(light[k]);
+        }
         data.close();
     }
 
-    @ClientMessageHandler("WhiteOut")
-    public void handleWhiteOutFromServer(EntityPlayer player, ChannelInput data) {
-        ObeliskBeamEffects.whiteOut(data.readInt());
+    @ClientMessageHandler("RingScreen")
+    public void handleScreenFadeFromServer(EntityPlayer player, ChannelInput data) {
+        int n = Math.max(0, Math.min(32, data.readInt()));
+        int[] at = new int[n];
+        float[] cover = new float[n], light = new float[n];
+        for (int k = 0; k < n; k++) {
+            at[k] = data.readInt();
+            cover[k] = data.readFloat();
+            light[k] = data.readFloat();
+        }
+        if (n > 0) {
+            ObeliskBeamEffects.screenFade(at, cover, light);
+        }
+    }
+
+    // A ring transport holding the player still (see RingHolds), or letting them go
+    public static void ringHoldOnClient(EntityPlayerMP player, boolean held) {
+        ChannelOutput data = obeliskChannel.openPlayer(player, "RingHold");
+        data.writeBoolean(held);
+        data.close();
+    }
+
+    @ClientMessageHandler("RingHold")
+    public void handleRingHoldFromServer(EntityPlayer player, ChannelInput data) {
+        RingHoldInput.setHeld(data.readBoolean());
     }
 
     // ---- Its configurator screen ----

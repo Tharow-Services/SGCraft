@@ -20,7 +20,7 @@ public class RingRemoteItem extends Item {
     public ActionResult<ItemStack> onItemRightClick(World world, EntityPlayer player, EnumHand hand) {
         ItemStack stack = player.getHeldItem(hand);
         if (!world.isRemote) {
-            RingTransports.activate(player, RingTransports.platformNear(world, player.getPositionVector(), player));
+            RingTransports.activate(player, RingTransports.platformNear(world, player.getPositionVector(), player, RingTransports.controlReach));
         }
         player.getCooldownTracker().setCooldown(this, 20);
         return new ActionResult<>(EnumActionResult.SUCCESS, stack);
