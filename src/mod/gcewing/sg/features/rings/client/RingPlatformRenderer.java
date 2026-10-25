@@ -41,7 +41,7 @@ public class RingPlatformRenderer extends TileEntitySpecialRenderer<RingPlatform
     public void render(RingPlatformTE te, double x, double y, double z, float partialTicks, int destroyStage, float alpha) {
         boolean ceiling = te.isCeiling();
         long start = te.activeStart;
-        double t = start >= 0 ? te.getWorld().getTotalWorldTime() - start + partialTicks : -1;
+        double t = start >= 0 ? te.getWorld().getTotalWorldTime() - start + (double) partialTicks : -1;
         // At rest outside its own half: a receiver waits for the sender's half to end, and a sender's ends before the run
         if (t < 0 || t > RingTransports.halfTicks) {
             t = -1;

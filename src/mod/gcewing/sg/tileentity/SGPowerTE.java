@@ -28,7 +28,7 @@ public class SGPowerTE extends PowerTE implements IEnergyStorage {
 
     @Override
     public String getUnitName() {
-        return "SG";
+        return "FE"; // what it holds: the Forge Energy fed to it, not the gate's energy units
     }
 
     @Override

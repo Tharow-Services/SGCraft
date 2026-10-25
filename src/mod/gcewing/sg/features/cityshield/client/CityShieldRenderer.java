@@ -30,7 +30,7 @@ public class CityShieldRenderer extends TileEntitySpecialRenderer<CityShieldTE> 
         if (fade <= 0) {
             return;
         }
-        double time = te.getWorld().getTotalWorldTime() + partialTicks;
+        double time = te.getWorld().getTotalWorldTime() + (double) partialTicks;
         // The centre, from the camera
         double cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
 

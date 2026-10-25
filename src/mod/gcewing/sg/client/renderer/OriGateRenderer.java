@@ -75,7 +75,7 @@ class OriGateRenderer extends GateRenderer {
     void renderLight(SGBaseTE te, GateShape shape, float partialTicks) {
         int n = OriGate.segmentCount(shape);
         double[] glow = OriGate.segmentGlow(te, n, partialTicks);
-        double time = te.getWorld() != null ? te.getWorld().getTotalWorldTime() + partialTicks : 0;
+        double time = te.getWorld() != null ? te.getWorld().getTotalWorldTime() + (double) partialTicks : 0;
         glDisable(GL_CULL_FACE);
         beginGlow();
         glDisable(GL_TEXTURE_2D);

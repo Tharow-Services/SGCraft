@@ -133,7 +133,7 @@ public class AsgardObeliskTE extends TileEntity implements ConfigurableTransport
     // How brightly (0 to 1) its gem shines now: lit from the moment it's touched (as if 0.75 seconds further on), building
     // up to its brightest as the beam comes, then dying away
     public float shine(float partialTicks) {
-        double ticks = world.getTotalWorldTime() + partialTicks - beamStart;
+        double ticks = (world.getTotalWorldTime() - beamStart) + (double) partialTicks;
         double t = ticks / AsgardObelisks.beamDelayTicks;
         if (ticks < 0 || t > 1.6) {
             return 0;

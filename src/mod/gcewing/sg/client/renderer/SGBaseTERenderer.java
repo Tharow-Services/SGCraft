@@ -231,7 +231,7 @@ public class SGBaseTERenderer extends BaseTileEntityRenderer {
         GateShape shape = te.getShape();
         double radius = Math.min(renderer.irisClipRadius(shape), shape.ringInnerRadius + 0.05);
         double z = renderer.irisDepth(shape);
-        double time = (te.getWorld() != null ? te.getWorld().getTotalWorldTime() : 0) + partialTicks;
+        double time = (te.getWorld() != null ? te.getWorld().getTotalWorldTime() : 0) + (double) partialTicks;
 
         float lastX = OpenGlHelper.lastBrightnessX, lastY = OpenGlHelper.lastBrightnessY;
         OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240); // glows whatever the light
