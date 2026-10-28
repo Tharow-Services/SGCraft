@@ -108,10 +108,26 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
     static boolean debugState = true;
     public static boolean debugEnergyUse = false;
     static boolean debugConnect = false;
+    // Logs each step of a dial on both sides (debug.dialSync)
+    public static boolean debugDialSync = false;
+    // Through log4j, so it reaches the log files: printf output only shows in the console
+    public static final org.apache.logging.log4j.Logger dialLog = org.apache.logging.log4j.LogManager.getLogger("sgcraft");
+
+    // A gate's dial state, for debugDialSync
+    public String dialSyncText() {
+        return String.format("gate %s tick %d: state %s timeout %d/%d, locked %d of '%s', initiator %s, ring %.1f -> %.1f",
+            pos, world == null ? -1 : world.getTotalWorldTime(), state, timeout, maxTimeout, numEngagedChevrons, dialledAddress,
+            isInitiator, ringAngle, targetRingAngle);
+    }
     static boolean debugTransientDamage = false;
     static boolean debugTeleport = true;
     static boolean debugZPM = false;
     final static DecimalFormat dFormat = new DecimalFormat("###,###,###,##0");
+    // An amount of the gate's energy for a player to read: in Forge Energy, what they feed a Stargate Power Unit (at its
+    // fpPerSGEnergyUnit), whole
+    static String energyText(double energy) {
+        return dFormat.format(Math.ceil(energy * SGCraft.FPPerSGEnergyUnit));
+    }
 
     public static SoundEvent
             m_dialFailSound,
@@ -443,6 +459,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public static void configure(BaseConfiguration cfg) {
         SGBaseTE.cfg = cfg;
+        net.minecraftforge.common.config.Property dialSync = cfg.get("debug", "dialSync", false);
+        dialSync.setComment("Log each step of a dial: the server its state changes and locks, the client every gate update it gets (and "
+            + "how) and when it starts the top chevron's lock animation. For finding why a dial looks wrong.");
+        debugDialSync = dialSync.getBoolean(false);
         // Instanced config values
         // Note: allowing these methods to be hit creates the config in the file.
         cfg.getDouble("stargate", "energyPerFuelItem", 96000);
@@ -1513,6 +1533,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         maxTimeout = newTimeout;
         timeout = newTimeout;
         markChanged();
+        if (debugDialSync && !world.isRemote) {
+            dialLog.info(String.format("[SGCraft dial] server %s (was %s)", dialSyncText(), oldState));
+        }
         if (((oldState == SGState.Idle) != (newState == SGState.Idle)) || (oldState == SGState.attemptToDial != (newState == SGState.attemptToDial))) {
             updateChunkLoadingStatus();
             world.notifyNeighborsOfStateChange(pos, getBlockType(), true);
@@ -1790,7 +1813,8 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                     return diallingFailure(player, "zpmNotFound");
                 } else {
                     if (!(power > energyToOpen * distanceFactor)) {
-                        return diallingFailure(player, "zpmLowPower");
+                        return diallingFailure(player, "zpmLowPower", energyText(energyToOpen * distanceFactor),
+                            energyText(energyUsePerTick * distanceFactor * 20), energyText(power));
                     }
                 }
                 this.syncAwaitTime = 30; // Sets longer connect delay due to distance
@@ -1824,8 +1848,10 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         }
 
         // Final Power check before dial
+        // Saying what it would take: to dial, and to stay open each second (in Forge Energy, as the power units show)
         if (!this.requiresNoPower && !energyIsAvailable(energyToOpen * distanceFactor)) {
-            return diallingFailure(player, "insufficientEnergy");
+            return diallingFailure(player, "insufficientEnergy", energyText(energyToOpen * distanceFactor),
+                energyText(energyUsePerTick * distanceFactor * 20), energyText(availableEnergy()));
         }
 
         if (this.hasIrisUpgrade) {
@@ -2466,13 +2492,21 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 ringAngle %= 360;
             }
             // A Universe gate's symbols come in fours between its chevrons
-            double targetAngle = getGateType() == GateType.UNIVERSE
+            double symbolAngle = getGateType() == GateType.UNIVERSE
                     ? universeSymbolOffset(i) : ringGlyphForSymbol(i) * ringGlyphAngle;
-            double diff = targetAngle - ringAngle;
-            if (Math.abs(diff) < 180) {
-                targetAngle -= Math.copySign(360.0, ringAngle);
-                diff = targetAngle - ringAngle;
+            // The ring turns one way and then the other, symbol by symbol, as on the show: left (anticlockwise, facing the
+            // gate) for the first, right for the next, and so on, however far round the symbol is that way. It used to
+            // reverse only when the symbol was within half a turn, so it could go the same way twice.
+            boolean left = numEngagedChevrons % 2 == 0;
+            double ahead = ((symbolAngle - ringAngle) % 360 + 360) % 360; // how far round it is, turning left
+            if (ahead < 1e-6) {
+                ahead = 360; // a whole turn rather than none
             }
+            double diff = left ? ahead : ahead - 360;
+            if (diff == 0) {
+                diff = -360;
+            }
+            double targetAngle = ringAngle + diff;
 
             int delay = (int)Math.abs(diff / ringRotationSpeed);
             if (getGateType() == GateType.ORI) {
@@ -2500,6 +2534,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
 
     public void finishDiallingSymbol(String symbol, boolean outgoing, boolean changeState, boolean lastOne) {
         ++numEngagedChevrons;
+        if (debugDialSync && !world.isRemote) {
+            dialLog.info(String.format("[SGCraft dial] server lock %s: %s", symbol, dialSyncText()));
+        }
         postEvent("sgChevronEngaged", numEngagedChevrons, symbol);
 
         if (lastOne) {
@@ -2606,6 +2643,11 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
                 this.disconnect();
             }
         }
+    }
+
+    // The sources it would draw on to dial now, as availableEnergy counts them (for /sgpower)
+    public List<ISGEnergySource> energySources() {
+        return findEnergySources(this.destinationRequiresZPM);
     }
 
     public double availableEnergy() {
@@ -3868,6 +3910,15 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         return nbt;
     }
 
+    // A gate's data arriving with its chunk (rather than as its own packet), which skips onDataPacket
+    @Override
+    public void handleUpdateTag(NBTTagCompound tag) {
+        super.handleUpdateTag(tag);
+        if (debugDialSync) {
+            dialLog.info(String.format("[SGCraft dial] client got gate with chunk data: %s", dialSyncText()));
+        }
+    }
+
     @Override
     public void onDataPacket(NetworkManager net, SPacketUpdateTileEntity pkt) {
         //System.out.printf("SGBaseTE.onDataPacket: with state %s numEngagedChevrons %s\n",
@@ -3876,6 +3927,9 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         IrisState oldIrisState = irisState;
         SGState oldState = state;
         super.onDataPacket(net, pkt);
+        if (debugDialSync) {
+            dialLog.info(String.format("[SGCraft dial] client got gate packet: %s", dialSyncText()));
+        }
         if (isMerged) {
             if (state != oldState) {
                 switch (state) {
@@ -4092,7 +4146,7 @@ public class SGBaseTE extends BaseTileInventory implements ITickable, LoopingSou
         if (oriFillStart < 0 || world == null) {
             return 1;
         }
-        return Math.max(0, Math.min(1, (world.getTotalWorldTime() - oriFillStart + partialTicks) / oriFillTicks));
+        return Math.max(0, Math.min(1, (world.getTotalWorldTime() - oriFillStart + (double) partialTicks) / oriFillTicks));
     }
 
     // Once an Ori gate's horizon has filled in, its kawoosh bursts out

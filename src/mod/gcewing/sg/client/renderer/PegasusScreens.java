@@ -87,7 +87,7 @@ class PegasusScreens {
         if (length > 0 && te.numEngagedChevrons >= length) {
             return 360;
         }
-        double now = te.getWorld().getTotalWorldTime() + partialTicks;
+        double now = te.getWorld().getTotalWorldTime() + (double) partialTicks;
         double p = (now - te.pegasusFillStart) / Math.max(1, te.pegasusFillEnd - te.pegasusFillStart);
         return 360 * Math.max(0, Math.min(1, p));
     }

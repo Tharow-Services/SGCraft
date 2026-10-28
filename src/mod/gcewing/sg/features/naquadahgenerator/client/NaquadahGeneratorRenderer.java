@@ -32,7 +32,7 @@ public class NaquadahGeneratorRenderer extends TileEntitySpecialRenderer<Naquada
         }
         EnumFacing facing = state.getValue(NaquadahGeneratorBlock.FACING);
         boolean markII = ((NaquadahGeneratorBlock) state.getBlock()).mark == NaquadahGenerators.Mark.II;
-        double time = te.getWorld().getTotalWorldTime() + partialTicks;
+        double time = te.getWorld().getTotalWorldTime() + (double) partialTicks;
         float pulse = (float) (0.8 + 0.2 * Math.sin(time * 0.15));
 
         float lastX = OpenGlHelper.lastBrightnessX, lastY = OpenGlHelper.lastBrightnessY;

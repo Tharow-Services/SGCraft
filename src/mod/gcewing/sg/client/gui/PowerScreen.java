@@ -60,7 +60,7 @@ public class PowerScreen extends BaseGui.Screen {
         drawRightAlignedString(te.getUnitName() + ":", 90, 23);
         drawRightAlignedString(this.dFormat.format(Math.min(Math.max(this.te.energyBuffer, 0), this.te.energyMax)), 141, 23);
         if (SGCraft.displayGuiPowerDebug) {
-            drawRightAlignedString("SGPU:", 90, 34);
+            drawRightAlignedString("Gate:", 90, 34); // the same in the gate's energy units
             drawRightAlignedString(this.dFormat.format(Math.min(Math.max(this.te.energyBuffer / this.te.energyPerSGEnergyUnit, 0), this.te.energyMax)), 141, 34);
         }
         drawRightAlignedString("Max:", 90, 45);

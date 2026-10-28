@@ -61,22 +61,22 @@ abstract class GateRenderer {
         int k = chevronSequenceRow(te);
         float a = te.angleBetweenChevrons();
         // A Milky Way gate dialling out moves its top chevron down and back up to lock each symbol,
-        // as on the show (following the Carter Addon Pack's SG-1 gate). When it reaches the bottom,
-        // the top chevron and the chevron for the symbol light together (SG-1 S5E14, 38:03); as it
-        // comes back up, the top one goes dark. The last symbol locks at the top chevron itself,
-        // more slowly, and it stays lit.
+        // as on the show (following the Carter Addon Pack's SG-1 gate): the top chevron lights, drops,
+        // comes back up and goes dark, and then the chevron for the symbol lights. The last symbol
+        // locks at the top chevron itself, more slowly, and it stays lit.
         double dip = 0;
-        boolean dipping = false, topLit = false, symbolLit = true, topHeld = false;
+        boolean dipping = false, topLit = false, symbolLit = true;
         if (te.getGateType() == GateType.MILKY_WAY) {
             double t = topChevronLockTime(te, partialTicks);
             int length = te.dialledAddress.length();
-            double[] timing = length > 0 && te.numEngagedChevrons >= length ? chevronFinalLockTicks : chevronLockTicks;
-            if (t < timing[0] + timing[1] + timing[2]) {
+            boolean last = length > 0 && te.numEngagedChevrons >= length;
+            double[] timing = last ? chevronFinalLockTicks : chevronLockTicks;
+            double total = timing[0] + timing[1] + timing[2];
+            if (t < total + symbolLightDelay) {
                 dipping = true;
-                dip = chevronDip(t, timing);
-                topLit = t >= timing[0];
-                symbolLit = topLit;
-                topHeld = topLit && t < timing[0] + timing[1];
+                dip = t < total ? chevronDip(t, timing) : 0;
+                topLit = t < total || last; // lit from the moment it starts down until it's back up (and on, for the last)
+                symbolLit = false; // the symbol's chevron once the top one has gone dark (after this)
             }
         }
         for (int i = i0; i < i0 + numChevrons; i++) {
@@ -84,7 +84,7 @@ abstract class GateRenderer {
             boolean engaged = chevronEngaged(te, i, j, a, partialTicks);
             if (dipping && j == te.numEngagedChevrons - 1) {
                 engaged = i == 4 ? topLit : symbolLit;
-            } else if (dipping && i == 4 && topHeld) {
+            } else if (dipping && i == 4 && topLit && !symbolLit) {
                 engaged = true;
             }
             glPushMatrix();
@@ -98,16 +98,24 @@ abstract class GateRenderer {
     // for each symbol but the last, within the pause between symbols, and for the last, which
     // takes longer, before the gate opens
     final static double[] chevronLockTicks = {6, 10, 6};
+    // How long (ticks) after the top chevron goes dark the symbol's chevron lights
+    final static double symbolLightDelay = 2;
     final static double[] chevronFinalLockTicks = {4, 22, 3};
 
     // Ticks since this gate, dialling out, last locked a chevron, or a long time if it isn't
+    // (In double: a long plus a float is worked out as a float, which on a world billions of ticks old can only count in
+    // hundreds of ticks, so the top chevron never moved on such a server.)
     static double topChevronLockTime(SGBaseTE te, float partialTicks) {
-        double now = te.getWorld().getTotalWorldTime() + partialTicks;
+        double now = te.getWorld().getTotalWorldTime() + (double) partialTicks;
         int locked = te.numEngagedChevrons;
         if (locked != te.chevronsSeenLocked) {
             boolean dialling = te.isInitiator && locked > te.chevronsSeenLocked
                     && te.state != SGState.Connected && te.state != SGState.Disconnecting;
             te.chevronLockSeenTime = dialling ? Math.floor(now) : -1e9;
+            if (SGBaseTE.debugDialSync) {
+                SGBaseTE.dialLog.info(String.format("[SGCraft dial] client renderer saw %d locked (was %d): %s the top chevron; %s", locked,
+                    te.chevronsSeenLocked, dialling ? "animating" : "not animating", te.dialSyncText()));
+            }
             te.chevronsSeenLocked = locked;
         }
         return now - te.chevronLockSeenTime;
